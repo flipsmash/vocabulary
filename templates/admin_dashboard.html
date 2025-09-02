@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - Vocabulary Explorer{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Admin Dashboard</h2>
+        <span class="badge bg-danger fs-6">Administrator</span>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">{{ stats.total_users }}</h5>
+                    <p class="card-text">Total Users</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">{{ stats.active_users }}</h5>
+                    <p class="card-text">Active Users</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">{{ stats.admin_users }}</h5>
+                    <p class="card-text">Admin Users</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">{{ stats.total_words }}</h5>
+                    <p class="card-text">Words in Database</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Recent Users</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Username</th>
+                                    <th>Email</th>
+                                    <th>Full Name</th>
+                                    <th>Role</th>
+                                    <th>Created</th>
+                                    <th>Last Login</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in recent_users %}
+                                <tr>
+                                    <td><strong>{{ user.username }}</strong></td>
+                                    <td>{{ user.email }}</td>
+                                    <td>{{ user.full_name or '-' }}</td>
+                                    <td>
+                                        {% if user.role == 'admin' %}
+                                        <span class="badge bg-danger">Admin</span>
+                                        {% else %}
+                                        <span class="badge bg-primary">User</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ user.created_at.strftime('%m/%d/%Y') }}</td>
+                                    <td>
+                                        {% if user.last_login_at %}
+                                        {{ user.last_login_at.strftime('%m/%d/%Y') }}
+                                        {% else %}
+                                        <em>Never</em>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if user.is_active %}
+                                        <span class="badge bg-success">Active</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">Inactive</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <p>Administrative features will be added here:</p>
+                    <ul>
+                        <li>User management (activate/deactivate accounts)</li>
+                        <li>Bulk word operations</li>
+                        <li>Database maintenance tools</li>
+                        <li>Quiz system configuration</li>
+                        <li>System monitoring</li>
+                    </ul>
+                    <div class="alert alert-info mt-3">
+                        <strong>Coming Soon:</strong> These features will be implemented as the application grows.
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">System Information</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Application:</strong> Vocabulary Explorer</p>
+                    <p><strong>Database:</strong> {{ stats.database_name }}</p>
+                    <p><strong>Current User:</strong> {{ current_user.username }} ({{ current_user.role }})</p>
+                    <p><strong>Server Time:</strong> {{ current_time.strftime('%B %d, %Y at %I:%M %p') }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

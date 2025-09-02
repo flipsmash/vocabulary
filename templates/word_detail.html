@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block title %}{{ word.term }} - Vocabulary Explorer{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    {% if is_random %}
+    <div class="alert alert-success">
+        🎲 <strong>Random Discovery!</strong> Here's a word to explore.
+        <a href="/random" class="btn btn-sm btn-outline-success ms-2">Another Random Word</a>
+    </div>
+    {% endif %}
+    
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                            <h1 class="display-4 mb-2">{{ word.term }}</h1>
+                            {% if word.part_of_speech %}
+                            <span class="badge bg-secondary fs-6">{{ word.part_of_speech }}</span>
+                            {% endif %}
+                            
+                            <!-- Pronunciation Section -->
+                            {% if word.wav_url or word.ipa_transcription or word.arpabet_transcription %}
+                            <div class="mt-3">
+                                <div class="d-flex align-items-center flex-wrap gap-2">
+                                    {% if word.wav_url %}
+                                    <button id="pronunciation-btn" class="btn btn-outline-primary btn-sm" onclick="playPronunciation()">
+                                        <span id="play-icon">🔊</span> Play Pronunciation
+                                    </button>
+                                    <audio id="pronunciation-audio" preload="none" style="display: none;">
+                                        <source src="{{ word.wav_url }}" type="audio/wav">
+                                        Your browser does not support the audio element.
+                                    </audio>
+                                    {% endif %}
+                                    
+                                    {% if word.ipa_transcription %}
+                                    <span class="badge bg-info text-dark fs-6" title="IPA Transcription">
+                                        /{{ word.ipa_transcription }}/
+                                    </span>
+                                    {% endif %}
+                                    
+                                    {% if word.syllable_count %}
+                                    <span class="badge bg-light text-dark fs-6" title="Syllables">
+                                        {{ word.syllable_count }} syllable{{ word.syllable_count != 1 and 's' or '' }}
+                                    </span>
+                                    {% endif %}
+                                </div>
+                                
+                                {% if word.arpabet_transcription %}
+                                <div class="mt-2">
+                                    <small class="text-muted" title="ARPAbet Transcription">
+                                        ARPAbet: {{ word.arpabet_transcription }}
+                                    </small>
+                                </div>
+                                {% endif %}
+                                
+                                {% if word.stress_pattern %}
+                                <div class="mt-1">
+                                    <small class="text-muted" title="Stress Pattern">
+                                        Stress: {{ word.stress_pattern }}
+                                    </small>
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="text-end">
+                            {% if word.frequency_rank %}
+                            <div class="badge bg-info fs-6 mb-1">
+                                Rank: {{ "{:,}".format(word.frequency_rank) }}
+                            </div>
+                            <br>
+                            {% endif %}
+                            {% if word.rarity_percentile %}
+                            <div class="badge bg-warning fs-6">
+                                {{ "%.1f"|format(word.rarity_percentile) }}% rarity
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <h5 class="text-muted mb-2">Definition</h5>
+                        <p class="lead">{{ word.definition }}</p>
+                    </div>
+                    
+                    {% if word.primary_domain or word.secondary_domain %}
+                    <div class="mb-4">
+                        <h6 class="text-muted mb-2">Domain Classification</h6>
+                        {% if word.primary_domain %}
+                        <span class="badge bg-success me-2">{{ word.primary_domain }}</span>
+                        {% endif %}
+                        {% if word.secondary_domain and word.secondary_domain != word.primary_domain %}
+                        <span class="badge bg-outline-success">{{ word.secondary_domain }}</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    
+                    {% if word.independent_frequency %}
+                    <div class="mb-4">
+                        <h6 class="text-muted mb-2">Frequency Analysis</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <small class="text-muted">Independent Frequency Score</small>
+                                <div class="fw-bold">{{ "%.2e"|format(word.independent_frequency) }}</div>
+                            </div>
+                            {% if word.frequency_rank %}
+                            <div class="col-md-6">
+                                <small class="text-muted">Frequency Ranking</small>
+                                <div class="fw-bold">{{ "{:,}".format(word.frequency_rank) }} / 22,094</div>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% if word.rarity_percentile %}
+                        <div class="mt-2">
+                            <small class="text-muted">Rarity Level</small>
+                            <div class="progress mt-1" style="height: 8px;">
+                                <div class="progress-bar bg-warning" style="width: {{ word.rarity_percentile }}%"></div>
+                            </div>
+                            <small class="text-muted">{{ "%.1f"|format(word.rarity_percentile) }}% of words are rarer</small>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="mt-4 text-center">
+                <a href="/" class="btn btn-outline-primary me-2">← Back to Search</a>
+                <a href="/random" class="btn btn-primary">🎲 Random Word</a>
+            </div>
+        </div>
+        
+        <div class="col-lg-4">
+            {% if similar_words %}
+            <div class="similar-words">
+                <h5 class="mb-3">
+                    <span class="text-primary">🔗</span> Similar Words
+                </h5>
+                <div class="list-group list-group-flush">
+                    {% for word_id, similar_word, similarity in similar_words %}
+                    <div class="list-group-item border-0 px-0">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <strong><a href="/word/{{ word_id }}" class="text-decoration-none">{{ similar_word }}</a></strong>
+                            <span class="badge bg-light text-dark">{{ "%.3f"|format(similarity) }}</span>
+                        </div>
+                        <small class="text-muted">{{ "%.1f"|format(similarity * 100) }}% similar</small>
+                    </div>
+                    {% endfor %}
+                </div>
+                <small class="text-muted mt-2 d-block">
+                    Based on definition semantic similarity analysis
+                </small>
+            </div>
+            {% endif %}
+            
+            <div class="mt-4">
+                <div class="card border-0 bg-light">
+                    <div class="card-body text-center">
+                        <h6 class="card-title">Vocabulary Building</h6>
+                        <p class="card-text small text-muted">
+                            Future features: flashcards, quizzes, and practice exercises
+                        </p>
+                        <button class="btn btn-outline-primary btn-sm" disabled>
+                            Coming Soon
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let isPlaying = false;
+
+function playPronunciation() {
+    const audio = document.getElementById('pronunciation-audio');
+    const button = document.getElementById('pronunciation-btn');
+    const icon = document.getElementById('play-icon');
+    
+    // Check if audio element exists and has a source (either src attribute or source child elements)
+    const hasSource = audio && (audio.src || audio.querySelector('source'));
+    if (!hasSource) {
+        console.error('No audio source available');
+        return;
+    }
+    
+    if (isPlaying) {
+        audio.pause();
+        audio.currentTime = 0;
+        isPlaying = false;
+        icon.textContent = '🔊';
+        button.innerHTML = '<span id="play-icon">🔊</span> Play Pronunciation';
+        button.classList.remove('btn-primary');
+        button.classList.add('btn-outline-primary');
+        return;
+    }
+    
+    // Update UI to show loading/playing state
+    icon.textContent = '⏸️';
+    button.innerHTML = '<span id="play-icon">⏸️</span> Playing...';
+    button.classList.remove('btn-outline-primary');
+    button.classList.add('btn-primary');
+    isPlaying = true;
+    
+    // Handle audio events
+    audio.onloadstart = function() {
+        console.log('Audio loading started');
+    };
+    
+    audio.oncanplay = function() {
+        console.log('Audio can start playing');
+        audio.play().catch(error => {
+            console.error('Audio play failed:', error);
+            resetButton();
+        });
+    };
+    
+    audio.onended = function() {
+        resetButton();
+    };
+    
+    audio.onerror = function(e) {
+        console.error('Audio error:', e);
+        resetButton();
+        alert('Sorry, the pronunciation audio could not be loaded. The audio file might be temporarily unavailable.');
+    };
+    
+    // Start loading the audio
+    audio.load();
+    
+    function resetButton() {
+        isPlaying = false;
+        const currentIcon = document.getElementById('play-icon');
+        const currentButton = document.getElementById('pronunciation-btn');
+        if (currentIcon && currentButton) {
+            currentIcon.textContent = '🔊';
+            currentButton.innerHTML = '<span id="play-icon">🔊</span> Play Pronunciation';
+            currentButton.classList.remove('btn-primary');
+            currentButton.classList.add('btn-outline-primary');
+        }
+    }
+}
+
+// Keyboard shortcut: Press 'P' to play pronunciation
+document.addEventListener('keydown', function(e) {
+    if (e.key.toLowerCase() === 'p' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        const activeElement = document.activeElement;
+        // Only trigger if not typing in an input field
+        if (activeElement.tagName !== 'INPUT' && activeElement.tagName !== 'TEXTAREA') {
+            e.preventDefault();
+            const audioElement = document.getElementById('pronunciation-audio');
+            const hasSource = audioElement && (audioElement.src || audioElement.querySelector('source'));
+            if (hasSource) {
+                playPronunciation();
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

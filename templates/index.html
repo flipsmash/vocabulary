@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% block title %}Vocabulary Explorer - Search{% endblock %}
+
+{% block content %}
+<div class="search-section">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <h1 class="text-center mb-4">Explore Your Vocabulary</h1>
+                <p class="text-center mb-4">Search through 22,000+ words with definitions, frequency rankings, and domain classifications</p>
+                
+                <div class="card">
+                    <div class="card-body">
+                        <form id="search-form" method="GET" action="/search">
+                            <div class="row g-3">
+                                <div class="col-md-12">
+                                    <input type="text" id="search-input" class="form-control form-control-lg" 
+                                           name="q" placeholder="Search for a word..." autocomplete="off">
+                                </div>
+                                <div class="col-md-4">
+                                    <select class="form-select" name="domain">
+                                        <option value="">All Domains</option>
+                                        {% for domain in domains %}
+                                        <option value="{{ domain }}">{{ domain }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <select class="form-select" name="part_of_speech">
+                                        <option value="">All Parts of Speech</option>
+                                        {% for pos in parts_of_speech %}
+                                        <option value="{{ pos }}">{{ pos }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <button type="submit" class="btn btn-primary w-100">Search</button>
+                                </div>
+                            </div>
+                            
+                            <div class="row g-3 mt-2">
+                                <div class="col-md-6">
+                                    <label class="form-label small">Frequency Range (Rank)</label>
+                                    <div class="input-group">
+                                        <input type="number" class="form-control" name="min_frequency" placeholder="Min">
+                                        <input type="number" class="form-control" name="max_frequency" placeholder="Max">
+                                    </div>
+                                    <small class="text-muted">Lower numbers = more common words</small>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small">&nbsp;</label>
+                                    <a href="/random" class="btn btn-outline-secondary w-100 d-block">🎲 Random Word</a>
+                                    <small class="text-muted">&nbsp;</small>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-4">
+    <div id="search-results">
+        <div class="text-center text-muted">
+            <p>Enter a search term above to explore words, or click "Random Word" to discover something new!</p>
+            <div class="row mt-4">
+                <div class="col-md-4">
+                    <div class="card border-0 text-center">
+                        <div class="card-body">
+                            <h3 class="text-primary">22,000+</h3>
+                            <p class="text-muted">Words with Definitions</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-0 text-center">
+                        <div class="card-body">
+                            <h3 class="text-primary">25+</h3>
+                            <p class="text-muted">Domain Categories</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-0 text-center">
+                        <div class="card-body">
+                            <h3 class="text-primary">Smart</h3>
+                            <p class="text-muted">Frequency Rankings</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('search-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    performSearch();
+});
+
+document.getElementById('search-input').addEventListener('input', function(e) {
+    if (e.target.value.length >= 2) {
+        performSearch();
+    } else if (e.target.value.length === 0) {
+        document.getElementById('search-results').innerHTML = `
+            <div class="text-center text-muted">
+                <p>Enter a search term above to explore words, or click "Random Word" to discover something new!</p>
+            </div>
+        `;
+    }
+});
+
+function performSearch() {
+    const formData = new FormData(document.getElementById('search-form'));
+    const params = new URLSearchParams();
+    
+    for (let [key, value] of formData.entries()) {
+        if (value.trim()) {
+            params.append(key, value);
+        }
+    }
+    
+    params.append('limit', '20');
+    
+    fetch(`/api/words?${params.toString()}`)
+        .then(response => response.json())
+        .then(data => displayResults(data.words))
+        .catch(error => console.error('Error:', error));
+}
+
+function displayResults(words) {
+    const resultsDiv = document.getElementById('search-results');
+    
+    if (words.length === 0) {
+        resultsDiv.innerHTML = `
+            <div class="alert alert-info">
+                <h5>No words found</h5>
+                <p>Try adjusting your search criteria or browse randomly.</p>
+                <a href="/random" class="btn btn-primary">🎲 Random Word</a>
+            </div>
+        `;
+        return;
+    }
+    
+    const resultsHtml = `
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4>Found ${words.length} words</h4>
+        </div>
+        <div class="row">
+            ${words.map(word => `
+                <div class="col-md-6 col-lg-4 mb-3">
+                    <div class="card word-card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title d-flex align-items-center">
+                                <a href="/word/${word.id}" class="text-decoration-none">${word.term}</a>
+                                ${word.wav_url ? `<button class="btn btn-sm btn-outline-primary ms-2 pronunciation-btn" data-audio="${word.wav_url}" title="Play pronunciation">🔊</button>` : ''}
+                            </h5>
+                            <div class="mb-2">
+                                ${word.part_of_speech ? `<span class="badge bg-secondary">${word.part_of_speech}</span>` : ''}
+                                ${word.ipa_transcription ? `<span class="badge bg-info text-dark ms-1" title="IPA Transcription">/${word.ipa_transcription}/</span>` : ''}
+                                ${word.syllable_count ? `<span class="badge bg-light text-dark ms-1" title="Syllables">${word.syllable_count} syll.</span>` : ''}
+                            </div>
+                            <p class="card-text">${word.definition.substring(0, 150)}${word.definition.length > 150 ? '...' : ''}</p>
+                            <div class="mt-auto">
+                                ${word.frequency_rank ? `<small class="badge bg-info frequency-badge">Rank: ${word.frequency_rank.toLocaleString()}</small>` : ''}
+                                ${word.primary_domain ? `<small class="badge bg-success domain-tag">${word.primary_domain}</small>` : ''}
+                                ${word.rarity_percentile ? `<small class="badge bg-warning domain-tag">${Math.round(word.rarity_percentile)}% rarity</small>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+    
+    resultsDiv.innerHTML = resultsHtml;
+    
+    // Add event listeners for pronunciation buttons in search results
+    document.querySelectorAll('.pronunciation-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            playInlineAudio(this);
+        });
+    });
+}
+
+function playInlineAudio(button) {
+    const audioUrl = button.getAttribute('data-audio');
+    if (!audioUrl) return;
+    
+    // Stop any currently playing audio
+    const currentPlaying = document.querySelector('.pronunciation-btn.playing');
+    if (currentPlaying && currentPlaying !== button) {
+        stopInlineAudio(currentPlaying);
+    }
+    
+    // Check if this button is already playing
+    if (button.classList.contains('playing')) {
+        stopInlineAudio(button);
+        return;
+    }
+    
+    // Create and play audio
+    const audio = new Audio(audioUrl);
+    button.audioElement = audio;
+    button.classList.add('playing');
+    button.innerHTML = '⏸️';
+    button.title = 'Stop pronunciation';
+    
+    audio.onended = () => stopInlineAudio(button);
+    audio.onerror = () => {
+        stopInlineAudio(button);
+        console.error('Failed to play pronunciation for:', audioUrl);
+    };
+    
+    audio.play().catch(error => {
+        stopInlineAudio(button);
+        console.error('Audio play failed:', error);
+    });
+}
+
+function stopInlineAudio(button) {
+    if (button.audioElement) {
+        button.audioElement.pause();
+        button.audioElement = null;
+    }
+    button.classList.remove('playing');
+    button.innerHTML = '🔊';
+    button.title = 'Play pronunciation';
+}
+</script>
+{% endblock %}

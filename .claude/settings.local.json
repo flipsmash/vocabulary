@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(timeout 30 python:*)",
+      "Bash(del cuda_import_tester.py temp_db_debug.py test_cuda_only.py run_system.py setup_script_for_pronunciation_similarity.py update_config_references.py)",
+      "Bash(wmic:*)",
+      "Bash(pip install:*)",
+      "WebFetch(domain:localhost)",
+      "Bash(curl:*)",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_type",
+      "mcp__playwright__browser_wait_for",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_evaluate",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

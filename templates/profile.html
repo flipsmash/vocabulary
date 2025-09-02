@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - {{ user.username }} - Vocabulary Explorer{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3 class="mb-0">User Profile</h3>
+                    {% if user.role == 'admin' %}
+                    <span class="badge bg-danger">Administrator</span>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% if success %}
+                    <div class="alert alert-success" role="alert">
+                        {{ success }}
+                    </div>
+                    {% endif %}
+                    
+                    {% if error %}
+                    <div class="alert alert-danger" role="alert">
+                        {{ error }}
+                    </div>
+                    {% endif %}
+                    
+                    <form method="post" action="/profile">
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Username</label>
+                            <input type="text" class="form-control" id="username" value="{{ user.username }}" disabled>
+                            <div class="form-text">Username cannot be changed</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="email" name="email" 
+                                   value="{{ user.email }}" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="full_name" class="form-label">Full Name</label>
+                            <input type="text" class="form-control" id="full_name" name="full_name" 
+                                   value="{{ user.full_name or '' }}" maxlength="255">
+                        </div>
+                        
+                        <hr>
+                        <h5>Change Password</h5>
+                        <div class="mb-3">
+                            <label for="current_password" class="form-label">Current Password</label>
+                            <input type="password" class="form-control" id="current_password" name="current_password">
+                            <div class="form-text">Leave blank to keep current password</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="new_password" class="form-label">New Password</label>
+                            <input type="password" class="form-control" id="new_password" name="new_password" 
+                                   minlength="6">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="confirm_new_password" class="form-label">Confirm New Password</label>
+                            <input type="password" class="form-control" id="confirm_new_password" 
+                                   name="confirm_new_password">
+                        </div>
+                        
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">Update Profile</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Account Information</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Member since:</strong><br>
+                    {{ user.created_at.strftime('%B %d, %Y') }}</p>
+                    
+                    {% if user.last_login_at %}
+                    <p><strong>Last login:</strong><br>
+                    {{ user.last_login_at.strftime('%B %d, %Y at %I:%M %p') }}</p>
+                    {% endif %}
+                    
+                    <p><strong>Account type:</strong><br>
+                    {% if user.role == 'admin' %}
+                        <span class="badge bg-danger">Administrator</span>
+                    {% else %}
+                        <span class="badge bg-primary">Regular User</span>
+                    {% endif %}
+                    </p>
+                    
+                    {% if quiz_stats %}
+                    <hr>
+                    <h6>Quiz Statistics</h6>
+                    <p><strong>Quizzes completed:</strong> {{ quiz_stats.total_quizzes }}</p>
+                    <p><strong>Questions answered:</strong> {{ quiz_stats.total_questions }}</p>
+                    <p><strong>Accuracy:</strong> {{ "%.1f"|format(quiz_stats.accuracy_percentage) }}%</p>
+                    <p><strong>Current streak:</strong> {{ quiz_stats.streak_current }}</p>
+                    <p><strong>Best streak:</strong> {{ quiz_stats.streak_best }}</p>
+                    {% endif %}
+                </div>
+            </div>
+            
+            {% if user.role == 'admin' %}
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0">Admin Actions</h5>
+                </div>
+                <div class="card-body">
+                    <a href="/admin" class="btn btn-warning btn-sm">Admin Dashboard</a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Password validation for profile updates
+    const currentPassword = document.getElementById('current_password');
+    const newPassword = document.getElementById('new_password');
+    const confirmNewPassword = document.getElementById('confirm_new_password');
+    
+    function validatePasswordFields() {
+        // If new password is entered, require current password
+        if (newPassword.value && !currentPassword.value) {
+            currentPassword.setCustomValidity('Current password is required to set a new password');
+        } else {
+            currentPassword.setCustomValidity('');
+        }
+        
+        // If confirm password is entered, check it matches new password
+        if (confirmNewPassword.value && newPassword.value !== confirmNewPassword.value) {
+            confirmNewPassword.setCustomValidity('Passwords do not match');
+        } else {
+            confirmNewPassword.setCustomValidity('');
+        }
+        
+        // If current password is entered, require new password
+        if (currentPassword.value && !newPassword.value) {
+            newPassword.setCustomValidity('New password is required');
+        } else if (!currentPassword.value) {
+            newPassword.setCustomValidity('');
+        }
+    }
+    
+    currentPassword.addEventListener('input', validatePasswordFields);
+    newPassword.addEventListener('input', validatePasswordFields);
+    confirmNewPassword.addEventListener('input', validatePasswordFields);
+});
+</script>
+{% endblock %}
