@@ -323,10 +323,14 @@ async def search(request: Request, q: str = Query("")):
 
 @app.get("/quiz", response_class=HTMLResponse)
 async def quiz_home(request: Request):
-    """Quiz home page"""
+    """Quiz home page - requires authentication"""
+    current_user = get_current_user(request)
+    if not current_user:
+        return RedirectResponse(url="/login?next=/quiz", status_code=302)
+    
     return templates.TemplateResponse("quiz.html", {
         "request": request,
-        "current_user": None,
+        "current_user": current_user,
         "domains": DOMAINS,
         "parts_of_speech": PARTS_OF_SPEECH
     })
@@ -338,7 +342,10 @@ async def start_quiz(request: Request,
                     domain: Optional[str] = Form(None),
                     part_of_speech: Optional[str] = Form(None),
                     num_questions: int = Form(5)):
-    """Start a working quiz"""
+    """Start a working quiz - requires authentication"""
+    current_user = get_current_user(request)
+    if not current_user:
+        return RedirectResponse(url="/login?next=/quiz", status_code=302)
     # Get random words from database with filters
     quiz_words = get_random_words(num_questions, domain, part_of_speech)
     questions = []
@@ -417,7 +424,10 @@ async def start_quiz(request: Request,
 async def submit_quiz(request: Request,
                      session_id: str = Form(...),
                      results: str = Form(...)):
-    """Handle quiz submission and show results summary"""
+    """Handle quiz submission and show results summary - requires authentication"""
+    current_user = get_current_user(request)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
     import json
     
     try:
