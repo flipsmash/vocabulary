@@ -62,18 +62,15 @@ def get_random_words(num_words=10, domain=None, part_of_speech=None):
     try:
         cursor = connection.cursor(pymysql.cursors.DictCursor)
         
-        # Build query with optional filters
+        # Build query with optional filters using the actual 'defined' table
         query = """
-        SELECT id, term, definition, part_of_speech, 
-               primary_domain as domain
-        FROM words 
+        SELECT id, term, definition, part_of_speech
+        FROM defined 
         WHERE 1=1
         """
         params = []
         
-        if domain and domain != "All Domains":
-            query += " AND (primary_domain = %s OR secondary_domain = %s)"
-            params.extend([domain, domain])
+        # Domain filtering not available in current schema
             
         if part_of_speech and part_of_speech != "All Parts of Speech":
             query += " AND part_of_speech = %s"
@@ -93,7 +90,7 @@ def get_random_words(num_words=10, domain=None, part_of_speech=None):
         
     except Exception as e:
         print(f"Database query failed: {e}")
-        return SAMPLE_WORDS[:num_words]  # Fallback to sample data
+        raise Exception(f"Failed to get words from database: {e}")
     finally:
         connection.close()
 
@@ -101,21 +98,18 @@ def get_distractor_words(target_word_id, num_distractors=3):
     """Get distractor words for quiz questions"""
     connection = get_db_connection()
     if not connection:
-        # Fallback: use sample words excluding target
-        available = [w for w in SAMPLE_WORDS if w['id'] != target_word_id]
-        return random.sample(available, min(num_distractors, len(available)))
+        raise Exception("Database connection failed - quiz requires database access")
     
     try:
         cursor = connection.cursor(pymysql.cursors.DictCursor)
         
-        # Get words with same part of speech, preferring same domain
+        # Get words with same part of speech from defined table
         query = """
-        SELECT w.id, w.term, w.definition, w.part_of_speech,
-               w.primary_domain as domain
-        FROM words w
-        WHERE w.id != %s
-        AND w.part_of_speech = (
-            SELECT part_of_speech FROM words WHERE id = %s
+        SELECT d.id, d.term, d.definition, d.part_of_speech
+        FROM defined d
+        WHERE d.id != %s
+        AND d.part_of_speech = (
+            SELECT part_of_speech FROM defined WHERE id = %s
         )
         ORDER BY RAND()
         LIMIT %s
@@ -132,9 +126,7 @@ def get_distractor_words(target_word_id, num_distractors=3):
         
     except Exception as e:
         print(f"Distractor query failed: {e}")
-        # Fallback: use sample words excluding target
-        available = [w for w in SAMPLE_WORDS if w['id'] != target_word_id]
-        return random.sample(available, min(num_distractors, len(available)))
+        raise Exception(f"Failed to get distractor words: {e}")
     finally:
         connection.close()
 
@@ -496,21 +488,18 @@ def get_word_by_id(word_id):
     """Get word details by ID (database lookup)"""
     connection = get_db_connection()
     if not connection:
-        # Fallback to sample data
-        return next((w for w in SAMPLE_WORDS if w["id"] == word_id), None)
+        raise Exception("Database connection failed")
     
     try:
         cursor = connection.cursor(pymysql.cursors.DictCursor)
         cursor.execute("""
-            SELECT id, term, definition, part_of_speech, 
-                   primary_domain as domain
-            FROM words WHERE id = %s
+            SELECT id, term, definition, part_of_speech
+            FROM defined WHERE id = %s
         """, [word_id])
         return cursor.fetchone()
     except Exception as e:
         print(f"Error fetching word {word_id}: {e}")
-        # Fallback to sample data
-        return next((w for w in SAMPLE_WORDS if w["id"] == word_id), None)
+        raise Exception(f"Failed to get word by ID: {e}")
     finally:
         connection.close()
 
