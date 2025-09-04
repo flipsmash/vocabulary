@@ -1,17 +1,33 @@
-# CUDA-Enhanced Pronunciation Similarity System
+# Vocabulary Learning Platform
 
-A high-performance system for calculating phonetic similarities between words using GPU acceleration, specifically designed for vocabulary quiz generation from rare English words.
+A comprehensive vocabulary learning platform combining CUDA-accelerated pronunciation similarity analysis with an interactive web application for vocabulary acquisition, quizzing, and progress tracking.
 
 ## 🚀 Features
 
-- **CUDA GPU Acceleration**: 10-100x speedup for similarity calculations
+### 🌐 Interactive Web Application
+- **Modern FastAPI Backend**: High-performance web server with real-time quiz generation
+- **Responsive Bootstrap UI**: Mobile-friendly interface with intuitive navigation  
+- **User Authentication**: Secure login/registration with session management
+- **Comprehensive Analytics**: Personal progress tracking with learning insights
+- **Adaptive Quiz System**: Multiple question types with smart difficulty adjustment
+- **Spaced Repetition**: Intelligent review scheduling based on performance
+- **Database Integration**: 22,000+ vocabulary words with definitions and frequency rankings
+
+### ⚡ CUDA-Accelerated Core Engine  
+- **GPU Acceleration**: 10-100x speedup for pronunciation similarity calculations
 - **Multiple Phonetic Sources**: CMU Dictionary, online APIs, and fallback rules
 - **Advanced Similarity Metrics**: Phonetic distance, stress patterns, rhyme similarity, syllable matching
 - **Professional Database Schema**: Optimized for 240M+ pairwise comparisons
 - **Intelligent Quiz Generation**: Advanced distractor selection with quality scoring
 - **Rich CLI Interface**: Beautiful output with progress tracking
-- **Comprehensive Analytics**: Detailed reports and similarity network analysis
 - **Robust Error Handling**: Graceful fallbacks and detailed logging
+
+### 📚 Vocabulary Learning System
+- **Smart Quiz Generation**: Multiple choice, true/false, and matching questions
+- **Progress Tracking**: Word mastery levels from Learning to Mastered (5 levels)
+- **Learning Analytics**: Performance insights, learning streaks, and recommendations
+- **Personalized Experience**: Challenging words identification and review suggestions
+- **Browse & Search**: Explore 22,000+ words with filtering and pagination
 
 ## 📊 Performance
 
@@ -56,32 +72,124 @@ python main_cli.py --check-cuda
 
 ## 🚀 Quick Start
 
-### 1. Initialize System
+### 🌐 Web Application (Recommended)
+
+#### 1. Start the Web Server
+```bash
+python working_vocab_app.py
+# or
+uvicorn working_vocab_app:app --reload
+```
+
+#### 2. Open Your Browser  
+Navigate to `http://localhost:8000`
+
+#### 3. Create an Account
+- Register a new user account
+- Start taking quizzes immediately  
+- Track your progress in real-time
+
+#### 4. Explore Features
+- **Browse**: Explore 22,000+ vocabulary words
+- **Quiz**: Take adaptive quizzes with multiple question types
+- **Analytics**: View detailed progress tracking and learning insights
+- **Random Word**: Discover new vocabulary
+
+### ⚡ CLI Tools (Advanced Users)
+
+#### 1. Initialize System
 ```bash
 python main_cli.py --initialize
 ```
 
-### 2. Process Words for Phonetics
+#### 2. Process Words for Phonetics
 ```bash
 python main_cli.py --process-words
 ```
 
-### 3. Calculate Similarities (GPU Accelerated)
+#### 3. Calculate Similarities (GPU Accelerated)
 ```bash
 python main_cli.py --calculate-similarities
 ```
 
-### 4. Generate Report
+#### 4. Generate Report
 ```bash
 python main_cli.py --generate-report
 ```
 
-### 5. Find Quiz Distractors
+#### 5. Find Quiz Distractors
 ```bash
 python main_cli.py --find-distractors 12345 --num-distractors 4
 ```
 
-## 📖 Detailed Usage
+## 📖 Web Application Guide
+
+### 🎯 Quiz System
+
+#### Taking Quizzes
+- **Question Types**: Multiple choice, true/false, matching questions
+- **Difficulty Levels**: Easy (common words), Medium (mixed), Hard (rare words), Adaptive (personalized)
+- **Domain Filtering**: Focus on specific word categories  
+- **Spaced Repetition**: Words you struggle with appear more frequently
+
+#### Quiz Configuration
+```
+- Quiz Types: Mixed, Multiple Choice Only, True/False Only, Matching Only
+- Question Count: 5, 10, 20, or 50 questions
+- Difficulty: Easy, Medium, Hard, or Adaptive based on your performance
+- Topic Focus: Filter by domain or part of speech
+```
+
+### 📊 Analytics Dashboard
+
+#### Overview Statistics
+- **Total Quiz Sessions**: Number of quizzes completed
+- **Correct Answers**: Total correct responses across all quizzes
+- **Average Accuracy**: Overall performance percentage
+- **Learning Streak**: Consecutive days of vocabulary practice
+
+#### Word Mastery Tracking
+- **5-Level Mastery System**: Learning → Beginner → Intermediate → Advanced → Mastered
+- **Visual Progress Bars**: See your progress across mastery levels
+- **Spaced Repetition Alerts**: Words ready for review based on learning science
+
+#### Personalized Insights  
+- **Challenging Words**: Words with lowest accuracy - focus areas for improvement
+- **Strongest Words**: Words you've mastered with high accuracy and streaks
+- **Recent Performance**: Table of your last 10 quiz sessions with detailed stats
+- **Difficulty Analysis**: Performance breakdown across Easy/Medium/Hard levels
+
+#### Learning Recommendations
+- **Smart Insights**: Personalized feedback based on your performance data
+- **Next Steps**: Actionable recommendations for continued learning
+- **Review Reminders**: Spaced repetition notifications for optimal retention
+
+### 🔍 Browse & Search
+
+#### Word Exploration
+- **22,000+ Words**: Complete vocabulary database with definitions
+- **Advanced Filtering**: Filter by part of speech, domain, frequency
+- **Pagination**: Browse efficiently with configurable page sizes (25/50/100)
+- **Alphabetical Navigation**: Jump to specific letter combinations
+
+#### Search Features  
+- **Full-Text Search**: Search in word terms and definitions
+- **Smart Results**: Results ordered by frequency and relevance
+- **Quick Access**: Direct links to word detail pages
+
+### 👤 User System
+
+#### Authentication
+- **Secure Registration**: Email-based account creation
+- **Session Management**: Persistent login with secure cookies
+- **Password Security**: Bcrypt hashing for password protection
+
+#### Progress Persistence
+- **Database Storage**: All quiz results and progress saved automatically
+- **Cross-Session Continuity**: Continue learning across browser sessions
+- **Performance History**: Complete record of your vocabulary journey
+
+## 📖 CLI Usage (Advanced)
 
 ### Processing Words
 
@@ -147,26 +255,85 @@ python main_cli.py --benchmark
 ### Core Components
 
 ```
-pronunciation_similarity/
-├── core/                    # Core processing logic
-│   ├── phonetic_processor.py    # Phonetic transcription
-│   ├── similarity_calculator.py # Similarity algorithms  
-│   └── database_manager.py      # Database operations
-├── cuda/                    # GPU acceleration
-│   └── cuda_calculator.py       # CUDA similarity engine
-├── analysis/                # Analytics and reporting
-│   └── similarity_analyzer.py   # Analysis tools
-├── cli/                     # Command-line interface
-│   └── main_cli.py              # Rich CLI implementation
-└── utils/                   # Utilities
-    ├── error_handling.py        # Error management
-    ├── validation.py            # Input validation
-    └── performance_monitor.py   # Performance tracking
+vocabulary/
+├── working_vocab_app.py     # Main FastAPI web application
+├── templates/               # Jinja2 HTML templates
+│   ├── base.html                # Base template with navigation
+│   ├── analytics.html           # Analytics dashboard
+│   ├── browse.html              # Word browsing interface
+│   ├── quiz.html                # Quiz setup page
+│   ├── quiz_session.html        # Active quiz interface
+│   └── quiz_results.html        # Quiz results and feedback
+├── pronunciation_similarity/# CUDA-accelerated core engine
+│   ├── core/                    # Core processing logic
+│   │   ├── phonetic_processor.py   # Phonetic transcription
+│   │   ├── similarity_calculator.py# Similarity algorithms  
+│   │   └── database_manager.py     # Database operations
+│   ├── cuda/                    # GPU acceleration
+│   │   └── cuda_calculator.py      # CUDA similarity engine
+│   ├── analysis/                # Analytics and reporting
+│   │   └── similarity_analyzer.py  # Analysis tools
+│   ├── cli/                     # Command-line interface
+│   │   └── main_cli.py             # Rich CLI implementation
+│   └── utils/                   # Utilities
+│       ├── error_handling.py       # Error management
+│       ├── validation.py           # Input validation
+│       └── performance_monitor.py  # Performance tracking
+├── config.py                # Database and app configuration
+└── ingestion/              # Content ingestion system
+    ├── rss_ingestion.py        # RSS feed processing
+    ├── arxiv_ingestion.py      # arXiv paper processing
+    └── github_ingestion.py     # GitHub repository analysis
 ```
 
 ### Database Schema
 
-#### word_phonetics
+#### Web Application Tables
+
+**users**
+- `id` (PRIMARY KEY): Unique user identifier
+- `username`: Unique username for login
+- `email`: User email address
+- `password_hash`: Bcrypt hashed password
+- `created_at`: Account creation timestamp
+- `role`: User role (user/admin)
+
+**quiz_sessions**  
+- `id` (PRIMARY KEY): Unique session identifier
+- `user_id` (FOREIGN KEY): Links to users table
+- `started_at`: Quiz start timestamp
+- `completed_at`: Quiz completion timestamp (NULL if incomplete)
+- `quiz_type`: Type of quiz (mixed, multiple_choice, etc.)
+- `difficulty`: Difficulty level (easy, medium, hard, adaptive)
+- `total_questions`: Number of questions in quiz
+- `correct_answers`: Number of correct responses
+- `session_config`: JSON configuration data
+
+**user_quiz_results**
+- `id` (PRIMARY KEY): Unique result identifier  
+- `user_id` (FOREIGN KEY): Links to users table
+- `word_id` (FOREIGN KEY): Links to defined table
+- `question_type`: Type of question (multiple_choice, true_false)
+- `is_correct`: Boolean indicating if answer was correct
+- `response_time_ms`: Time taken to answer in milliseconds
+- `answered_at`: Timestamp of response
+- `difficulty_level`: Difficulty level of the question
+
+**user_word_mastery**
+- `id` (PRIMARY KEY): Unique mastery record identifier
+- `user_id` (FOREIGN KEY): Links to users table  
+- `word_id` (FOREIGN KEY): Links to defined table
+- `mastery_level`: Current mastery level (learning, reviewing, mastered)
+- `total_attempts`: Total number of times word was tested
+- `correct_attempts`: Number of correct responses
+- `last_seen`: Timestamp of last encounter
+- `next_review`: Scheduled review time for spaced repetition
+- `streak`: Current streak of consecutive correct answers
+- `ease_factor`: Spaced repetition ease factor (1.3-2.5)
+
+#### CUDA Engine Tables
+
+**word_phonetics**
 - `word_id` (PRIMARY KEY): Links to vocabulary database
 - `ipa_transcription`: International Phonetic Alphabet
 - `arpabet_transcription`: ARPAbet phonemes
@@ -175,7 +342,7 @@ pronunciation_similarity/
 - `phonemes_json`: Individual phonemes as JSON array
 - `transcription_source`: Source of transcription (CMU/API/Fallback)
 
-#### pronunciation_similarity  
+**pronunciation_similarity**  
 - `word1_id`, `word2_id` (COMPOSITE PRIMARY KEY): Word pair IDs
 - `overall_similarity`: Weighted combination of all metrics (0-1)
 - `phonetic_distance`: Levenshtein distance on phonemes (0-1)
@@ -183,7 +350,17 @@ pronunciation_similarity/
 - `rhyme_score`: Ending sound similarity (0-1)
 - `syllable_similarity`: Syllable count similarity (0-1)
 
-Optimized indexes for fast quiz distractor lookup.
+#### Core Vocabulary Table
+
+**defined** (22,000+ words)
+- `id` (PRIMARY KEY): Unique word identifier
+- `term`: The vocabulary word
+- `definition`: Word definition
+- `part_of_speech`: Grammatical category (noun, verb, etc.)
+- `frequency`: Frequency score for commonality ranking
+- `domain`: Subject domain (academic, scientific, etc.)
+
+All tables optimized with indexes for fast quiz generation and analytics queries.
 
 ## 🎯 Quiz Generation Algorithm
 
@@ -394,4 +571,30 @@ MIT License - see LICENSE file for details.
 
 ---
 
-**Built for professional vocabulary quiz generation with 22,094 rare English words** 🎯
+## 🎯 Getting Started
+
+### For Vocabulary Learners
+1. **Start the web app**: `python working_vocab_app.py`  
+2. **Visit**: `http://localhost:8000`
+3. **Register**: Create your account  
+4. **Learn**: Take quizzes and track your progress!
+
+### For Developers  
+1. **Explore the codebase**: FastAPI backend with comprehensive analytics
+2. **CUDA acceleration**: GPU-powered pronunciation similarity engine  
+3. **Database integration**: MySQL with optimized schemas
+4. **Spaced repetition**: Learning science-based review scheduling
+
+---
+
+**A complete vocabulary learning platform with 22,000+ words, powered by CUDA-accelerated pronunciation analysis** 🚀📚
+**Ingestion Settings**
+- **Requirement (spaCy model):** install `spacy` and `en_core_web_sm` for robust proper-noun/NER exclusion. Commands: `pip install spacy` then `python -m spacy download en_core_web_sm`.
+- **Run (CLI):** `python main_cli.py --ingest-run rss --ingest-limit 200` (also `arxiv` or `github`). Phrases are disabled; only single-token rare terms are kept.
+- **Run (Web):** start API `uvicorn vocabulary_web_app:app --reload`, open `/candidates`, choose a strategy, click “Run Ingestion”.
+- **Config defaults:** managed in `config.py` under `VocabularyConfig.INGESTION` with helpers: `get_rss_feeds()`, `get_arxiv_categories()`, `get_github_repos()`, `get_zipf_threshold()`.
+- **Env overrides:** set `RSS_FEEDS`, `ARXIV_CATEGORIES`, and `GITHUB_REPOS`. Example: `export RSS_FEEDS="https://feed1,https://feed2"`.
+- **Rarity cutoff:** keeps only single-token candidates with Zipf < 3.0 (hard-coded) to target seriously rare/difficult/emerging words.
+- **Strategies:** `rss` (research/AI-focused feeds), `arxiv` (AI/ML categories), `github` (ML/NLP repos). Sources can be tuned via config/env.
+- **Storage:** new tables: `sources`, `documents`, `candidate_terms`, `candidate_observations`, `candidate_metrics`, `definition_candidates`, `promotions`, `rejections`, and final `terms`.
+- **Cron examples:** see `CRON_JOBS.md` for scheduled runs (RSS every 6h, arXiv/GitHub daily).
