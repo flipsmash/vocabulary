@@ -1,0 +1,370 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics - Your Learning Progress{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1>📊 Your Learning Analytics</h1>
+                    <p class="text-muted">Track your vocabulary learning progress and insights</p>
+                </div>
+                <div>
+                    <a href="/quiz" class="btn btn-primary">Take a Quiz</a>
+                </div>
+            </div>
+
+            {% if error %}
+            <div class="alert alert-warning" role="alert">
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <!-- Overview Stats -->
+            <div class="row mb-4">
+                <div class="col-lg-3 col-md-6 mb-3">
+                    <div class="card border-primary">
+                        <div class="card-body text-center">
+                            <h3 class="text-primary">{{ total_sessions }}</h3>
+                            <p class="mb-0">Quiz Sessions</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6 mb-3">
+                    <div class="card border-success">
+                        <div class="card-body text-center">
+                            <h3 class="text-success">{{ total_correct }}</h3>
+                            <p class="mb-0">Correct Answers</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6 mb-3">
+                    <div class="card border-info">
+                        <div class="card-body text-center">
+                            <h3 class="text-info">{{ avg_accuracy }}%</h3>
+                            <p class="mb-0">Average Accuracy</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6 mb-3">
+                    <div class="card border-warning">
+                        <div class="card-body text-center">
+                            <h3 class="text-warning">{{ current_streak }}</h3>
+                            <p class="mb-0">Day Learning Streak</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <!-- Word Mastery Progress -->
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">🎯 Word Mastery Levels</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if mastery_stats %}
+                            {% for level in [5, 4, 3, 2, 1] %}
+                                {% if mastery_stats.get(level) %}
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between">
+                                        <span>
+                                            {% if level == 5 %}
+                                                <span class="badge bg-success">Mastered</span>
+                                            {% elif level == 4 %}
+                                                <span class="badge bg-info">Advanced</span>
+                                            {% elif level == 3 %}
+                                                <span class="badge bg-warning">Intermediate</span>
+                                            {% elif level == 2 %}
+                                                <span class="badge bg-secondary">Beginner</span>
+                                            {% else %}
+                                                <span class="badge bg-danger">Learning</span>
+                                            {% endif %}
+                                        </span>
+                                        <strong>{{ mastery_stats[level] }} words</strong>
+                                    </div>
+                                    <div class="progress mt-2" style="height: 6px;">
+                                        <div class="progress-bar 
+                                            {% if level == 5 %}bg-success
+                                            {% elif level == 4 %}bg-info
+                                            {% elif level == 3 %}bg-warning
+                                            {% elif level == 2 %}bg-secondary
+                                            {% else %}bg-danger{% endif %}"
+                                             style="width: {{ (mastery_stats[level] / (mastery_stats.values() | sum) * 100) | round(1) }}%">
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            {% endfor %}
+                            {% else %}
+                            <p class="text-muted">No mastery data yet. Take some quizzes to see your progress!</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Words to Review -->
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">⏰ Spaced Repetition</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="text-center mb-3">
+                                <h3 class="text-primary">{{ words_to_review }}</h3>
+                                <p class="mb-0">Words Ready for Review</p>
+                            </div>
+                            {% if words_to_review > 0 %}
+                            <div class="alert alert-info">
+                                <strong>Time to review!</strong> You have {{ words_to_review }} word{% if words_to_review != 1 %}s{% endif %} ready for spaced repetition review.
+                            </div>
+                            <a href="/quiz" class="btn btn-primary w-100">Review Words Now</a>
+                            {% else %}
+                            <div class="alert alert-success">
+                                <strong>All caught up!</strong> No words are due for review right now.
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Quiz Performance -->
+            {% if recent_sessions %}
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">📈 Recent Quiz Performance</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Type</th>
+                                            <th>Difficulty</th>
+                                            <th>Questions</th>
+                                            <th>Correct</th>
+                                            <th>Accuracy</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for session in recent_sessions %}
+                                        <tr>
+                                            <td>{{ session.quiz_date.strftime('%Y-%m-%d') }}</td>
+                                            <td>
+                                                <span class="badge bg-secondary">{{ session.quiz_type|title }}</span>
+                                            </td>
+                                            <td>
+                                                <span class="badge 
+                                                    {% if session.difficulty == 'easy' %}bg-success
+                                                    {% elif session.difficulty == 'medium' %}bg-warning  
+                                                    {% elif session.difficulty == 'hard' %}bg-danger
+                                                    {% else %}bg-info{% endif %}">
+                                                    {{ session.difficulty|title }}
+                                                </span>
+                                            </td>
+                                            <td>{{ session.total_questions }}</td>
+                                            <td>{{ session.correct_answers }}</td>
+                                            <td>
+                                                <span class="badge 
+                                                    {% if session.accuracy >= 90 %}bg-success
+                                                    {% elif session.accuracy >= 70 %}bg-info
+                                                    {% elif session.accuracy >= 50 %}bg-warning
+                                                    {% else %}bg-danger{% endif %}">
+                                                    {{ session.accuracy|round(1) }}%
+                                                </span>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="row">
+                <!-- Challenging Words -->
+                {% if challenging_words %}
+                <div class="col-md-6 mb-4">
+                    <div class="card border-danger">
+                        <div class="card-header bg-danger text-white">
+                            <h5 class="mb-0">📚 Words to Focus On</h5>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted mb-3">Words you find most challenging - focus on these!</p>
+                            {% for word in challenging_words %}
+                            <div class="mb-3 p-3 border-start border-danger border-3 bg-light">
+                                <h6 class="mb-2">
+                                    <strong>{{ word.term }}</strong>
+                                    <span class="badge bg-secondary ms-2">{{ word.part_of_speech }}</span>
+                                </h6>
+                                <p class="mb-1">{{ word.definition[:100] }}{% if word.definition|length > 100 %}...{% endif %}</p>
+                                <small class="text-muted">
+                                    Accuracy: {{ word.accuracy|round(1) }}% 
+                                    ({{ word.correct_attempts }}/{{ word.total_attempts }} correct)
+                                </small>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Strongest Words -->
+                {% if strongest_words %}
+                <div class="col-md-6 mb-4">
+                    <div class="card border-success">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0">⭐ Words You've Mastered</h5>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted mb-3">Great job! You know these words well.</p>
+                            {% for word in strongest_words %}
+                            <div class="mb-3 p-3 border-start border-success border-3 bg-light">
+                                <h6 class="mb-2">
+                                    <strong>{{ word.term }}</strong>
+                                    <span class="badge bg-secondary ms-2">{{ word.part_of_speech }}</span>
+                                    {% if word.streak > 0 %}
+                                    <span class="badge bg-warning ms-1">{{ word.streak }} streak</span>
+                                    {% endif %}
+                                </h6>
+                                <p class="mb-1">{{ word.definition[:100] }}{% if word.definition|length > 100 %}...{% endif %}</p>
+                                <small class="text-muted">
+                                    Accuracy: {{ word.accuracy|round(1) }}% 
+                                    ({{ word.correct_attempts }}/{{ word.total_attempts }} correct)
+                                </small>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Difficulty Level Performance -->
+            {% if difficulty_stats %}
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">🎚️ Performance by Difficulty Level</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                {% for difficulty, stats in difficulty_stats.items() %}
+                                <div class="col-md-3 mb-3">
+                                    <div class="card text-center">
+                                        <div class="card-body">
+                                            <h5 class="card-title">{{ difficulty|title }}</h5>
+                                            <p class="card-text">
+                                                <strong>{{ stats.count }}</strong> sessions<br>
+                                                <span class="badge 
+                                                    {% if stats.accuracy >= 90 %}bg-success
+                                                    {% elif stats.accuracy >= 70 %}bg-info
+                                                    {% elif stats.accuracy >= 50 %}bg-warning
+                                                    {% else %}bg-danger{% endif %}">
+                                                    {{ stats.accuracy|round(1) }}% avg
+                                                </span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Learning Insights -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">💡 Learning Insights</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if total_sessions == 0 %}
+                            <div class="alert alert-info">
+                                <strong>Welcome!</strong> Take your first quiz to start tracking your vocabulary learning progress.
+                            </div>
+                            {% elif avg_accuracy >= 90 %}
+                            <div class="alert alert-success">
+                                <strong>Excellent work!</strong> You're performing exceptionally well with {{ avg_accuracy }}% average accuracy. 
+                                Consider trying harder difficulty levels to challenge yourself further.
+                            </div>
+                            {% elif avg_accuracy >= 70 %}
+                            <div class="alert alert-info">
+                                <strong>Great progress!</strong> You're doing well with {{ avg_accuracy }}% average accuracy. 
+                                {% if challenging_words %}Focus on the challenging words shown above to improve further.{% endif %}
+                            </div>
+                            {% elif avg_accuracy >= 50 %}
+                            <div class="alert alert-warning">
+                                <strong>Keep practicing!</strong> You're building a solid foundation with {{ avg_accuracy }}% average accuracy. 
+                                Regular practice will help improve your performance.
+                            </div>
+                            {% else %}
+                            <div class="alert alert-danger">
+                                <strong>Focus on fundamentals.</strong> Consider starting with easier difficulty levels and focusing on 
+                                basic vocabulary to build confidence.
+                            </div>
+                            {% endif %}
+
+                            {% if current_streak > 0 %}
+                            <p class="mb-2">🔥 <strong>Learning streak:</strong> {{ current_streak }} day{% if current_streak != 1 %}s{% endif %}! Keep it up!</p>
+                            {% endif %}
+
+                            {% if words_to_review > 10 %}
+                            <p class="mb-2">📅 <strong>Review reminder:</strong> You have {{ words_to_review }} words ready for review. 
+                            Spaced repetition is most effective when done regularly.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Items -->
+            <div class="row">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">🎯 Recommended Next Steps</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-4 mb-2">
+                                    <a href="/quiz" class="btn btn-primary w-100">
+                                        Take a Quiz
+                                    </a>
+                                </div>
+                                {% if words_to_review > 0 %}
+                                <div class="col-md-4 mb-2">
+                                    <a href="/quiz?difficulty=adaptive" class="btn btn-warning w-100">
+                                        Review Words ({{ words_to_review }})
+                                    </a>
+                                </div>
+                                {% endif %}
+                                <div class="col-md-4 mb-2">
+                                    <a href="/browse" class="btn btn-outline-secondary w-100">
+                                        Browse Vocabulary
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
