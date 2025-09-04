@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+
+{% block title %}Quiz Session{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <!-- Quiz Progress -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="mb-0">Question <span id="current-question">1</span> of {{ questions|length }}</h5>
+                            <small class="text-muted">{{ difficulty|title }} difficulty</small>
+                        </div>
+                        <div>
+                            <div class="progress" style="width: 200px; height: 8px;">
+                                <div class="progress-bar" id="progress-bar" role="progressbar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quiz Questions -->
+            <div id="quiz-container">
+                {% for question in questions %}
+                <div class="question-card card mb-4" data-question="{{ question.id }}" {% if question.id != 1 %}style="display: none;"{% endif %}>
+                    <div class="card-body">
+                        <h4 class="card-title">{{ question.question }}</h4>
+                        
+                        <!-- Question Options -->
+                        <div class="options mt-4">
+                            {% if question.question_type == "true_false" %}
+                            <!-- True/False Options -->
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="radio" name="answer_{{ question.id }}" 
+                                       id="option_{{ question.id }}_true" value="true"
+                                       data-question="{{ question.id }}">
+                                <label class="form-check-label" for="option_{{ question.id }}_true">
+                                    <strong>True</strong>
+                                </label>
+                            </div>
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="radio" name="answer_{{ question.id }}" 
+                                       id="option_{{ question.id }}_false" value="false"
+                                       data-question="{{ question.id }}">
+                                <label class="form-check-label" for="option_{{ question.id }}_false">
+                                    <strong>False</strong>
+                                </label>
+                            </div>
+                            {% else %}
+                            <!-- Multiple Choice Options -->
+                            {% for option in question.options %}
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="radio" name="answer_{{ question.id }}" 
+                                       id="option_{{ question.id }}_{{ loop.index0 }}" value="{{ loop.index0 }}"
+                                       data-question="{{ question.id }}"
+                                       data-word-id="{% if question.option_word_ids %}{{ question.option_word_ids[loop.index0] }}{% endif %}">
+                                <label class="form-check-label" for="option_{{ question.id }}_{{ loop.index0 }}">
+                                    {{ option }}
+                                </label>
+                            </div>
+                            {% endfor %}
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Answer feedback (hidden initially) -->
+                        <div class="answer-feedback mt-4" style="display: none;">
+                            <div class="alert" role="alert">
+                                <strong class="feedback-result"></strong>
+                                <p class="feedback-explanation mb-0 mt-2">{{ question.explanation }}</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Navigation -->
+                        <div class="d-flex justify-content-between mt-4">
+                            <button class="btn btn-outline-secondary" id="prev-btn" onclick="previousQuestion()" 
+                                    {% if question.id == 1 %}style="visibility: hidden;"{% endif %}>
+                                ← Previous
+                            </button>
+                            <button class="btn btn-primary" id="next-btn-{{ question.id }}" onclick="nextQuestion()" disabled>
+                                {% if question.id == questions|length %}Finish Quiz{% else %}Next →{% endif %}
+                            </button>
+                        </div>
+                        
+                        <!-- Hidden data -->
+                        <input type="hidden" class="correct-answer" value="{{ question.correct_answer }}">
+                        <input type="hidden" class="word-id" value="{{ question.word_id }}">
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <!-- Quiz Results (hidden initially) -->
+            <div id="quiz-results" class="card" style="display: none;">
+                <div class="card-body text-center">
+                    <h3>🎉 Quiz Complete!</h3>
+                    <div class="row mt-4">
+                        <div class="col-md-4">
+                            <div class="card border-success">
+                                <div class="card-body">
+                                    <h4 class="text-success" id="correct-count">0</h4>
+                                    <p class="mb-0">Correct</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card border-danger">
+                                <div class="card-body">
+                                    <h4 class="text-danger" id="incorrect-count">0</h4>
+                                    <p class="mb-0">Incorrect</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card border-info">
+                                <div class="card-body">
+                                    <h4 class="text-info" id="accuracy">0%</h4>
+                                    <p class="mb-0">Accuracy</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4">
+                        <a href="/quiz" class="btn btn-primary me-2">Take Another Quiz</a>
+                        <a href="/" class="btn btn-outline-secondary">Back to Home</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentQuestion = 1;
+let totalQuestions = {{ questions|length }};
+let userAnswers = {};
+let correctAnswers = 0;
+
+// Quiz data
+const quizData = {
+    {% for question in questions %}
+    {{ question.id }}: {
+        correctAnswer: {% if question.correct_answer is sameas true %}true{% elif question.correct_answer is sameas false %}false{% else %}{{ question.correct_answer }}{% endif %},
+        wordId: {{ question.word_id }},
+        questionType: "{{ question.question_type }}",
+        explanation: "{{ question.explanation|replace('"', '\\"') }}"
+    },
+    {% endfor %}
+};
+
+const sessionId = "{{ session_id }}";
+
+function updateProgress() {
+    const progress = ((currentQuestion - 1) / totalQuestions) * 100;
+    document.getElementById('progress-bar').style.width = progress + '%';
+    document.getElementById('current-question').textContent = currentQuestion;
+}
+
+function showQuestion(questionNum) {
+    // Hide all questions
+    document.querySelectorAll('.question-card').forEach(card => {
+        card.style.display = 'none';
+    });
+    
+    // Show current question
+    const currentCard = document.querySelector(`[data-question="${questionNum}"]`);
+    if (currentCard) {
+        currentCard.style.display = 'block';
+    }
+    
+    // Update navigation buttons
+    const prevBtn = document.getElementById('prev-btn');
+    const nextBtn = document.getElementById(`next-btn-${questionNum}`);
+    
+    if (questionNum === 1) {
+        prevBtn.style.visibility = 'hidden';
+    } else {
+        prevBtn.style.visibility = 'visible';
+    }
+    
+    if (questionNum === totalQuestions) {
+        nextBtn.textContent = 'Finish Quiz';
+    } else {
+        nextBtn.textContent = 'Next →';
+    }
+    
+    // Check if question is already answered
+    const selectedOption = document.querySelector(`input[name="answer_${questionNum}"]:checked`);
+    nextBtn.disabled = !selectedOption;
+}
+
+function nextQuestion() {
+    // Check answer for current question
+    const selectedOption = document.querySelector(`input[name="answer_${currentQuestion}"]:checked`);
+    if (!selectedOption) return;
+    
+    const questionType = quizData[currentQuestion].questionType;
+    let userAnswer, correctAnswer, isCorrect;
+    
+    if (questionType === "true_false") {
+        userAnswer = selectedOption.value === "true";
+        correctAnswer = quizData[currentQuestion].correctAnswer;
+        isCorrect = userAnswer === correctAnswer;
+    } else {
+        userAnswer = parseInt(selectedOption.value);
+        correctAnswer = quizData[currentQuestion].correctAnswer;
+        isCorrect = userAnswer === correctAnswer;
+    }
+    
+    // Get the chosen distractor word ID for mistake tracking
+    const chosenDistractorId = selectedOption.getAttribute('data-word-id');
+    
+    // Store user answer
+    userAnswers[currentQuestion] = {
+        selected: userAnswer,
+        correct: correctAnswer,
+        isCorrect: isCorrect,
+        chosenDistractorId: chosenDistractorId
+    };
+    
+    if (isCorrect) {
+        correctAnswers++;
+    }
+    
+    // Show feedback
+    showFeedback(currentQuestion, isCorrect);
+    
+    // Move to next question after delay
+    setTimeout(() => {
+        if (currentQuestion < totalQuestions) {
+            currentQuestion++;
+            showQuestion(currentQuestion);
+            updateProgress();
+        } else {
+            showResults();
+        }
+    }, 2000);
+}
+
+function previousQuestion() {
+    if (currentQuestion > 1) {
+        currentQuestion--;
+        showQuestion(currentQuestion);
+        updateProgress();
+    }
+}
+
+function showFeedback(questionNum, isCorrect) {
+    const feedbackDiv = document.querySelector(`[data-question="${questionNum}"] .answer-feedback`);
+    const resultSpan = feedbackDiv.querySelector('.feedback-result');
+    const alertDiv = feedbackDiv.querySelector('.alert');
+    
+    if (isCorrect) {
+        alertDiv.className = 'alert alert-success';
+        resultSpan.textContent = '✓ Correct!';
+    } else {
+        alertDiv.className = 'alert alert-danger';
+        resultSpan.textContent = '✗ Incorrect';
+    }
+    
+    feedbackDiv.style.display = 'block';
+    
+    // Disable all options
+    document.querySelectorAll(`input[name="answer_${questionNum}"]`).forEach(input => {
+        input.disabled = true;
+    });
+}
+
+function showResults() {
+    // Hide quiz container
+    document.getElementById('quiz-container').style.display = 'none';
+    
+    // Show results
+    const resultsDiv = document.getElementById('quiz-results');
+    resultsDiv.style.display = 'block';
+    
+    // Update result numbers
+    const incorrectCount = totalQuestions - correctAnswers;
+    const accuracy = Math.round((correctAnswers / totalQuestions) * 100);
+    
+    document.getElementById('correct-count').textContent = correctAnswers;
+    document.getElementById('incorrect-count').textContent = incorrectCount;
+    document.getElementById('accuracy').textContent = accuracy + '%';
+    
+    // Hide progress bar
+    document.querySelector('.card.mb-4').style.display = 'none';
+    
+    // Submit results to server if session ID exists
+    if (sessionId && sessionId !== 'None') {
+        submitQuizResults();
+    }
+}
+
+function submitQuizResults() {
+    // Prepare results data
+    const questionResults = [];
+    for (let questionId in userAnswers) {
+        const answer = userAnswers[questionId];
+        questionResults.push({
+            word_id: quizData[questionId].wordId,
+            question_type: quizData[questionId].questionType,
+            is_correct: answer.isCorrect,
+            response_time_ms: answer.responseTime || 3000, // Default if not tracked
+            chosen_distractor_id: answer.isCorrect ? null : (answer.chosenDistractorId ? parseInt(answer.chosenDistractorId) : null)
+        });
+    }
+    
+    const resultsData = {
+        correct_count: correctAnswers,
+        total_questions: totalQuestions,
+        accuracy: Math.round((correctAnswers / totalQuestions) * 100),
+        difficulty: "{{ difficulty }}",
+        question_results: questionResults
+    };
+    
+    // Submit via form
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/quiz/submit';
+    form.style.display = 'none';
+    
+    const sessionInput = document.createElement('input');
+    sessionInput.name = 'session_id';
+    sessionInput.value = sessionId;
+    form.appendChild(sessionInput);
+    
+    const resultsInput = document.createElement('input');
+    resultsInput.name = 'results';
+    resultsInput.value = JSON.stringify(resultsData);
+    form.appendChild(resultsInput);
+    
+    document.body.appendChild(form);
+    form.submit();
+}
+
+// Enable next button when option is selected
+document.addEventListener('change', function(e) {
+    if (e.target.type === 'radio') {
+        const questionNum = parseInt(e.target.dataset.question);
+        console.log('Radio change event:', questionNum, 'current:', currentQuestion);
+        if (questionNum === currentQuestion) {
+            const nextBtn = document.getElementById(`next-btn-${questionNum}`);
+            if (nextBtn) {
+                nextBtn.disabled = false;
+                console.log('Next button enabled for question', questionNum);
+            }
+        }
+    }
+});
+
+// Also add click event listener as backup
+document.addEventListener('click', function(e) {
+    if (e.target.type === 'radio') {
+        const questionNum = parseInt(e.target.dataset.question);
+        if (questionNum === currentQuestion) {
+            const nextBtn = document.getElementById(`next-btn-${questionNum}`);
+            if (nextBtn) {
+                nextBtn.disabled = false;
+            }
+        }
+    }
+});
+
+// Initialize
+updateProgress();
+</script>
+{% endblock %}

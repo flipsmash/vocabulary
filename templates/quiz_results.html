@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}Quiz Results{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <!-- Header -->
+            <div class="text-center mb-4">
+                <h1 class="display-4">🎉 Quiz Complete!</h1>
+                <p class="lead">Here's how you performed</p>
+            </div>
+            
+            <!-- Overall Results -->
+            <div class="row mb-5">
+                <div class="col-md-3">
+                    <div class="card border-success text-center">
+                        <div class="card-body">
+                            <h2 class="text-success">{{ correct_count }}</h2>
+                            <p class="mb-0">Correct</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card border-danger text-center">
+                        <div class="card-body">
+                            <h2 class="text-danger">{{ total_questions - correct_count }}</h2>
+                            <p class="mb-0">Incorrect</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card border-info text-center">
+                        <div class="card-body">
+                            <h2 class="text-info">{{ accuracy }}%</h2>
+                            <p class="mb-0">Accuracy</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card border-secondary text-center">
+                        <div class="card-body">
+                            <h2 class="text-secondary">{{ difficulty|title }}</h2>
+                            <p class="mb-0">Difficulty</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Detailed Results -->
+            <div class="row">
+                <!-- Incorrect Words (more prominent) -->
+                {% if incorrect_words %}
+                <div class="col-md-6 mb-4">
+                    <div class="card border-danger">
+                        <div class="card-header bg-danger text-white">
+                            <h5 class="mb-0">❌ Words to Review ({{ incorrect_words|length }})</h5>
+                        </div>
+                        <div class="card-body">
+                            {% for word in incorrect_words %}
+                            <div class="mb-3 p-3 bg-light rounded">
+                                <h6 class="mb-2">
+                                    <strong>{{ word.term }}</strong>
+                                    <span class="badge bg-secondary ms-2">{{ word.part_of_speech }}</span>
+                                    {% if word.domain %}
+                                    <span class="badge bg-outline-secondary ms-1">{{ word.domain }}</span>
+                                    {% endif %}
+                                </h6>
+                                <p class="mb-1"><strong>Definition:</strong> {{ word.definition }}</p>
+                                <small class="text-muted">Question Type: {{ word.question_type|title }}</small>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                
+                <!-- Correct Words -->
+                {% if correct_words %}
+                <div class="col-md-6 mb-4">
+                    <div class="card border-success">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0">✅ Words You Know ({{ correct_words|length }})</h5>
+                        </div>
+                        <div class="card-body">
+                            {% for word in correct_words %}
+                            <div class="mb-3 p-2 border-start border-success border-3">
+                                <h6 class="mb-2">
+                                    <strong>{{ word.term }}</strong>
+                                    <span class="badge bg-secondary ms-2">{{ word.part_of_speech }}</span>
+                                    {% if word.domain %}
+                                    <span class="badge bg-outline-secondary ms-1">{{ word.domain }}</span>
+                                    {% endif %}
+                                </h6>
+                                <p class="mb-1 text-muted">{{ word.definition }}</p>
+                                <small class="text-muted">{{ word.question_type|title }}</small>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Performance Analysis -->
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">📊 Performance Analysis</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h6>Overall Performance:</h6>
+                                    {% if accuracy >= 90 %}
+                                    <div class="alert alert-success">
+                                        <strong>Excellent!</strong> You have a strong command of these vocabulary words.
+                                    </div>
+                                    {% elif accuracy >= 70 %}
+                                    <div class="alert alert-info">
+                                        <strong>Good work!</strong> You're doing well. Review the missed words to improve further.
+                                    </div>
+                                    {% elif accuracy >= 50 %}
+                                    <div class="alert alert-warning">
+                                        <strong>Keep practicing!</strong> Focus on the words you missed to build your vocabulary.
+                                    </div>
+                                    {% else %}
+                                    <div class="alert alert-danger">
+                                        <strong>More study needed.</strong> Consider reviewing these vocabulary words more thoroughly.
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-6">
+                                    <h6>Next Steps:</h6>
+                                    <ul class="list-unstyled">
+                                        {% if incorrect_words %}
+                                        <li>📚 Study the {{ incorrect_words|length }} words you missed</li>
+                                        <li>🔄 Retake quiz with these words specifically</li>
+                                        {% endif %}
+                                        <li>📈 Try a higher difficulty level</li>
+                                        <li>🎯 Focus on specific domains or parts of speech</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="text-center">
+                <a href="/quiz" class="btn btn-primary btn-lg me-3">Take Another Quiz</a>
+                {% if incorrect_words %}
+                <a href="/quiz?retry=1" class="btn btn-warning me-3">Retry Missed Words</a>
+                {% endif %}
+                <a href="/" class="btn btn-outline-secondary">Back to Home</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
