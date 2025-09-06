@@ -23,18 +23,17 @@
                             {% endif %}
                             
                             <!-- Pronunciation Section -->
-                            {% if word.wav_url or word.ipa_transcription or word.arpabet_transcription %}
+                            {% if word.ipa_transcription or word.arpabet_transcription %}
                             <div class="mt-3">
                                 <div class="d-flex align-items-center flex-wrap gap-2">
-                                    {% if word.wav_url %}
+                                    <!-- Always show pronunciation button -->
                                     <button id="pronunciation-btn" class="btn btn-outline-primary btn-sm" onclick="playPronunciation()">
                                         <span id="play-icon">🔊</span> Play Pronunciation
                                     </button>
                                     <audio id="pronunciation-audio" preload="none" style="display: none;">
-                                        <source src="{{ word.wav_url }}" type="audio/wav">
+                                        <source src="/pronunciation/{{ word.term }}" type="audio/wav">
                                         Your browser does not support the audio element.
                                     </audio>
-                                    {% endif %}
                                     
                                     {% if word.ipa_transcription %}
                                     <span class="badge bg-info text-dark fs-6" title="IPA Transcription">
@@ -86,6 +85,28 @@
                         <h5 class="text-muted mb-2">Definition</h5>
                         <p class="lead">{{ word.definition }}</p>
                     </div>
+                    
+                    <!-- Flashcard Actions for logged-in users -->
+                    {% if current_user %}
+                    <div class="mb-4">
+                        <h6 class="text-muted mb-2">📚 Study Tools</h6>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <div class="dropdown">
+                                <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" id="addToFlashcards" data-bs-toggle="dropdown">
+                                    ➕ Add to Flashcards
+                                </button>
+                                <ul class="dropdown-menu" id="flashcardDecks">
+                                    <li><a class="dropdown-item" href="#" onclick="createNewDeckWithWord()">📝 Create New Deck</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li class="dropdown-item-text text-muted">Loading decks...</li>
+                                </ul>
+                            </div>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="practiceWord()">
+                                🧠 Quick Practice
+                            </button>
+                        </div>
+                    </div>
+                    {% endif %}
                     
                     {% if word.primary_domain or word.secondary_domain %}
                     <div class="mb-4">
@@ -261,5 +282,146 @@ document.addEventListener('keydown', function(e) {
         }
     }
 });
+
+// Flashcard functionality
+{% if current_user %}
+let userDecks = [];
+
+// Load user's flashcard decks
+async function loadFlashcardDecks() {
+    try {
+        const response = await fetch('/api/flashcards/decks', {
+            method: 'GET'
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                userDecks = data.decks;
+                updateFlashcardDropdown(data.decks);
+            } else {
+                updateFlashcardDropdown([]);
+            }
+        } else {
+            updateFlashcardDropdown([]);
+        }
+    } catch (error) {
+        console.error('Error loading flashcard decks:', error);
+        updateFlashcardDropdown([]);
+    }
+}
+
+function updateFlashcardDropdown(decks) {
+    const dropdown = document.getElementById('flashcardDecks');
+    const existingItems = dropdown.querySelectorAll('li:not(:first-child):not(:nth-child(2))');
+    existingItems.forEach(item => item.remove());
+    
+    if (decks.length === 0) {
+        const li = document.createElement('li');
+        li.innerHTML = '<span class="dropdown-item-text text-muted">No decks yet. Create one above!</span>';
+        dropdown.appendChild(li);
+    } else {
+        decks.forEach(deck => {
+            const li = document.createElement('li');
+            li.innerHTML = `<a class="dropdown-item" href="#" onclick="addWordToDeck(${deck.id})">${deck.name}</a>`;
+            dropdown.appendChild(li);
+        });
+    }
+}
+
+async function addWordToDeck(deckId) {
+    try {
+        const response = await fetch(`/api/flashcards/decks/${deckId}/cards/{{ word.id }}`, {
+            method: 'POST'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Show success message
+            showFlashcardMessage('✅ Word added to flashcard deck!', 'success');
+        } else {
+            showFlashcardMessage('❌ Failed to add word to deck', 'error');
+        }
+    } catch (error) {
+        console.error('Error adding word to deck:', error);
+        showFlashcardMessage('❌ Error adding word to deck', 'error');
+    }
+}
+
+function createNewDeckWithWord() {
+    const deckName = prompt('Enter name for your new flashcard deck:');
+    if (deckName && deckName.trim()) {
+        createFlashcardDeck(deckName.trim(), '');
+    }
+}
+
+async function createFlashcardDeck(name, description) {
+    try {
+        const formData = new FormData();
+        formData.append('name', name);
+        formData.append('description', description);
+        
+        const response = await fetch('/api/flashcards/decks', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Add word to the new deck
+            await addWordToDeck(result.deck_id);
+            showFlashcardMessage(`✅ Created deck "${name}" and added word!`, 'success');
+        } else {
+            showFlashcardMessage('❌ Failed to create deck', 'error');
+        }
+    } catch (error) {
+        console.error('Error creating deck:', error);
+        showFlashcardMessage('❌ Error creating deck', 'error');
+    }
+}
+
+function practiceWord() {
+    // Simple practice mode - show/hide definition
+    const definition = document.querySelector('.lead');
+    const button = event.target;
+    
+    if (definition.style.display === 'none') {
+        definition.style.display = 'block';
+        button.textContent = '🧠 Quick Practice';
+        button.classList.remove('btn-success');
+        button.classList.add('btn-outline-secondary');
+    } else {
+        definition.style.display = 'none';
+        button.textContent = '👁️ Show Definition';
+        button.classList.remove('btn-outline-secondary');
+        button.classList.add('btn-success');
+    }
+}
+
+function showFlashcardMessage(message, type) {
+    // Create and show a toast message
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type === 'success' ? 'success' : 'danger'} position-fixed`;
+    toast.style.cssText = 'top: 20px; right: 20px; z-index: 1050; min-width: 300px;';
+    toast.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // Auto-remove after 3 seconds
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.remove();
+        }
+    }, 3000);
+}
+
+// Load decks when the dropdown is opened
+document.getElementById('addToFlashcards').addEventListener('click', loadFlashcardDecks);
+{% endif %}
 </script>
 {% endblock %}
