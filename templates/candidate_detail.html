@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block title %}Candidate: {{ candidate.term }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Candidate Review: <em>{{ candidate.term }}</em></h2>
+    <div class="d-flex gap-2">
+      <a href="/candidates" class="btn btn-outline-secondary">← Back to List</a>
+      <span class="badge bg-{{ 'warning' if candidate.review_status == 'pending' else 'success' if candidate.review_status == 'approved' else 'danger' if candidate.review_status == 'rejected' else 'info' }} fs-6">
+        {{ candidate.review_status | title }}
+      </span>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-md-8">
+      <!-- Main Information Card -->
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="card-title mb-0">Word Information</h5>
+        </div>
+        <div class="card-body">
+          <div class="row mb-3">
+            <div class="col-sm-3"><strong>Term:</strong></div>
+            <div class="col-sm-9"><span class="fs-4 text-primary">{{ candidate.term }}</span></div>
+          </div>
+          
+          {% if candidate.part_of_speech %}
+          <div class="row mb-3">
+            <div class="col-sm-3"><strong>Part of Speech:</strong></div>
+            <div class="col-sm-9">{{ candidate.part_of_speech }}</div>
+          </div>
+          {% endif %}
+          
+          <div class="row mb-3">
+            <div class="col-sm-3"><strong>Source:</strong></div>
+            <div class="col-sm-9">
+              <span class="badge bg-secondary">{{ candidate.source_type | title }}</span>
+              {% if candidate.source_reference %}
+                <br><small class="text-muted">{{ candidate.source_reference }}</small>
+              {% endif %}
+            </div>
+          </div>
+          
+          <div class="row mb-3">
+            <div class="col-sm-3"><strong>Utility Score:</strong></div>
+            <div class="col-sm-9">
+              <span class="badge bg-primary fs-6">{{ candidate.utility_score }}</span>
+              <small class="text-muted ms-2">(0-10 scale)</small>
+            </div>
+          </div>
+          
+          {% if candidate.rarity_indicators %}
+          <div class="row mb-3">
+            <div class="col-sm-3"><strong>Rarity Indicators:</strong></div>
+            <div class="col-sm-9">
+              <code>{{ candidate.rarity_indicators }}</code>
+            </div>
+          </div>
+          {% endif %}
+          
+          <div class="row mb-3">
+            <div class="col-sm-3"><strong>Date Discovered:</strong></div>
+            <div class="col-sm-9">{{ candidate.date_discovered }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Definition Card -->
+      {% if candidate.raw_definition %}
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="card-title mb-0">Definition</h5>
+        </div>
+        <div class="card-body">
+          <p>{{ candidate.raw_definition }}</p>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Context Card -->
+      {% if candidate.context_snippet %}
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="card-title mb-0">Context</h5>
+        </div>
+        <div class="card-body">
+          <p class="text-muted">{{ candidate.context_snippet }}</p>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Etymology Card -->
+      {% if candidate.etymology_preview %}
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="card-title mb-0">Etymology</h5>
+        </div>
+        <div class="card-body">
+          <p>{{ candidate.etymology_preview }}</p>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Review Panel -->
+    <div class="col-md-4">
+      {% if candidate.review_status == 'pending' %}
+      <div class="card">
+        <div class="card-header bg-warning">
+          <h5 class="card-title mb-0">Review Actions</h5>
+        </div>
+        <div class="card-body">
+          <!-- Approve -->
+          <form method="post" action="/candidates/{{ candidate.id }}/review" class="mb-3">
+            <input type="hidden" name="action" value="approved">
+            <div class="mb-2">
+              <label for="approve_notes" class="form-label">Notes (optional):</label>
+              <textarea class="form-control" name="notes" id="approve_notes" rows="2" placeholder="Any notes about approval..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-success w-100" onclick="return confirm('Approve this candidate for inclusion?')">
+              ✓ Approve Candidate
+            </button>
+          </form>
+
+          <!-- Reject -->
+          <form method="post" action="/candidates/{{ candidate.id }}/review" class="mb-3">
+            <input type="hidden" name="action" value="rejected">
+            <div class="mb-2">
+              <label for="reject_reason" class="form-label">Rejection Reason:</label>
+              <select class="form-select mb-2" name="reason" id="reject_reason" required>
+                <option value="">Select reason...</option>
+                <option value="not_english">Not English</option>
+                <option value="proper_noun">Proper noun</option>
+                <option value="too_common">Too common</option>
+                <option value="offensive">Offensive content</option>
+                <option value="poor_definition">Poor definition</option>
+                <option value="duplicate">Duplicate</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="mb-2">
+              <label for="reject_notes" class="form-label">Additional Notes:</label>
+              <textarea class="form-control" name="notes" id="reject_notes" rows="2" placeholder="Additional details..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-danger w-100" onclick="return confirm('Reject this candidate?')">
+              ✗ Reject Candidate
+            </button>
+          </form>
+
+          <!-- Needs Info -->
+          <form method="post" action="/candidates/{{ candidate.id }}/review">
+            <input type="hidden" name="action" value="needs_info">
+            <div class="mb-2">
+              <label for="info_notes" class="form-label">What information is needed?</label>
+              <textarea class="form-control" name="notes" id="info_notes" rows="3" placeholder="Describe what additional information is needed..." required></textarea>
+            </div>
+            <button type="submit" class="btn btn-info w-100" onclick="return confirm('Mark this candidate as needing more information?')">
+              ? Needs More Info
+            </button>
+          </form>
+        </div>
+      </div>
+      
+      {% else %}
+      <!-- Review Status -->
+      <div class="card">
+        <div class="card-header bg-{{ 'success' if candidate.review_status == 'approved' else 'danger' if candidate.review_status == 'rejected' else 'info' }}">
+          <h5 class="card-title mb-0 text-white">Review Complete</h5>
+        </div>
+        <div class="card-body">
+          <p><strong>Status:</strong> <span class="badge bg-{{ 'success' if candidate.review_status == 'approved' else 'danger' if candidate.review_status == 'rejected' else 'info' }}">{{ candidate.review_status | title }}</span></p>
+          
+          {% if candidate.rejection_reason %}
+          <p><strong>Reason:</strong> {{ candidate.rejection_reason }}</p>
+          {% endif %}
+          
+          {% if candidate.notes %}
+          <p><strong>Notes:</strong> {{ candidate.notes }}</p>
+          {% endif %}
+          
+          <p class="text-muted small">
+            <strong>Created:</strong> {{ candidate.created_at.strftime('%Y-%m-%d %H:%M') if candidate.created_at else 'N/A' }}<br>
+            <strong>Updated:</strong> {{ candidate.updated_at.strftime('%Y-%m-%d %H:%M') if candidate.updated_at else 'N/A' }}
+          </p>
+          
+          <!-- Allow re-review -->
+          <form method="post" action="/candidates/{{ candidate.id }}/review" class="mt-3">
+            <input type="hidden" name="action" value="pending">
+            <input type="hidden" name="notes" value="Returned to pending for re-review">
+            <button type="submit" class="btn btn-outline-warning btn-sm w-100" onclick="return confirm('Return this candidate to pending status?')">
+              ↺ Return to Pending
+            </button>
+          </form>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

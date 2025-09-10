@@ -1558,6 +1558,167 @@ async def study_deck(request: Request, deck_id: int,
         logger.error(f"Error loading study session: {e}")
         raise HTTPException(status_code=500, detail="Failed to load study session")
 
+# Candidate Review Routes
+@app.get("/candidates", response_class=HTMLResponse)
+async def list_candidates(request: Request, 
+                          status: str = Query("pending", description="Filter by status"),
+                          page: int = Query(1, ge=1, description="Page number"),
+                          per_page: int = Query(20, ge=1, le=100, description="Items per page"),
+                          current_user: User = Depends(get_current_active_user)):
+    """List candidate words for review"""
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        # Count total candidates
+        count_query = "SELECT COUNT(*) FROM candidate_words WHERE review_status = %s"
+        cursor.execute(count_query, (status,))
+        total_count = cursor.fetchone()[0]
+        
+        # Calculate pagination
+        total_pages = (total_count + per_page - 1) // per_page
+        offset = (page - 1) * per_page
+        
+        # Get candidates for current page
+        cursor.execute("""
+            SELECT id, term, source_type, part_of_speech, utility_score,
+                   rarity_indicators, context_snippet, raw_definition,
+                   etymology_preview, date_discovered, review_status,
+                   DATEDIFF(CURRENT_DATE, date_discovered) as days_pending
+            FROM candidate_words
+            WHERE review_status = %s
+            ORDER BY utility_score DESC, date_discovered ASC
+            LIMIT %s OFFSET %s
+        """, (status, per_page, offset))
+        
+        candidates = []
+        for row in cursor.fetchall():
+            candidates.append({
+                'id': row[0],
+                'term': row[1],
+                'source_type': row[2],
+                'part_of_speech': row[3],
+                'utility_score': float(row[4]) if row[4] else 0,
+                'rarity_indicators': row[5],
+                'context_snippet': row[6],
+                'raw_definition': row[7],
+                'etymology_preview': row[8],
+                'date_discovered': row[9],
+                'review_status': row[10],
+                'days_pending': row[11]
+            })
+        
+        # Get review statistics
+        cursor.execute("""
+            SELECT review_status, COUNT(*) as count
+            FROM candidate_words
+            GROUP BY review_status
+        """)
+        stats = {row[0]: row[1] for row in cursor.fetchall()}
+        
+        cursor.close()
+        conn.close()
+        
+        return templates.TemplateResponse("candidates.html", {
+            "request": request,
+            "current_user": current_user,
+            "candidates": candidates,
+            "status": status,
+            "page": page,
+            "per_page": per_page,
+            "total_count": total_count,
+            "total_pages": total_pages,
+            "stats": stats
+        })
+        
+    except Exception as e:
+        logger.error(f"Error loading candidates: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load candidates")
+
+@app.get("/candidates/{candidate_id}", response_class=HTMLResponse)
+async def view_candidate(request: Request, candidate_id: int,
+                        current_user: User = Depends(get_current_active_user)):
+    """View detailed candidate information"""
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT id, term, source_type, source_reference, part_of_speech, 
+                   utility_score, rarity_indicators, context_snippet, raw_definition,
+                   etymology_preview, date_discovered, review_status, rejection_reason,
+                   notes, created_at, updated_at
+            FROM candidate_words
+            WHERE id = %s
+        """, (candidate_id,))
+        
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Candidate not found")
+        
+        candidate = {
+            'id': row[0],
+            'term': row[1],
+            'source_type': row[2],
+            'source_reference': row[3],
+            'part_of_speech': row[4],
+            'utility_score': float(row[5]) if row[5] else 0,
+            'rarity_indicators': row[6],
+            'context_snippet': row[7],
+            'raw_definition': row[8],
+            'etymology_preview': row[9],
+            'date_discovered': row[10],
+            'review_status': row[11],
+            'rejection_reason': row[12],
+            'notes': row[13],
+            'created_at': row[14],
+            'updated_at': row[15]
+        }
+        
+        cursor.close()
+        conn.close()
+        
+        return templates.TemplateResponse("candidate_detail.html", {
+            "request": request,
+            "current_user": current_user,
+            "candidate": candidate
+        })
+        
+    except Exception as e:
+        logger.error(f"Error loading candidate: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load candidate")
+
+@app.post("/candidates/{candidate_id}/review")
+async def review_candidate(candidate_id: int,
+                          action: str = Form(...),
+                          reason: str = Form(None),
+                          notes: str = Form(None),
+                          current_user: User = Depends(get_current_active_user)):
+    """Review a candidate (approve, reject, or needs_info)"""
+    try:
+        if action not in ['approved', 'rejected', 'needs_info']:
+            raise HTTPException(status_code=400, detail="Invalid action")
+        
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            UPDATE candidate_words 
+            SET review_status = %s, rejection_reason = %s, notes = %s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+        """, (action, reason, notes, candidate_id))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return RedirectResponse(url="/candidates", status_code=303)
+        
+    except Exception as e:
+        logger.error(f"Error reviewing candidate: {e}")
+        raise HTTPException(status_code=500, detail="Failed to review candidate")
+
 # Initialize flashcard tables on startup
 try:
     flashcard_db.create_flashcard_tables()
