@@ -5,7 +5,7 @@
 {% block content %}
 <div class="container mt-4">
     <div class="row justify-content-center">
-        <div class="col-md-8">
+        <div class="col-12">
             <!-- Quiz Progress -->
             <div class="card mb-4">
                 <div class="card-body">
@@ -49,6 +49,68 @@
                                 <label class="form-check-label" for="option_{{ question.id }}_false">
                                     <strong>False</strong>
                                 </label>
+                            </div>
+                            {% elif question.question_type == "matching" %}
+                            <!-- Matching Options - Drag Definitions onto Terms -->
+                            <div class="matching-container">
+                                <div class="matching-instructions mb-4 p-3 bg-light border-left border-primary">
+                                    <h6 class="text-primary mb-2">🎯 How to Match</h6>
+                                    <p class="mb-0 small">Drag definitions from the right onto the matching terms on the left. Click a definition on a term to remove it if you change your mind.</p>
+                                </div>
+                                
+                                <div class="row">
+                                    <!-- Drop Zones for Terms -->
+                                    <div class="col-lg-7">
+                                        <h6 class="text-primary mb-3">📝 Terms (Drop Definitions Here)</h6>
+                                        <div class="terms-list" id="terms-list-{{ question.id }}">
+                                            {% for term in question.terms %}
+                                            <div class="term-slot card mb-2 p-2 border-primary drop-zone position-relative" 
+                                                 data-term-index="{{ loop.index0 }}" 
+                                                 data-term="{{ term }}"
+                                                 data-question="{{ question.id }}">
+                                                <div class="d-flex align-items-start mb-1">
+                                                    <div class="term-number badge bg-primary me-2 flex-shrink-0">{{ loop.index }}</div>
+                                                    <strong class="term-text flex-shrink-0 me-3">{{ term }}</strong>
+                                                    <div class="definition-drop-area flex-grow-1" 
+                                                         style="min-height: 40px; border: 2px dashed #dee2e6; border-radius: 6px; padding: 8px; background: #f8f9fa; font-size: 0.9em;">
+                                                        <span class="drop-placeholder text-muted" style="font-style: italic;">
+                                                            Drop definition here...
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <input type="hidden" name="match_{{ question.id }}_{{ loop.index0 }}" 
+                                                       value="" class="term-match-input">
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Draggable Definitions -->
+                                    <div class="col-lg-5">
+                                        <h6 class="text-success mb-3">📚 Available Definitions</h6>
+                                        <div class="definitions-bank" id="definitions-bank-{{ question.id }}">
+                                            {% for definition in question.definitions %}
+                                            <div class="definition-item card mb-2 p-2 border-success draggable" 
+                                                 draggable="true"
+                                                 data-def-index="{{ loop.index0 }}" 
+                                                 data-question="{{ question.id }}"
+                                                 style="cursor: grab; transition: all 0.3s ease; font-size: 0.9em;">
+                                                <div class="d-flex align-items-start">
+                                                    <div class="drag-handle me-2 text-muted flex-shrink-0" style="font-size: 0.8em; margin-top: 2px;">
+                                                        <i class="fas fa-grip-vertical"></i>
+                                                    </div>
+                                                    <div class="definition-content flex-grow-1">
+                                                        <span class="definition-text">{{ definition }}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                        <div class="text-muted text-center mt-3">
+                                            💡 Drag these definitions onto the terms
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             {% else %}
                             <!-- Multiple Choice Options -->
@@ -144,11 +206,16 @@ let correctAnswers = 0;
 const quizData = {
     {% for question in questions %}
     {{ question.id }}: {
-        correctAnswer: {% if question.correct_answer is sameas true %}true{% elif question.correct_answer is sameas false %}false{% else %}{{ question.correct_answer }}{% endif %},
+        correctAnswer: {% if question.correct_answer is sameas true %}true{% elif question.correct_answer is sameas false %}false{% elif question.correct_answer %}{{ question.correct_answer }}{% else %}null{% endif %},
+        {% if question.question_type == "matching" %}
+        correctMatches: {{ question.correct_matches|tojson }},
+        terms: {{ question.terms|tojson }},
+        definitions: {{ question.definitions|tojson }},
+        {% endif %}
         wordId: {{ question.word_id }},
         questionType: "{{ question.question_type }}",
         explanation: "{{ question.explanation|replace('"', '\\"') }}"
-    },
+    }{% if not loop.last %},{% endif %}
     {% endfor %}
 };
 
@@ -191,15 +258,90 @@ function showQuestion(questionNum) {
     // Check if question is already answered
     const selectedOption = document.querySelector(`input[name="answer_${questionNum}"]:checked`);
     nextBtn.disabled = !selectedOption;
+    
+    // For matching questions, check if they need button state fix
+    const currentQuestionData = quizData[questionNum - 1];
+    if (currentQuestionData && currentQuestionData.questionType === 'matching') {
+        // Delay to ensure DOM is fully updated, then check matching completion
+        setTimeout(() => {
+            checkMatchingCompletion(questionNum);
+        }, 200);
+    }
 }
 
 function nextQuestion() {
-    // Check answer for current question
+    const questionType = quizData[currentQuestion].questionType;
+    console.log('Next question clicked, current:', currentQuestion, 'type:', questionType);
+    
+    let userAnswer, correctAnswer, isCorrect;
+    
+    if (questionType === "matching") {
+        // Handle matching questions - collect matches from hidden inputs
+        const termSlots = document.querySelectorAll(`.term-slot[data-question="${currentQuestion}"]`);
+        const userMatches = {};
+        let allMatched = true;
+        
+        termSlots.forEach(slot => {
+            const termIndex = parseInt(slot.dataset.termIndex);
+            const hiddenInput = slot.querySelector('.term-match-input');
+            const defIndex = hiddenInput ? hiddenInput.value : '';
+            
+            if (defIndex === '') {
+                allMatched = false;
+            } else {
+                userMatches[termIndex] = parseInt(defIndex);
+            }
+        });
+        
+        if (!allMatched) {
+            console.error('Not all matches completed for question', currentQuestion);
+            return;
+        }
+        
+        // Check correctness against quiz data
+        const questionData = quizData[currentQuestion];
+        const correctMatches = questionData.correctMatches;
+        let isCorrect = true;
+        
+        for (let termIdx in userMatches) {
+            if (userMatches[termIdx] !== correctMatches[termIdx]) {
+                isCorrect = false;
+                break;
+            }
+        }
+        
+        if (isCorrect) {
+            correctAnswers++;
+        }
+        
+        // Store user answer
+        userAnswers[currentQuestion] = {
+            matches: userMatches,
+            questionType: 'matching',
+            isCorrect: isCorrect
+        };
+        
+        console.log('Stored matching answer:', userMatches, 'Correct:', isCorrect);
+        
+        // Show matching feedback like other question types
+        showMatchingFeedback(currentQuestion, userMatches, correctMatches, isCorrect);
+        
+        // Continue with next question after delay (like other question types)
+        setTimeout(() => {
+            if (currentQuestion < totalQuestions) {
+                currentQuestion++;
+                showQuestion(currentQuestion);
+                updateProgress();
+            } else {
+                showResults();
+            }
+        }, 2000);
+        return;
+    }
+    
+    // Handle multiple choice and true/false questions
     const selectedOption = document.querySelector(`input[name="answer_${currentQuestion}"]:checked`);
     if (!selectedOption) return;
-    
-    const questionType = quizData[currentQuestion].questionType;
-    let userAnswer, correctAnswer, isCorrect;
     
     if (questionType === "true_false") {
         userAnswer = selectedOption.value === "true";
@@ -246,6 +388,15 @@ function previousQuestion() {
         currentQuestion--;
         showQuestion(currentQuestion);
         updateProgress();
+        
+        // Check if this is a matching question and fix button state if needed
+        const currentQuestionData = quizData[currentQuestion - 1];
+        if (currentQuestionData && currentQuestionData.questionType === 'matching') {
+            // Small delay to ensure DOM is updated
+            setTimeout(() => {
+                checkMatchingCompletion(currentQuestion);
+            }, 100);
+        }
     }
 }
 
@@ -295,6 +446,86 @@ function showResults() {
     }
 }
 
+function handleMatchingChange(selectElement) {
+    const questionNum = parseInt(selectElement.dataset.question);
+    const termIndex = parseInt(selectElement.dataset.termIndex);
+    const selectedDefIndex = selectElement.value;
+    
+    console.log('Matching change:', questionNum, 'term:', termIndex, 'def:', selectedDefIndex);
+    
+    // Get all select elements for this question
+    const allSelects = document.querySelectorAll(`select[data-question="${questionNum}"]`);
+    
+    // Check if all matches have been made
+    let allMatched = true;
+    const userMatches = {};
+    
+    allSelects.forEach(select => {
+        const tIndex = parseInt(select.dataset.termIndex);
+        const defIndex = select.value;
+        
+        if (defIndex === '') {
+            allMatched = false;
+        } else {
+            userMatches[tIndex] = parseInt(defIndex);
+        }
+    });
+    
+    // If all matches are made, check correctness and enable next button
+    if (allMatched) {
+        const questionData = quizData[questionNum];
+        const correctMatches = questionData.correctMatches;
+        
+        // Check if user matches are correct
+        let isCorrect = true;
+        for (let termIdx in userMatches) {
+            if (userMatches[termIdx] !== correctMatches[termIdx]) {
+                isCorrect = false;
+                break;
+            }
+        }
+        
+        // Store the user's answer
+        userAnswers[questionNum] = {
+            matches: userMatches,
+            isCorrect: isCorrect,
+            questionType: 'matching'
+        };
+        
+        // Enable next button
+        const nextBtn = document.getElementById(`next-btn-${questionNum}`);
+        if (nextBtn) {
+            nextBtn.disabled = false;
+            console.log('Next button enabled for question', questionNum);
+        }
+        
+        // Visual feedback for matches
+        allSelects.forEach(select => {
+            const tIndex = parseInt(select.dataset.termIndex);
+            const userDefIndex = userMatches[tIndex];
+            const correctDefIndex = correctMatches[tIndex];
+            
+            // Add visual feedback classes
+            const termCard = select.closest('.term-item');
+            if (userDefIndex === correctDefIndex) {
+                termCard.classList.add('border-success');
+                termCard.classList.remove('border-danger');
+                select.classList.add('text-success');
+            } else {
+                termCard.classList.add('border-danger');
+                termCard.classList.remove('border-success');
+                select.classList.add('text-danger');
+            }
+        });
+    } else {
+        // Disable next button if not all matches are made
+        const nextBtn = document.getElementById(`next-btn-${questionNum}`);
+        if (nextBtn) {
+            nextBtn.disabled = true;
+        }
+    }
+}
+
 function submitQuizResults() {
     // Prepare results data
     const questionResults = [];
@@ -310,11 +541,13 @@ function submitQuizResults() {
     }
     
     const resultsData = {
-        correct_count: correctAnswers,
-        total_questions: totalQuestions,
+        correctCount: correctAnswers,
+        totalQuestions: totalQuestions,
         accuracy: Math.round((correctAnswers / totalQuestions) * 100),
         difficulty: "{{ difficulty }}",
-        question_results: questionResults
+        quizType: "{{ quiz_type }}",
+        score: Math.round((correctAnswers / totalQuestions) * 100),
+        questions: questionResults
     };
     
     // Submit via form
@@ -365,7 +598,579 @@ document.addEventListener('click', function(e) {
     }
 });
 
+// Drag and Drop Functionality for Matching Questions
+let draggedElement = null;
+let draggedFromTermSlot = null;
+
+function initializeMatchingQuestions() {
+    // Add event listeners to draggable definitions
+    document.querySelectorAll('.draggable').forEach(item => {
+        item.addEventListener('dragstart', handleDragStart);
+        item.addEventListener('dragend', handleDragEnd);
+    });
+    
+    // Add event listeners to drop zones (term slots)
+    document.querySelectorAll('.drop-zone').forEach(dropZone => {
+        dropZone.addEventListener('dragover', handleDragOver);
+        dropZone.addEventListener('drop', handleDrop);
+        dropZone.addEventListener('click', handleDropZoneClick);
+    });
+    
+    // CRITICAL: Add event listeners to definitions banks (to allow dropping back)
+    document.querySelectorAll('.definitions-bank').forEach(bank => {
+        bank.addEventListener('dragover', handleDragOver);
+        bank.addEventListener('drop', handleDropToBank);
+    });
+    
+    // Initialize matching state for all visible matching questions
+    document.querySelectorAll('.matching-container').forEach(container => {
+        const questionId = container.closest('[data-question]').dataset.question;
+        if (questionId) {
+            checkMatchingCompletion(questionId);
+            
+            // If question is already answered, disable all drag interactions
+            if (isQuestionAnswered(questionId)) {
+                disableMatchingInteractions(questionId);
+            }
+        }
+    });
+}
+
+function handleDragStart(e) {
+    if (e.target.classList.contains('definition-item')) {
+        // Check if this question already has feedback displayed (already answered)
+        const questionElement = e.target.closest('[data-question]') || document;
+        const questionId = questionElement.dataset.question;
+        
+        if (isQuestionAnswered(questionId)) {
+            // Prevent dragging on answered questions
+            e.preventDefault();
+            return false;
+        }
+        
+        draggedElement = e.target;
+        e.target.style.opacity = '0.5';
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', ''); // Required for some browsers
+        
+        // Check if dragging from a term slot
+        const termSlot = e.target.closest('.term-slot');
+        if (termSlot) {
+            draggedFromTermSlot = termSlot;
+        } else {
+            draggedFromTermSlot = null;
+        }
+        
+        // Add visual feedback
+        document.querySelectorAll('.drop-zone').forEach(zone => {
+            zone.classList.add('drag-active');
+        });
+    }
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    
+    // Add visual feedback for valid drop target
+    if (e.currentTarget.classList.contains('drop-zone')) {
+        e.currentTarget.classList.add('drag-over');
+    }
+}
+
+function handleDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    
+    if (draggedElement && e.currentTarget.classList.contains('drop-zone')) {
+        const dropZone = e.currentTarget.querySelector('.definition-drop-area');
+        const termSlot = e.currentTarget.closest('.term-slot');
+        
+        // If there's already a definition in this slot, move it back to definitions bank
+        const existingDef = dropZone.querySelector('.definition-item');
+        if (existingDef) {
+            moveDefinitionToBank(existingDef);
+        }
+        
+        // Move the dragged element to this drop zone
+        dropZone.innerHTML = '';
+        const clonedElement = draggedElement.cloneNode(true);
+        clonedElement.style.cursor = 'pointer';
+        
+        // CRITICAL: Add drag event listeners to cloned element so it can be dragged back
+        clonedElement.addEventListener('dragstart', handleDragStart);
+        clonedElement.addEventListener('dragend', handleDragEnd);
+        
+        dropZone.appendChild(clonedElement);
+        
+        // If dragging from definitions bank, hide original
+        if (!draggedFromTermSlot) {
+            draggedElement.style.display = 'none';
+        } else {
+            // If dragging from another term slot, clear that slot
+            const originalDropArea = draggedFromTermSlot.querySelector('.definition-drop-area');
+            originalDropArea.innerHTML = '<span class="drop-placeholder text-muted" style="font-style: italic; font-size: 0.9em;">Drop definition here...</span>';
+        }
+        
+        // Update the hidden input for this term
+        const termIndex = termSlot.dataset.termIndex;
+        const defIndex = draggedElement.dataset.defIndex;
+        const questionId = termSlot.dataset.question;
+        const hiddenInput = termSlot.querySelector('.term-match-input');
+        if (hiddenInput) {
+            hiddenInput.value = defIndex;
+        }
+        
+        // Check if matching is complete
+        checkMatchingCompletion(questionId);
+    }
+}
+
+function handleDragEnd(e) {
+    e.target.style.opacity = '1';
+    
+    // Remove drag indicators
+    document.querySelectorAll('.drop-zone').forEach(zone => {
+        zone.classList.remove('drag-active', 'drag-over');
+    });
+    
+    draggedElement = null;
+    draggedFromTermSlot = null;
+}
+
+function moveDefinitionToBank(defElement) {
+    const defIndex = defElement.dataset.defIndex;
+    const questionId = defElement.dataset.question;
+    const definitionsBank = document.getElementById(`definitions-bank-${questionId}`);
+    
+    // Find the original definition in the bank and show it
+    const originalDef = definitionsBank.querySelector(`[data-def-index="${defIndex}"]`);
+    if (originalDef) {
+        originalDef.style.display = 'block';
+    }
+}
+
+function handleDropZoneClick(e) {
+    // Allow clicking on a definition in a term slot to remove it
+    const clickedDef = e.target.closest('.definition-item');
+    if (clickedDef) {
+        const termSlot = e.currentTarget.closest('.term-slot') || e.target.closest('.term-slot');
+        const questionId = termSlot.dataset.question;
+        
+        // Check if this question already has feedback displayed (already answered)
+        if (isQuestionAnswered(questionId)) {
+            // Prevent click-to-remove on answered questions
+            return false;
+        }
+        
+        const dropArea = termSlot.querySelector('.definition-drop-area');
+        
+        // Clear any feedback styling first
+        termSlot.classList.remove('border-success', 'border-danger', 'border-warning');
+        termSlot.style.backgroundColor = '';
+        
+        // Move definition back to bank
+        moveDefinitionToBank(clickedDef);
+        
+        // Clear the drop area
+        dropArea.innerHTML = '<span class="drop-placeholder text-muted" style="font-style: italic; font-size: 0.9em;">Drop definition here...</span>';
+        
+        // Clear the hidden input
+        const hiddenInput = termSlot.querySelector('.term-match-input');
+        if (hiddenInput) {
+            hiddenInput.value = '';
+        }
+        
+        // Check completion status and update Next button
+        checkMatchingCompletion(questionId);
+        
+        console.log('Definition removed from term slot');
+    }
+}
+
+function handleDropToBank(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    
+    if (draggedElement && draggedFromTermSlot) {
+        // Only allow dropping back to bank if dragged from a term slot
+        const defIndex = draggedElement.dataset.defIndex;
+        const questionId = draggedElement.dataset.question;
+        
+        // Clear the original term slot
+        const originalDropArea = draggedFromTermSlot.querySelector('.definition-drop-area');
+        originalDropArea.innerHTML = '<span class="drop-placeholder text-muted" style="font-style: italic; font-size: 0.9em;">Drop definition here...</span>';
+        
+        // Clear the hidden input
+        const hiddenInput = draggedFromTermSlot.querySelector('.term-match-input');
+        if (hiddenInput) {
+            hiddenInput.value = '';
+        }
+        
+        // Clear any feedback styling from the term slot
+        draggedFromTermSlot.classList.remove('border-success', 'border-danger', 'border-warning');
+        draggedFromTermSlot.style.backgroundColor = '';
+        
+        // Show the original definition in the bank
+        const definitionsBank = document.getElementById(`definitions-bank-${questionId}`);
+        const originalDef = definitionsBank.querySelector(`[data-def-index="${defIndex}"]`);
+        if (originalDef) {
+            originalDef.style.display = 'block';
+        }
+        
+        // Update completion status
+        checkMatchingCompletion(questionId);
+        
+        console.log('Definition dragged back to bank');
+    }
+    
+    // Reset drag state
+    draggedElement = null;
+    draggedFromTermSlot = null;
+}
+
+function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.definition-item:not(.opacity-50)')];
+    
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        
+        if (offset < 0 && offset > closest.offset) {
+            return { offset: offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+function updateMatchingInputs(questionId) {
+    const container = document.getElementById(`definitions-sortable-${questionId}`);
+    const definitionItems = container.querySelectorAll('.definition-item');
+    
+    definitionItems.forEach((item, newIndex) => {
+        const originalIndex = item.dataset.originalIndex;
+        const input = item.querySelector('.match-input');
+        if (input) {
+            // Update the hidden input to reflect new position
+            input.value = newIndex; // This represents which term position this definition matches
+        }
+        
+        // Update visual indicator
+        const badge = item.querySelector('.definition-number');
+        if (badge) {
+            badge.textContent = newIndex + 1;
+        }
+    });
+}
+
+function isQuestionAnswered(questionId) {
+    // Return true if there's any feedback element that was created after completing the question
+    
+    const questionElement = document.querySelector(`[data-question="${questionId}"]`) || document;
+    
+    // Look for the specific feedback div that gets added after completing a matching question
+    const specificFeedback = questionElement.querySelector('.feedback-message');
+    if (specificFeedback && (specificFeedback.textContent.includes('Perfect!') || specificFeedback.textContent.includes('Result:'))) {
+        return true;
+    }
+    
+    // Look for alert elements that might contain feedback (including partial scores)
+    const alertElements = questionElement.querySelectorAll('.alert-success, .alert-info, .alert-warning');
+    for(let alert of alertElements) {
+        // Check for any result feedback, not just perfect scores
+        if (alert.textContent.includes('Perfect!') || 
+            alert.textContent.includes('You matched all') || 
+            alert.textContent.includes('Result:') ||
+            alert.textContent.includes('correct matches')) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+function disableMatchingInteractions(questionId) {
+    // Disable all drag and drop interactions for answered questions
+    const questionElement = document.querySelector(`[data-question="${questionId}"]`);
+    if (!questionElement) return;
+    
+    // Make all definitions non-draggable
+    questionElement.querySelectorAll('.definition-item').forEach(item => {
+        item.draggable = false;
+        item.style.cursor = 'default';
+        item.style.opacity = '0.8';
+    });
+    
+    // Disable drop zones
+    questionElement.querySelectorAll('.drop-zone').forEach(zone => {
+        zone.style.pointerEvents = 'none';
+    });
+    
+    console.log(`Disabled interactions for answered question ${questionId}`);
+}
+
+function checkMatchingCompletion(questionId) {
+    const termSlots = document.querySelectorAll(`.term-slot[data-question="${questionId}"]`);
+    let filledSlots = 0;
+    
+    // Count how many term slots have definitions
+    termSlots.forEach(slot => {
+        const hiddenInput = slot.querySelector('.term-match-input');
+        if (hiddenInput && hiddenInput.value !== '') {
+            filledSlots++;
+        }
+    });
+    
+    // Check if feedback is already displayed (question already answered)
+    const hasFeedback = isQuestionAnswered(questionId);
+    
+    // Enable next button if all slots are filled OR if feedback is already shown
+    const nextBtn = document.getElementById(`next-btn-${questionId}`);
+    if (nextBtn) {
+        // If feedback is shown, always enable the button (question is already answered)
+        if (hasFeedback) {
+            nextBtn.disabled = false;
+        } else {
+            // Only check slot completion for unanswered questions
+            nextBtn.disabled = filledSlots < termSlots.length;
+        }
+        console.log(`Matching completion: ${filledSlots}/${termSlots.length} slots filled, feedback shown: ${hasFeedback}, button disabled: ${nextBtn.disabled}`);
+    }
+    
+    // Provide visual feedback about current matches if all filled
+    if (filledSlots === termSlots.length) {
+        validateCurrentMatches(questionId);
+    }
+}
+
+function validateCurrentMatches(questionId) {
+    const termSlots = document.querySelectorAll(`.term-slot[data-question="${questionId}"]`);
+    const questionData = quizData[questionId];
+    if (!questionData || !questionData.correctMatches) return;
+    
+    let correctCount = 0;
+    
+    termSlots.forEach(slot => {
+        const termIndex = parseInt(slot.dataset.termIndex);
+        const hiddenInput = slot.querySelector('.term-match-input');
+        const userDefIndex = hiddenInput ? parseInt(hiddenInput.value) : -1;
+        const correctDefIndex = questionData.correctMatches[termIndex];
+        
+        // Remove existing feedback classes
+        slot.classList.remove('border-success', 'border-warning', 'border-danger');
+        
+        if (userDefIndex === correctDefIndex) {
+            slot.classList.add('border-success');
+            correctCount++;
+        } else {
+            slot.classList.add('border-warning');
+        }
+    });
+    
+    console.log(`Matching validation: ${correctCount}/${termSlots.length} correct`);
+}
+
+function showMatchingFeedback(questionId, userMatches, correctMatches, isCorrect) {
+    const termSlots = document.querySelectorAll(`.term-slot[data-question="${questionId}"]`);
+    const questionData = quizData[questionId];
+    
+    // Show which matches were correct/incorrect with stronger visual feedback
+    termSlots.forEach(slot => {
+        const termIndex = parseInt(slot.dataset.termIndex);
+        const userDefIndex = userMatches[termIndex];
+        const correctDefIndex = correctMatches[termIndex];
+        
+        // Remove existing feedback classes
+        slot.classList.remove('border-success', 'border-warning', 'border-danger');
+        
+        if (userDefIndex === correctDefIndex) {
+            slot.classList.add('border-success');
+            slot.style.backgroundColor = '#d4edda';
+        } else {
+            slot.classList.add('border-danger');
+            slot.style.backgroundColor = '#f8d7da';
+        }
+        
+    });
+    
+    // Show overall feedback message
+    const container = document.querySelector(`.matching-container[data-question="${questionId}"]`) ||
+                      document.querySelector(`[data-question="${questionId}"] .matching-container`);
+    
+    if (container) {
+        // Remove existing feedback
+        const existingFeedback = container.querySelector('.matching-feedback');
+        if (existingFeedback) {
+            existingFeedback.remove();
+        }
+        
+        // Add feedback message
+        const feedbackDiv = document.createElement('div');
+        feedbackDiv.className = `matching-feedback alert mt-3 ${isCorrect ? 'alert-success' : 'alert-warning'}`;
+        
+        const correctCount = Object.keys(userMatches).reduce((count, termIdx) => {
+            return count + (userMatches[termIdx] === correctMatches[termIdx] ? 1 : 0);
+        }, 0);
+        
+        const totalCount = Object.keys(correctMatches).length;
+        
+        if (isCorrect) {
+            feedbackDiv.innerHTML = `<strong>🎉 Perfect!</strong> You matched all ${totalCount} terms correctly!`;
+        } else {
+            feedbackDiv.innerHTML = `<strong>📊 Result:</strong> ${correctCount}/${totalCount} correct matches. <span class="text-success">Green borders</span> show correct matches, <span class="text-danger">red borders</span> show incorrect ones.`;
+        }
+        
+        container.appendChild(feedbackDiv);
+        
+        // CRITICAL: Ensure Next button stays functional after feedback
+        const nextBtn = document.querySelector(`[data-question="${questionId}"] button[id*="next"]`) || 
+                         document.querySelector('button:contains("Next")') ||
+                         document.querySelector('button[onclick*="next"]') ||
+                         document.querySelector('.btn:contains("Next →")');
+        
+        if (nextBtn) {
+            nextBtn.disabled = false;
+            nextBtn.style.pointerEvents = 'auto';
+            console.log('Next button re-enabled after feedback');
+        }
+    }
+}
+
+// Replace the old handleMatchingChange function
+function handleMatchingChange() {
+    // This function is no longer needed with drag-and-drop
+    // but keeping it to prevent errors from old calls
+    console.log('handleMatchingChange called - using drag-and-drop instead');
+}
+
+// Initialize drag-and-drop when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    initializeMatchingQuestions();
+});
+
 // Initialize
 updateProgress();
 </script>
+
+<style>
+/* Drag and Drop Styling for Matching Questions */
+.matching-container .definition-item {
+    transition: all 0.3s ease;
+    cursor: move;
+}
+
+.matching-container .definition-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.matching-container .definition-item.drag-drop-target {
+    background-color: #f8f9fa;
+    border: 2px dashed #007bff;
+}
+
+.matching-container .drag-handle {
+    cursor: grab;
+    opacity: 0.6;
+}
+
+.matching-container .drag-handle:active {
+    cursor: grabbing;
+}
+
+.matching-container .definition-item[draggable="true"]:hover .drag-handle {
+    opacity: 1;
+}
+
+.matching-instructions {
+    border-left: 4px solid #007bff;
+}
+
+.term-slot {
+    background-color: #f8f9fa;
+}
+
+/* Responsive matching layout */
+@media (max-width: 991px) {
+    .matching-container .col-lg-7,
+    .matching-container .col-lg-5 {
+        margin-bottom: 2rem;
+    }
+}
+
+/* Compact term slots for better space usage */
+.term-slot .term-text {
+    min-width: 120px;
+    max-width: 150px;
+}
+
+.definition-drop-area {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.3;
+}
+
+/* More compact definitions bank */
+.definitions-bank {
+    max-height: 60vh;
+    overflow-y: auto;
+    padding: 10px;
+    border: 2px dashed transparent;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+/* Visual feedback when dragging over definitions bank */
+.definitions-bank.drag-over {
+    border-color: #28a745;
+    background-color: #f8fff9;
+}
+
+.definitions-bank .definition-item {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.definitions-bank .definition-item:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.definition-number {
+    min-width: 24px;
+    text-align: center;
+}
+
+.term-number {
+    min-width: 24px;
+    text-align: center;
+}
+
+/* Enhanced drag and drop feedback */
+.drop-zone.drag-active {
+    border-color: #007bff !important;
+    background-color: #e3f2fd !important;
+}
+
+.drop-zone.drag-over {
+    border-color: #28a745 !important;
+    background-color: #d4edda !important;
+}
+
+.definition-drop-area {
+    transition: all 0.3s ease;
+}
+
+.term-slot.border-success {
+    border-color: #28a745 !important;
+}
+
+.term-slot.border-warning {
+    border-color: #ffc107 !important;
+}
+
+.definition-item .definition-content {
+    pointer-events: none; /* Ensure drag events work properly */
+}
+</style>
 {% endblock %}

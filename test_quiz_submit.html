@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Quiz Submit</title>
+</head>
+<body>
+    <h1>Test Quiz Submit Endpoint</h1>
+    
+    <form method="POST" action="/quiz/submit">
+        <input type="hidden" name="session_id" value="test_session_12345">
+        <input type="hidden" name="results" value='{"totalQuestions": 10, "correctCount": 7, "score": 70, "difficulty": "medium", "quizType": "mixed", "questions": [{"questionId": 1, "wordId": 123, "userAnswer": "correct", "correctAnswer": "correct", "isCorrect": true, "responseTime": 5000}]}'>
+        
+        <button type="submit">Submit Test Quiz Results</button>
+    </form>
+    
+    <script>
+        // Auto-submit for testing
+        setTimeout(() => {
+            document.querySelector('form').submit();
+        }, 1000);
+    </script>
+</body>
+</html>

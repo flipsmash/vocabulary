@@ -1,0 +1,498 @@
+{% extends "base.html" %}
+
+{% block title %}Study Flashcards - Vocabulary Explorer{% endblock %}
+
+{% block extra_head %}
+<style>
+    .study-container {
+        max-width: 100%;
+        margin: 0 auto;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 80vh;
+        justify-content: center;
+    }
+    
+    .flashcard {
+        width: 500px !important;
+        height: 350px !important;
+        margin: 20px auto !important;
+        cursor: pointer !important;
+        position: relative !important;
+        transform-style: preserve-3d !important;
+        transition: transform 0.6s ease !important;
+        perspective: 1000px !important;
+    }
+    
+    .flashcard.flipped {
+        transform: rotateY(180deg);
+    }
+    
+    .card-front, .card-back {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 40px !important;
+        border-radius: 16px !important;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.15) !important;
+        border: 1px solid #e0e7ff !important;
+        backface-visibility: hidden !important;
+        transition: all 0.6s ease !important;
+    }
+    
+    .card-front {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: white !important;
+        opacity: 1 !important;
+    }
+    
+    .card-back {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important;
+        color: white !important;
+        transform: rotateY(180deg) !important;
+    }
+    
+    /* backface-visibility: hidden handles the show/hide automatically */
+    
+    .card-term {
+        font-size: 3em;
+        font-weight: bold;
+        color: white;
+        margin-bottom: 15px;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+    
+    .card-definition {
+        font-size: 1.4em;
+        color: white;
+        line-height: 1.6;
+        margin-bottom: 20px;
+        text-align: center;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    }
+    
+    .card-meta {
+        font-size: 1em;
+        color: rgba(255,255,255,0.9);
+        margin: 10px 0;
+        font-weight: 600;
+    }
+    
+    .card-pronunciation {
+        font-family: 'Courier New', monospace;
+        color: rgba(255,255,255,0.8);
+        margin: 8px 0;
+        font-size: 1.1em;
+    }
+    
+    .flip-instruction {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 0.9em;
+        color: rgba(255,255,255,0.8);
+        opacity: 0.8;
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0% { opacity: 0.8; }
+        50% { opacity: 0.4; }
+        100% { opacity: 0.8; }
+    }
+    
+    .mastery-indicator {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 12px;
+        font-size: 0.8em;
+        font-weight: bold;
+        margin: 8px 0;
+        background: rgba(255,255,255,0.2);
+        color: white;
+        backdrop-filter: blur(10px);
+    }
+    
+    .study-controls {
+        text-align: center;
+        margin: 30px 0;
+    }
+    
+    .study-buttons {
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        margin-top: 20px;
+    }
+    
+    .btn-success {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        color: white;
+        border: none;
+        padding: 14px 28px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+    }
+    
+    .btn-success:hover {
+        background: linear-gradient(135deg, #218838 0%, #1ea085 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+    }
+    
+    .btn-danger {
+        background: linear-gradient(135deg, #dc3545 0%, #e83e8c 100%);
+        color: white;
+        border: none;
+        padding: 14px 28px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(220, 53, 69, 0.3);
+    }
+    
+    .btn-danger:hover {
+        background: linear-gradient(135deg, #c82333 0%, #d63384 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(220, 53, 69, 0.4);
+    }
+    
+    .study-progress {
+        text-align: center;
+        margin-bottom: 30px;
+        font-size: 1.2em;
+        color: #4a5568;
+        font-weight: 600;
+    }
+    
+    .progress-bar {
+        width: 400px;
+        height: 10px;
+        background: rgba(255,255,255,0.3);
+        border-radius: 5px;
+        overflow: hidden;
+        margin: 15px auto;
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        transition: width 0.4s ease;
+        border-radius: 5px;
+    }
+    
+    .mastery-indicator {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.8em;
+        font-weight: bold;
+        margin: 10px 0;
+    }
+    
+    .mastery-learning { background: #fff3cd; color: #856404; }
+    .mastery-reviewing { background: #d1ecf1; color: #0c5460; }
+    .mastery-mastered { background: #d4edda; color: #155724; }
+    
+    .study-complete {
+        text-align: center;
+        padding: 40px;
+        background: white;
+        border-radius: 20px;
+        margin: 20px 0;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+        border: 1px solid #e0e7ff;
+    }
+    
+    .btn-secondary {
+        background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(108, 117, 125, 0.3);
+    }
+    
+    .btn-secondary:hover {
+        background: linear-gradient(135deg, #5a6268 0%, #343a40 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(108, 117, 125, 0.4);
+        color: white;
+        text-decoration: none;
+    }
+    
+    .hidden {
+        display: none !important;
+    }
+    
+    /* Hide all flashcards by default - using more specific selector */
+    #flashcardContainer .flashcard {
+        display: none !important;
+    }
+    
+    /* Show only active card */
+    #flashcardContainer .flashcard.active {
+        display: block !important;
+    }
+    
+    
+    /* Ensure completion screen starts hidden */
+    #studyComplete {
+        display: none !important;
+    }
+    
+    #studyComplete.show {
+        display: block !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="study-container">
+    <div class="study-progress">
+        <span id="cardCounter">Card 1 of {{ cards|length }}</span>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressBar" style="width: {{ (1/cards|length * 100)|round(1) }}%"></div>
+        </div>
+    </div>
+    
+    <div id="flashcardContainer">
+        {% for card in cards %}
+        <div class="flashcard{% if loop.index0 == 0 %} active{% endif %}" id="card-{{ loop.index0 }}"
+             onclick="flipCard({{ loop.index0 }})">
+            
+            <div class="card-front">
+                <div class="card-term">{{ card.word.term }}</div>
+                {% if card.word.ipa_transcription %}
+                <div class="card-pronunciation">/{{ card.word.ipa_transcription }}/</div>
+                {% endif %}
+                {% if card.word.part_of_speech %}
+                <div class="card-meta">{{ card.word.part_of_speech }}</div>
+                {% endif %}
+                <div class="mastery-indicator mastery-{{ card.mastery_level }}">
+                    {{ card.mastery_level.title() }}
+                </div>
+                <div class="flip-instruction">👆 Click to reveal definition</div>
+            </div>
+            
+            <div class="card-back">
+                <div class="card-definition">{{ card.word.definition }}</div>
+                {% if card.word.ipa_transcription %}
+                <div class="card-pronunciation">/{{ card.word.ipa_transcription }}/</div>
+                {% endif %}
+                <div class="card-meta">
+                    {% if card.study_count > 0 %}
+                    Success Rate: {{ "%.0f"|format(card.success_rate) }}% ({{ card.study_count }} attempts)
+                    {% else %}
+                    First time studying this word
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <div class="study-controls" id="studyControls" style="display: none;">
+        <p>How well did you know this word?</p>
+        <div class="study-buttons">
+            <button class="btn-danger" onclick="answerCard(false)">❌ Didn't Know</button>
+            <button class="btn-success" onclick="answerCard(true)">✅ Knew It</button>
+        </div>
+    </div>
+    
+    <div class="study-complete" id="studyComplete">
+        <h2>🎉 Study Session Complete!</h2>
+        <p>Great work! You've reviewed all {{ cards|length }} cards.</p>
+        <div id="sessionStats"></div>
+        <div style="margin-top: 30px;">
+            <a href="/flashcards" class="btn-success">Back to Decks</a>
+            <button onclick="restartSession()" class="btn-secondary" style="margin-left: 10px;">Study Again</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentCard = 0;
+let totalCards = {{ cards|length }};
+let sessionStats = { correct: 0, incorrect: 0 };
+let cards = {{ cards|tojson }};
+
+function flipCard(cardIndex) {
+    const card = document.getElementById(`card-${cardIndex}`);
+    card.classList.toggle('flipped');
+    
+    // Show study controls after flipping
+    setTimeout(() => {
+        document.getElementById('studyControls').style.display = 'block';
+    }, 300);
+}
+
+async function answerCard(isCorrect) {
+    const wordId = cards[currentCard].word_id;
+    
+    // Update session stats
+    if (isCorrect) {
+        sessionStats.correct++;
+    } else {
+        sessionStats.incorrect++;
+    }
+    
+    // Send result to server
+    try {
+        const formData = new FormData();
+        formData.append('word_id', wordId);
+        formData.append('is_correct', isCorrect);
+        
+        await fetch('/api/flashcards/study', {
+            method: 'POST',
+            body: formData
+        });
+    } catch (error) {
+        console.error('Error recording study result:', error);
+    }
+    
+    // Move to next card
+    currentCard++;
+    
+    if (currentCard >= totalCards) {
+        // Study session complete
+        showSessionComplete();
+    } else {
+        showNextCard();
+    }
+}
+
+function showNextCard() {
+    // Hide current card
+    const prevCard = document.getElementById(`card-${currentCard - 1}`);
+    if (prevCard) {
+        prevCard.classList.remove('active');
+        prevCard.style.display = 'none';
+    }
+    
+    // Show next card
+    const nextCard = document.getElementById(`card-${currentCard}`);
+    if (nextCard) {
+        nextCard.classList.add('active');
+        nextCard.style.display = 'block';
+        // Reset flip state for new card
+        nextCard.classList.remove('flipped');
+    }
+    
+    // Hide study controls
+    document.getElementById('studyControls').style.display = 'none';
+    
+    // Update progress
+    updateProgress();
+}
+
+function updateProgress() {
+    const progress = ((currentCard + 1) / totalCards) * 100;
+    document.getElementById('progressBar').style.width = `${progress}%`;
+    document.getElementById('cardCounter').textContent = `Card ${currentCard + 1} of ${totalCards}`;
+}
+
+function showSessionComplete() {
+    document.getElementById('flashcardContainer').style.display = 'none';
+    document.getElementById('studyControls').style.display = 'none';
+    document.querySelector('.study-progress').style.display = 'none';
+    
+    const accuracy = totalCards > 0 ? Math.round((sessionStats.correct / totalCards) * 100) : 0;
+    
+    document.getElementById('sessionStats').innerHTML = `
+        <div style="font-size: 1.2em; margin: 20px 0;">
+            <div>📊 Accuracy: ${accuracy}%</div>
+            <div>✅ Correct: ${sessionStats.correct}</div>
+            <div>❌ Incorrect: ${sessionStats.incorrect}</div>
+        </div>
+    `;
+    
+    document.getElementById('studyComplete').classList.add('show');
+}
+
+function restartSession() {
+    currentCard = 0;
+    sessionStats = { correct: 0, incorrect: 0 };
+    
+    // Reset all cards
+    for (let i = 0; i < totalCards; i++) {
+        const card = document.getElementById(`card-${i}`);
+        card.classList.remove('flipped');
+        if (i === 0) {
+            card.classList.add('active');
+        } else {
+            card.classList.remove('active');
+        }
+    }
+    
+    // Show study interface
+    document.getElementById('flashcardContainer').style.display = 'block';
+    document.querySelector('.study-progress').style.display = 'block';
+    document.getElementById('studyControls').style.display = 'none';
+    document.getElementById('studyComplete').classList.remove('show');
+    
+    updateProgress();
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+    if (document.getElementById('studyControls').style.display === 'block') {
+        if (e.key === '1' || e.key === 'x') {
+            answerCard(false);
+        } else if (e.key === '2' || e.key === 'c') {
+            answerCard(true);
+        }
+    } else if (e.key === ' ') {
+        e.preventDefault();
+        flipCard(currentCard);
+    }
+});
+
+// Initialize flashcard display on page load
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Initializing flashcards...');
+    
+    // Hide all cards first
+    const allCards = document.querySelectorAll('.flashcard');
+    allCards.forEach(card => {
+        card.style.display = 'none';
+    });
+    
+    // Show only the first card
+    const firstCard = document.getElementById('card-0');
+    if (firstCard) {
+        firstCard.style.display = 'block';
+        firstCard.classList.add('active');
+    }
+    
+    // Hide completion screen
+    const completionScreen = document.getElementById('studyComplete');
+    if (completionScreen) {
+        completionScreen.style.display = 'none';
+    }
+    
+    console.log('Flashcards initialized successfully');
+});
+</script>
+{% endblock %}

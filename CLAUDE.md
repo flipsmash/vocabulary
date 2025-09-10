@@ -299,7 +299,7 @@ Follow this systematic approach:
 ## Core Philosophy
 
 - "Should work" ≠ "does work" - Pattern matching isn't enough
-- I'm not paid to write code, I'm paid to solve problems
+- I'm not paid to write code, I'm paid to solve problems -- you need to write, test and asusre proper code
 - Untested code is just a guess, not a solution
 
 # The 30-Second Reality Check - Must answer YES to ALL:
@@ -336,3 +336,4 @@ Follow this systematic approach:
 - User trust lost: Immeasurable
 
 ---
+- Always use port 8001

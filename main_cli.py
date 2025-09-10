@@ -8,6 +8,7 @@ import argparse
 import sys
 import logging
 from pathlib import Path
+from datetime import datetime
 
 # Add the package to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -28,7 +29,7 @@ def main():
         print("Or use direct commands:")
         return 0
     
-    # Parse basic arguments for definition similarity
+    # Parse basic arguments for definition similarity and ingestion
     parser = argparse.ArgumentParser(description='Vocabulary System CLI')
     parser.add_argument('--find-semantic-distractors', type=int, metavar='WORD_ID',
                        help='Find semantic distractors for a word')
@@ -38,13 +39,15 @@ def main():
                        help='Calculate definition similarities')
     parser.add_argument('--similarity-threshold', type=float, default=0.3,
                        help='Similarity threshold for definition similarities')
+    # Legacy ingestion options (experimental system was moved to abandoned/)
+    # Use the current harvesting system instead: gutenberg_harvester.py, wiktionary_harvester.py, etc.
     
     args = parser.parse_args()
     
     try:
         if args.process_definitions:
-            from definition_similarity_calculator import DefinitionSimilarityCalculator
-            from config import get_db_config
+            from analysis.definition_similarity_calculator import DefinitionSimilarityCalculator
+            from core.config import get_db_config
             
             print("[INFO] Processing word definitions...")
             calculator = DefinitionSimilarityCalculator(get_db_config())
@@ -56,16 +59,19 @@ def main():
             print("[OK] Definition processing complete")
             
         elif args.calculate_definition_similarities:
-            from definition_similarity_calculator import DefinitionSimilarityCalculator
-            from config import get_db_config
+            from analysis.definition_similarity_calculator import DefinitionSimilarityCalculator
+            from core.config import get_db_config
             
             print(f"[INFO] Calculating definition similarities (threshold: {args.similarity_threshold})")
             calculator = DefinitionSimilarityCalculator(get_db_config())
             similarities = calculator.calculate_all_similarities(args.similarity_threshold)
             print(f"[OK] Found {len(similarities)} semantic similarity pairs")
             
+        # Removed experimental ingestion system - moved to abandoned/experimental_ingestion/
+        # Use current harvesting system instead: gutenberg_harvester.py, wiktionary_harvester.py, etc.
+
         elif args.find_semantic_distractors:
-            from config import get_db_config
+            from core.config import get_db_config
             import mysql.connector
             
             word_id = args.find_semantic_distractors
@@ -112,6 +118,10 @@ def main():
         else:
             print("For pronunciation similarity operations, use:")
             print("  python cuda_enhanced_cli.py --help")
+            print("\nIngestion examples:")
+            print("  python main_cli.py --ingest-run rss --ingest-limit 200")
+            print("  python main_cli.py --ingest-run arxiv --ingest-limit 200")
+            print("  python main_cli.py --ingest-run github --ingest-limit 50")
             
         return 0
         

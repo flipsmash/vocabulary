@@ -1,0 +1,571 @@
+{% extends "base.html" %}
+
+{% block title %}Flashcards - Vocabulary Explorer{% endblock %}
+
+{% block extra_head %}
+<style>
+    .flashcard-hero {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 3rem 0;
+        margin-bottom: 2rem;
+        border-radius: 12px;
+    }
+    
+    .hero-content {
+        text-align: center;
+    }
+    
+    .hero-title {
+        font-size: 2.5rem;
+        font-weight: bold;
+        margin-bottom: 0.5rem;
+    }
+    
+    .hero-subtitle {
+        font-size: 1.2rem;
+        opacity: 0.9;
+        margin-bottom: 2rem;
+    }
+    
+    .quick-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    
+    .btn-hero {
+        background: rgba(255, 255, 255, 0.2);
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        color: white;
+        padding: 12px 24px;
+        border-radius: 8px;
+        text-decoration: none;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        backdrop-filter: blur(10px);
+    }
+    
+    .btn-hero:hover {
+        background: rgba(255, 255, 255, 0.3);
+        border-color: rgba(255, 255, 255, 0.5);
+        transform: translateY(-2px);
+        color: white;
+        text-decoration: none;
+    }
+    
+    .btn-hero-primary {
+        background: rgba(255, 255, 255, 0.9);
+        color: #667eea;
+        border-color: transparent;
+    }
+    
+    .btn-hero-primary:hover {
+        background: white;
+        color: #667eea;
+        text-decoration: none;
+    }
+    
+    .deck-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .deck-card {
+        background: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        transition: all 0.3s ease;
+        border: 1px solid #f0f0f0;
+    }
+    
+    .deck-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+        border-color: #667eea;
+    }
+    
+    .deck-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+    }
+    
+    .deck-info {
+        flex: 1;
+    }
+    
+    .deck-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #2d3748;
+        margin-bottom: 0.5rem;
+    }
+    
+    .deck-description {
+        color: #718096;
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
+    }
+    
+    .deck-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .btn-study {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 8px;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 0.9rem;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-study:hover {
+        transform: scale(1.05);
+        color: white;
+        text-decoration: none;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    .btn-manage {
+        background: #f7fafc;
+        color: #4a5568;
+        border: 1px solid #e2e8f0;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-manage:hover {
+        background: #edf2f7;
+        border-color: #cbd5e0;
+    }
+    
+    .progress-section {
+        margin: 1rem 0;
+    }
+    
+    .progress-bar {
+        width: 100%;
+        height: 6px;
+        background: #f0f0f0;
+        border-radius: 3px;
+        overflow: hidden;
+        margin-bottom: 0.5rem;
+    }
+    
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #48bb78 0%, #38b2ac 100%);
+        border-radius: 3px;
+        transition: width 0.3s ease;
+    }
+    
+    .deck-stats {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.85rem;
+        color: #718096;
+    }
+    
+    .stat-item {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+    
+    .create-section {
+        background: white;
+        border-radius: 16px;
+        padding: 2rem;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+        border: 1px solid #f0f0f0;
+    }
+    
+    .create-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    
+    .create-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #2d3748;
+        margin-bottom: 0.5rem;
+    }
+    
+    .create-subtitle {
+        color: #718096;
+        font-size: 1rem;
+    }
+    
+    .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-group {
+        margin-bottom: 1rem;
+    }
+    
+    .form-label {
+        display: block;
+        font-weight: 600;
+        color: #2d3748;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+    }
+    
+    .form-input {
+        width: 100%;
+        padding: 12px 16px;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: border-color 0.3s ease;
+        background: #f7fafc;
+    }
+    
+    .form-input:focus {
+        outline: none;
+        border-color: #667eea;
+        background: white;
+    }
+    
+    .form-textarea {
+        width: 100%;
+        padding: 12px 16px;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 1rem;
+        resize: vertical;
+        min-height: 80px;
+        transition: border-color 0.3s ease;
+        background: #f7fafc;
+    }
+    
+    .form-textarea:focus {
+        outline: none;
+        border-color: #667eea;
+        background: white;
+    }
+    
+    .btn-create {
+        background: linear-gradient(135deg, #48bb78 0%, #38b2ac 100%);
+        color: white;
+        border: none;
+        padding: 12px 32px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-create:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(72, 187, 120, 0.4);
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 3rem 2rem;
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+    
+    .empty-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        opacity: 0.6;
+    }
+    
+    .empty-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #2d3748;
+        margin-bottom: 0.5rem;
+    }
+    
+    .empty-text {
+        color: #718096;
+        font-size: 1rem;
+        margin-bottom: 1rem;
+    }
+    
+    .empty-tip {
+        background: #f0f4f8;
+        padding: 1rem;
+        border-radius: 8px;
+        color: #2d3748;
+        font-size: 0.9rem;
+        margin-top: 1rem;
+    }
+    
+    @media (max-width: 768px) {
+        .deck-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .form-row {
+            grid-template-columns: 1fr;
+        }
+        
+        .quick-actions {
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .hero-title {
+            font-size: 2rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- Hero Section -->
+    <div class="flashcard-hero">
+        <div class="hero-content">
+            <h1 class="hero-title">📚 Flashcard Studio</h1>
+            <p class="hero-subtitle">Master vocabulary with spaced repetition and smart learning</p>
+            <div class="quick-actions">
+                <a href="/flashcards/guest/random" class="btn-hero btn-hero-primary">🎲 Random Study Session</a>
+                <a href="#create-deck" class="btn-hero">✨ Create New Deck</a>
+                <a href="/browse" class="btn-hero">🔍 Browse Words</a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Create New Deck Section -->
+    <div class="create-section" id="create-deck">
+        <div class="create-header">
+            <h2 class="create-title">✨ Create New Deck</h2>
+            <p class="create-subtitle">Organize your vocabulary learning with custom flashcard decks</p>
+        </div>
+        
+        <form action="/api/flashcards/decks" method="POST" id="createDeckForm">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="name" class="form-label">Deck Name</label>
+                    <input type="text" id="name" name="name" class="form-input" required 
+                           placeholder="e.g., Medical Terms, SAT Vocabulary, French Basics">
+                </div>
+                <div class="form-group">
+                    <label for="description" class="form-label">Description (Optional)</label>
+                    <textarea id="description" name="description" class="form-textarea"
+                              placeholder="Brief description of what this deck covers..."></textarea>
+                </div>
+            </div>
+            <div style="text-align: center;">
+                <button type="submit" class="btn-create">🚀 Create Deck</button>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Existing Decks -->
+    <div class="decks-section">
+        <h2 style="margin-bottom: 1.5rem; color: #2d3748; font-weight: 700;">Your Flashcard Decks</h2>
+        
+        {% if decks %}
+            <div class="deck-grid">
+                {% for deck in decks %}
+                <div class="deck-card">
+                    <div class="deck-header">
+                        <div class="deck-info">
+                            <h3 class="deck-title">{{ deck.name }}</h3>
+                            {% if deck.description %}
+                            <p class="deck-description">{{ deck.description }}</p>
+                            {% endif %}
+                        </div>
+                        <div class="deck-actions">
+                            <a href="/flashcards/{{ deck.id }}/study" class="btn-study">📖 Study</a>
+                            <button onclick="manageDeck({{ deck.id }})" class="btn-manage">⚙️ Manage</button>
+                        </div>
+                    </div>
+                    
+                    <div class="progress-section">
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: {{ deck.study_progress }}%"></div>
+                        </div>
+                        <div class="deck-stats">
+                            <div class="stat-item">
+                                <span>📊</span>
+                                <span>{{ deck.word_count }} cards</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>🎯</span>
+                                <span>{{ "%.0f"|format(deck.study_progress) }}% mastery</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>📅</span>
+                                <span>{{ deck.created_at[:10] }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <div class="empty-icon">🎴</div>
+                <h3 class="empty-title">No flashcard decks yet</h3>
+                <p class="empty-text">Create your first deck to start your vocabulary learning journey!</p>
+                
+                <div class="empty-tip">
+                    <strong>💡 Pro Tips:</strong>
+                    <br>• Add words to decks from word detail pages
+                    <br>• Try the Random Study Session for instant practice
+                    <br>• Organize decks by topic or difficulty level
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+// Handle deck creation
+document.getElementById('createDeckForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    
+    try {
+        const response = await fetch('/api/flashcards/decks', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Show success message
+            const button = this.querySelector('button[type="submit"]');
+            const originalText = button.innerHTML;
+            button.innerHTML = '✅ Deck Created!';
+            button.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
+            button.disabled = true;
+            
+            // Clear form
+            this.reset();
+            
+            // Reload page after short delay to show new deck
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            alert('Failed to create deck. Please try again.');
+        }
+    } catch (error) {
+        console.error('Error creating deck:', error);
+        alert('Error creating deck. Please try again.');
+    }
+});
+
+// Manage deck function
+function manageDeck(deckId) {
+    // Create a more comprehensive management dialog
+    const action = prompt(`🔧 Deck Management Options for Deck ${deckId}:\n\n1️⃣ Study this deck\n2️⃣ Add words to deck\n3️⃣ View deck contents\n4️⃣ Delete deck\n\nEnter number (1-4):`);
+    
+    switch(action) {
+        case '1':
+            // Study deck
+            window.location.href = `/flashcards/${deckId}/study`;
+            break;
+        case '2':
+            // Add words to deck
+            addWordsToDecks(deckId);
+            break;
+        case '3':
+            // View deck contents
+            viewDeckContents(deckId);
+            break;
+        case '4':
+            // Delete deck
+            const confirmDelete = confirm("⚠️ Are you sure you want to delete this deck?\n\nThis will permanently remove the deck and all its cards.\nThis action cannot be undone!");
+            if (confirmDelete) {
+                deleteDeck(deckId);
+            }
+            break;
+        case null:
+            // User cancelled
+            break;
+        default:
+            alert("Invalid option. Please enter a number from 1-4.");
+    }
+}
+
+// Delete deck function
+async function deleteDeck(deckId) {
+    try {
+        const response = await fetch(`/api/flashcards/decks/${deckId}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Show success message and reload page
+            alert('✅ Deck deleted successfully!');
+            window.location.reload();
+        } else {
+            alert('❌ Failed to delete deck. Please try again.');
+        }
+    } catch (error) {
+        console.error('Error deleting deck:', error);
+        alert('❌ Error deleting deck. Please try again.');
+    }
+}
+
+// Add words to deck function
+function addWordsToDecks(deckId) {
+    const searchTerm = prompt("🔍 Search for words to add to your deck:\n\nEnter a word or partial word to search:");
+    if (searchTerm && searchTerm.trim()) {
+        // Redirect to browse page with search term and deck context
+        window.location.href = `/browse?search=${encodeURIComponent(searchTerm.trim())}&add_to_deck=${deckId}`;
+    }
+}
+
+// View deck contents function
+async function viewDeckContents(deckId) {
+    try {
+        const response = await fetch(`/api/flashcards/decks/${deckId}/cards`);
+        const cards = await response.json();
+        
+        if (cards.length === 0) {
+            alert("📭 This deck is empty!\n\nUse 'Add words to deck' to populate it with vocabulary words.");
+            return;
+        }
+        
+        let cardsList = `📚 Deck Contents (${cards.length} words):\n\n`;
+        cards.forEach((card, index) => {
+            cardsList += `${index + 1}. ${card.word.term} - ${card.word.definition.substring(0, 50)}${card.word.definition.length > 50 ? '...' : ''}\n`;
+        });
+        cardsList += `\n💡 Tip: Use 'Study this deck' to practice these words!`;
+        
+        alert(cardsList);
+    } catch (error) {
+        console.error('Error fetching deck contents:', error);
+        alert('❌ Error loading deck contents. Please try again.');
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,51 @@
+================================================================================
+VOCABULARY APP ENDPOINT VERIFICATION REPORT
+================================================================================
+Test Date: 2025-09-04 14:50:20
+Base URL: http://localhost:8000
+Total Tests: 23
+Passed: 19
+Failed: 4
+Success Rate: 82.6%
+
+[-] FAILED TESTS:
+----------------------------------------
+FAIL: Home page
+      Path: /
+      Content Error: Expected content 'Vocabulary Learning' not found
+
+FAIL: Search with query
+      Path: /search?q=test
+      Content Error: Expected content 'Search Results' not found
+
+FAIL: Quiz home (should redirect to login)
+      Path: /quiz
+      Error: Expected status 302, got 200
+
+FAIL: API stats endpoint
+      Path: /api/stats
+      Error: Expected status 200, got 404
+
+[+] PASSED TESTS:
+----------------------------------------
+PASS: Login page (3.13ms)
+PASS: Registration page (2.87ms)
+PASS: Browse main page (50.22ms)
+PASS: Browse page 1 (47.2ms)
+PASS: Browse page 2 (46.01ms)
+PASS: Browse with 25 per page (47.45ms)
+PASS: Browse with 100 per page (47.87ms)
+PASS: Browse words starting with A (43.44ms)
+PASS: Browse words starting with AB (48.17ms)
+PASS: Search page (41.93ms)
+PASS: Random word (may redirect) (68.0ms)
+PASS: Word detail page ID 1 (1.22ms)
+PASS: Word detail page ID 100 (1.37ms)
+PASS: Word detail page ID 1000 (1.3ms)
+PASS: Browse main page loads (51.13ms)
+PASS: First page pagination works (47.22ms)
+PASS: Letter filtering works (47.4ms)
+PASS: Per-page control works (45.63ms)
+PASS: Domain filtering works (if domain exists) (48.5ms)
+
+================================================================================

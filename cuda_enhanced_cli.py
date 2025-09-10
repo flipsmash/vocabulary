@@ -11,20 +11,20 @@ import time
 from typing import Dict
 
 # Import existing components
-from custom_database_manager import CustomDatabaseManager
-from modern_pronunciation_system import ModernPhoneticProcessor
+from core.custom_database_manager import CustomDatabaseManager
+from pronunciation.modern_pronunciation_system import ModernPhoneticProcessor
 
 # Try to import CUDA components
 CUDA_AVAILABLE = False
 try:
-    from cuda_similarity_calculator import CUDAIntegratedSimilaritySystem, check_cuda_setup
+    from pronunciation.cuda_similarity_calculator import CUDAIntegratedSimilaritySystem, check_cuda_setup
     CUDA_AVAILABLE = check_cuda_setup()
 except ImportError:
     print("[WARNING] CUDA components not available. Will use CPU-only version.")
 
 # Database configuration
-from config import get_db_config
-    DB_CONFIG = get_db_config()
+from core.config import get_db_config
+DB_CONFIG = get_db_config()
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

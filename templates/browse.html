@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+
+{% block title %}
+Browse Vocabulary{% if letters %} - {{ letters|upper }}*{% endif %} ({{ total_words }} words)
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1>Browse Vocabulary Alphabetically</h1>
+                    <p class="text-muted">
+                        {% if letters %}
+                        Showing {{ total_words }} word{% if total_words != 1 %}s{% endif %} starting with "{{ letters|upper }}"
+                        {% else %}
+                        Browse {{ total_words }} vocabulary words alphabetically
+                        {% endif %}
+                    </p>
+                </div>
+                <div>
+                    <a href="/random" class="btn btn-outline-primary">Random Word</a>
+                </div>
+            </div>
+
+            <!-- Breadcrumb Navigation -->
+            {% if letters %}
+            <nav aria-label="Letter navigation">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item">
+                        <a href="/browse{% if domain %}?domain={{ domain }}{% endif %}{% if part_of_speech %}{% if domain %}&{% else %}?{% endif %}part_of_speech={{ part_of_speech }}{% endif %}">Start</a>
+                    </li>
+                    {% for path_item in letter_path %}
+                    <li class="breadcrumb-item {% if loop.last %}active{% endif %}">
+                        {% if loop.last %}
+                        {{ path_item.letter|upper }}
+                        {% else %}
+                        <a href="/browse?letters={{ path_item.letters }}{% if domain %}&domain={{ domain }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech }}{% endif %}">{{ path_item.letter|upper }}</a>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ol>
+            </nav>
+            {% endif %}
+
+            <!-- Filter Controls -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <form method="GET" action="/browse" class="row g-3">
+                        {% if letters %}<input type="hidden" name="letters" value="{{ letters }}">{% endif %}
+                        <input type="hidden" name="page" value="1">
+                        
+                        <div class="col-md-4">
+                            <label for="domain" class="form-label">Domain</label>
+                            <select name="domain" id="domain" class="form-select">
+                                <option value="">All Domains</option>
+                                {% for d in domains %}
+                                <option value="{{ d }}" {% if domain == d %}selected{% endif %}>{{ d }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="part_of_speech" class="form-label">Part of Speech</label>
+                            <select name="part_of_speech" id="part_of_speech" class="form-select">
+                                <option value="">All Parts of Speech</option>
+                                {% for pos in parts_of_speech %}
+                                <option value="{{ pos }}" {% if part_of_speech == pos %}selected{% endif %}>{{ pos }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">&nbsp;</label>
+                            <div>
+                                <button type="submit" class="btn btn-primary">Apply Filters</button>
+                                <a href="/browse{% if letters %}?letters={{ letters }}{% endif %}" class="btn btn-outline-secondary">Clear Filters</a>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Letter Navigation -->
+            {% if available_letters %}
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        {% if letters %}
+                        Narrow down "{{ letters|upper }}*" words:
+                        {% else %}
+                        Choose first letter:
+                        {% endif %}
+                    </h5>
+                    
+                    <div class="letter-navigation">
+                        {% for letter in available_letters %}
+                        <a href="/browse?letters={% if letters %}{{ letters }}{% endif %}{{ letter }}{% if domain %}&domain={{ domain }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech }}{% endif %}" 
+                           class="letter-link">{{ letter|upper }}</a>{% if not loop.last %} | {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Words per page control -->
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <strong>{{ total_words }}</strong> word{% if total_words != 1 %}s{% endif %}{% if letters %} starting with "{{ letters|upper }}"{% endif %}
+                    {% if current_page > 1 or total_pages > 1 %}
+                    (page {{ current_page }} of {{ total_pages }})
+                    {% endif %}
+                </div>
+                <div>
+                    <form method="GET" action="/browse" class="d-flex align-items-center">
+                        {% if letters %}<input type="hidden" name="letters" value="{{ letters }}">{% endif %}
+                        {% if domain %}<input type="hidden" name="domain" value="{{ domain }}">{% endif %}
+                        {% if part_of_speech %}<input type="hidden" name="part_of_speech" value="{{ part_of_speech }}">{% endif %}
+                        <label for="per_page" class="form-label me-2 mb-0">Per page:</label>
+                        <select name="per_page" id="per_page" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()">
+                            <option value="25" {% if per_page == 25 %}selected{% endif %}>25</option>
+                            <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                            <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+                        </select>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Word List -->
+            {% if words %}
+            <div class="row">
+                {% for word in words %}
+                <div class="col-md-6 col-lg-4 mb-3">
+                    <div class="card word-card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                <a href="/word/{{ word.id }}" class="text-decoration-none">{{ word.term }}</a>
+                            </h5>
+                            
+                            <div class="mb-2">
+                                {% if word.part_of_speech %}
+                                <span class="badge bg-secondary me-1">{{ word.part_of_speech }}</span>
+                                {% endif %}
+                                {% if word.primary_domain %}
+                                <span class="badge bg-info domain-tag">{{ word.primary_domain }}</span>
+                                {% endif %}
+                            </div>
+                            
+                            <p class="card-text">{{ word.definition[:120] }}{% if word.definition|length > 120 %}...{% endif %}</p>
+                            
+                            <div class="mt-auto">
+                                {% if word.frequency_rank %}
+                                <small class="text-muted">
+                                    <strong>Frequency:</strong> #{{ word.frequency_rank }}
+                                </small>
+                                {% endif %}
+                                
+                                {% if word.ipa_transcription %}
+                                <div class="mt-1">
+                                    <small class="text-muted">
+                                        <strong>IPA:</strong> {{ word.ipa_transcription }}
+                                    </small>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center text-muted py-4">
+                <p>No words found{% if letters %} starting with "{{ letters|upper }}"{% endif %}{% if domain or part_of_speech %} with the current filters{% endif %}.</p>
+                {% if domain or part_of_speech %}
+                <p>Try adjusting your domain or part of speech filters above.</p>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- Pagination -->
+            {% if total_pages > 1 %}
+            <nav aria-label="Page navigation" class="mt-4">
+                <ul class="pagination justify-content-center">
+                    <!-- Previous page -->
+                    {% if has_prev %}
+                    <li class="page-item">
+                        <a class="page-link" href="/browse?{% if letters %}letters={{ letters }}&{% endif %}page={{ prev_page }}{% if domain %}&domain={{ domain }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech }}{% endif %}&per_page={{ per_page }}" aria-label="Previous">
+                            <span aria-hidden="true">&laquo;</span>
+                        </a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link" aria-label="Previous">
+                            <span aria-hidden="true">&laquo;</span>
+                        </span>
+                    </li>
+                    {% endif %}
+
+                    <!-- First page -->
+                    {% if page_numbers[0] > 1 %}
+                    <li class="page-item">
+                        <a class="page-link" href="/browse?{% if letters %}letters={{ letters }}&{% endif %}page=1{% if domain %}&domain={{ domain }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech }}{% endif %}&per_page={{ per_page }}">1</a>
+                    </li>
+                    {% if page_numbers[0] > 2 %}
+                    <li class="page-item disabled">
+                        <span class="page-link">...</span>
+                    </li>
+                    {% endif %}
+                    {% endif %}
+
+                    <!-- Page numbers -->
+                    {% for page_num in page_numbers %}
+                    <li class="page-item {% if page_num == current_page %}active{% endif %}">
+                        {% if page_num == current_page %}
+                        <span class="page-link">{{ page_num }}</span>
+                        {% else %}
+                        <a class="page-link" href="/browse?{% if letters %}letters={{ letters }}&{% endif %}page={{ page_num }}{% if domain %}&domain={{ domain }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech }}{% endif %}&per_page={{ per_page }}">{{ page_num }}</a>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+
+                    <!-- Last page -->
+                    {% if page_numbers[-1] < total_pages %}
+                    {% if page_numbers[-1] < total_pages - 1 %}
+                    <li class="page-item disabled">
+                        <span class="page-link">...</span>
+                    </li>
+                    {% endif %}
+                    <li class="page-item">
+                        <a class="page-link" href="/browse?{% if letters %}letters={{ letters }}&{% endif %}page={{ total_pages }}{% if domain %}&domain={{ domain }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech }}{% endif %}&per_page={{ per_page }}">{{ total_pages }}</a>
+                    </li>
+                    {% endif %}
+
+                    <!-- Next page -->
+                    {% if has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="/browse?{% if letters %}letters={{ letters }}&{% endif %}page={{ next_page }}{% if domain %}&domain={{ domain }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech }}{% endif %}&per_page={{ per_page }}" aria-label="Next">
+                            <span aria-hidden="true">&raquo;</span>
+                        </a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link" aria-label="Next">
+                            <span aria-hidden="true">&raquo;</span>
+                        </span>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+
+            <!-- Pagination Info -->
+            <div class="text-center mt-3">
+                <small class="text-muted">
+                    Page {{ current_page }} of {{ total_pages }} 
+                    ({{ total_words }} total words{% if letters %} starting with "{{ letters|upper }}"{% endif %})
+                </small>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+/* Compact letter navigation styles */
+.letter-navigation {
+    font-size: 1.1em;
+    line-height: 1.8;
+}
+
+.letter-link {
+    text-decoration: none;
+    color: #007bff;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition: background-color 0.2s;
+}
+
+.letter-link:hover {
+    background-color: #f8f9fa;
+    color: #0056b3;
+    text-decoration: none;
+}
+
+.letter-link:focus {
+    outline: 2px solid #007bff;
+    outline-offset: 2px;
+}
+
+/* Breadcrumb styling */
+.breadcrumb-item a {
+    text-decoration: none;
+}
+
+/* Word card styles */
+.word-card {
+    border-left: 4px solid #007bff;
+    transition: transform 0.2s;
+}
+
+.word-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.domain-tag {
+    font-size: 0.75em;
+    padding: 0.2rem 0.5rem;
+}
+</style>
+{% endblock %}

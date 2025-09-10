@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Vocabulary Quiz{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="mb-0">🧠 Vocabulary Quiz</h2>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-4">Test your vocabulary knowledge with our adaptive quiz system featuring smart distractors and spaced repetition.</p>
+                    
+                    <form method="POST" action="/quiz/start">
+                        <div class="row g-3">
+                            <!-- Quiz Type -->
+                            <div class="col-md-6">
+                                <label for="quiz_type" class="form-label">Question Type</label>
+                                <select name="quiz_type" id="quiz_type" class="form-select">
+                                    <option value="mixed">Mixed (MC, T/F, Matching)</option>
+                                    <option value="multiple_choice">Multiple Choice Only</option>
+                                    <option value="true_false">True/False Only</option>
+                                    <option value="matching">Matching Only</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Difficulty -->
+                            <div class="col-md-6">
+                                <label for="difficulty" class="form-label">Difficulty Level</label>
+                                <select name="difficulty" id="difficulty" class="form-select">
+                                    <option value="easy">Easy (Common words)</option>
+                                    <option value="medium" selected>Medium (Mixed frequency)</option>
+                                    <option value="hard">Hard (Rare words)</option>
+                                    <option value="adaptive">Adaptive (Based on performance)</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Topic Domain -->
+                            <div class="col-md-6">
+                                <label for="topic_domain" class="form-label">Topic Focus (Optional)</label>
+                                <select name="topic_domain" id="topic_domain" class="form-select">
+                                    <option value="">All Domains</option>
+                                    {% for domain in domains %}
+                                    <option value="{{ domain }}">{{ domain }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            
+                            <!-- Part of Speech -->
+                            <div class="col-md-6">
+                                <label for="topic_pos" class="form-label">Part of Speech (Optional)</label>
+                                <select name="topic_pos" id="topic_pos" class="form-select">
+                                    <option value="">All Parts of Speech</option>
+                                    {% for pos in parts_of_speech %}
+                                    <option value="{{ pos }}">{{ pos }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            
+                            <!-- Number of Questions -->
+                            <div class="col-md-6">
+                                <label for="num_questions" class="form-label">Number of Questions</label>
+                                <select name="num_questions" id="num_questions" class="form-select">
+                                    <option value="5">5 Questions (~2 min)</option>
+                                    <option value="10" selected>10 Questions (~5 min)</option>
+                                    <option value="20">20 Questions (~10 min)</option>
+                                    <option value="50">50 Questions (~25 min)</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Submit -->
+                            <div class="col-12 mt-4">
+                                <button type="submit" class="btn btn-primary btn-lg w-100">
+                                    🚀 Start Quiz
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- Quiz Features -->
+            <div class="row mt-4">
+                <div class="col-md-4">
+                    <div class="card border-0 text-center">
+                        <div class="card-body">
+                            <div class="text-primary mb-2">🎯</div>
+                            <h6>Smart Distractors</h6>
+                            <small class="text-muted">Challenging wrong answers based on semantic and phonetic similarity</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-0 text-center">
+                        <div class="card-body">
+                            <div class="text-primary mb-2">📈</div>
+                            <h6>Spaced Repetition</h6>
+                            <small class="text-muted">Words you struggle with appear more frequently</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-0 text-center">
+                        <div class="card-body">
+                            <div class="text-primary mb-2">📊</div>
+                            <h6>Progress Tracking</h6>
+                            <small class="text-muted">Detailed analytics on your vocabulary mastery</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
