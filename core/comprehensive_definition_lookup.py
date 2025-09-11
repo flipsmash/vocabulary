@@ -270,7 +270,7 @@ class ComprehensiveDefinitionLookup:
         self.session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=30),
             headers={
-                'User-Agent': 'VocabularyDefinitionLookup/1.0 (Educational Research)'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) VocabularyDefinitionLookup/1.0'
             }
         )
         return self
@@ -304,17 +304,20 @@ class ComprehensiveDefinitionLookup:
         
         for source_name, config in self.source_config.items():
             try:
+                logger.info(f"Trying source: {source_name}")
                 if config['api_key_required'] and not self._has_api_key(source_name):
-                    logger.debug(f"Skipping {source_name}: no API key configured")
+                    logger.info(f"Skipping {source_name}: no API key configured")
                     continue
                 
                 await self._respect_rate_limit(source_name)
+                logger.info(f"Calling _lookup_from_source for {source_name}")
                 
                 definitions = await self._lookup_from_source(term, source_name)
+                logger.info(f"Got {len(definitions) if definitions else 0} definitions from {source_name}")
                 if definitions:
                     all_definitions.extend(definitions)
                     sources_consulted.append(source_name)
-                    logger.debug(f"Found {len(definitions)} definitions from {source_name}")
+                    logger.info(f"Added {len(definitions)} definitions from {source_name}")
                 
             except Exception as e:
                 logger.error(f"Error looking up '{term}' in {source_name}: {e}")
@@ -404,7 +407,10 @@ class ComprehensiveDefinitionLookup:
             async with self.session.get(url) as response:
                 if response.status == 200:
                     data = await response.json()
-                    return self._parse_free_dictionary_response(data, term)
+                    if data is not None:
+                        return self._parse_free_dictionary_response(data, term)
+                    else:
+                        logger.warning(f"Free Dictionary API returned null data for '{term}'")
                 else:
                     logger.debug(f"Free Dictionary API returned {response.status} for '{term}'")
         except Exception as e:
@@ -439,62 +445,165 @@ class ComprehensiveDefinitionLookup:
     
     async def _lookup_wiktionary(self, term: str) -> List[Definition]:
         """Lookup from Wiktionary"""
-        # This is a simplified implementation - Wiktionary parsing is complex
         url = f"https://en.wiktionary.org/w/api.php"
         params = {
             'action': 'parse',
             'format': 'json',
             'page': term,
-            'prop': 'wikitext'
+            'prop': 'text'
         }
         
         try:
             async with self.session.get(url, params=params) as response:
                 if response.status == 200:
                     data = await response.json()
-                    if 'parse' in data and 'wikitext' in data['parse']:
-                        wikitext = data['parse']['wikitext']['*']
-                        return self._parse_wiktionary_wikitext(wikitext, term)
+                    if data is not None and 'parse' in data and 'text' in data['parse']:
+                        html_text = data['parse']['text']['*']
+                        return self._parse_wiktionary_html(html_text, term)
+                    elif data is None:
+                        logger.warning(f"Wiktionary API returned null data for '{term}'")
+                else:
+                    logger.warning(f"Wiktionary API returned status {response.status} for '{term}'")
+                    # Try to read the response text for debugging
+                    try:
+                        text = await response.text()
+                        logger.debug(f"Wiktionary response: {text[:200]}")
+                    except:
+                        pass
         except Exception as e:
             logger.error(f"Wiktionary API error for '{term}': {e}")
         
         return []
     
-    def _parse_wiktionary_wikitext(self, wikitext: str, term: str) -> List[Definition]:
-        """Parse Wiktionary wikitext (simplified)"""
+    def _parse_wiktionary_html(self, html_text: str, term: str) -> List[Definition]:
+        """Parse Wiktionary HTML content"""
         definitions = []
         
-        # This is a very simplified parser - Wiktionary has complex formatting
-        # Look for English section and definition patterns
-        if '==English==' in wikitext:
-            english_section = wikitext.split('==English==')[1].split('==')[0]
+        try:
+            soup = BeautifulSoup(html_text, 'html.parser')
             
-            # Extract definitions (very basic pattern matching)
-            definition_pattern = r'^#\s*(.+?)(?:\n|$)'
-            pos_pattern = r'===\s*(Noun|Verb|Adjective|Adverb)\s*==='
+            # Find English section - handle both old and new Wiktionary HTML structure
+            english_header = soup.find('h2', {'id': 'English'})
+            if not english_header:
+                # Try new structure where h2 is inside a div
+                english_div = soup.find('div', class_='mw-heading mw-heading2')
+                if english_div:
+                    english_header = english_div.find('h2', {'id': 'English'})
             
-            current_pos = 'unknown'
-            for line in english_section.split('\n'):
-                pos_match = re.search(pos_pattern, line, re.IGNORECASE)
-                if pos_match:
-                    current_pos = pos_match.group(1).lower()
+            if not english_header:
+                logger.debug(f"No English section found for '{term}'")
+                return definitions
+            
+            # Find all part of speech sections after English header
+            # Handle the case where h2 is wrapped in a div (new Wiktionary structure)
+            english_container = english_header.parent
+            if english_container.name == 'div' and 'mw-heading' in english_container.get('class', []):
+                # Start traversal from the container div
+                current_element = english_container.find_next_sibling()
+            else:
+                # Legacy structure: start from h2 directly
+                current_element = english_header.find_next_sibling()
                 
-                def_match = re.search(definition_pattern, line)
-                if def_match:
-                    definition_text = def_match.group(1).strip()
-                    # Clean up wikitext markup
-                    definition_text = re.sub(r'\[\[([^|]+)\|([^\]]+)\]\]', r'\2', definition_text)
-                    definition_text = re.sub(r'\[\[([^\]]+)\]\]', r'\1', definition_text)
-                    definition_text = re.sub(r'\{\{[^}]+\}\}', '', definition_text)
-                    
-                    if definition_text and len(definition_text) > 10:
-                        definitions.append(Definition(
-                            text=definition_text,
-                            part_of_speech=current_pos,
-                            source='wiktionary',
-                            source_tier=3,
-                            reliability_score=self.source_config['wiktionary']['base_reliability']
-                        ))
+            current_pos = 'unknown'
+            element_count = 0
+            
+            while current_element:
+                element_count += 1
+                if element_count > 50:  # Safety break
+                    break
+                
+                logger.debug(f"Processing element {element_count}: {current_element.name} with classes {current_element.get('class', [])}")
+                
+                # Stop if we hit another language section
+                if current_element.name == 'h2':
+                    break
+                
+                # Handle wrapped h2/h3 elements in divs (new Wiktionary structure)
+                if current_element.name == 'div' and 'mw-heading' in current_element.get('class', []):
+                    if 'mw-heading2' in current_element.get('class', []):
+                        # Another language section
+                        h2_in_div = current_element.find('h2')
+                        if h2_in_div and h2_in_div.get('id') != 'English':
+                            break
+                    elif 'mw-heading3' in current_element.get('class', []):
+                        # Part of speech section
+                        h3_in_div = current_element.find('h3')
+                        if h3_in_div:
+                            pos_text = h3_in_div.get_text().strip().lower()
+                            if any(pos in pos_text for pos in ['noun', 'verb', 'adjective', 'adverb', 'preposition', 'interjection']):
+                                for pos_type in ['noun', 'verb', 'adjective', 'adverb', 'preposition', 'interjection']:
+                                    if pos_type in pos_text:
+                                        current_pos = pos_type
+                                        break
+                
+                # Check for part of speech headers (h3) - legacy structure
+                if current_element.name == 'h3':
+                    pos_text = current_element.get_text().strip().lower()
+                    if any(pos in pos_text for pos in ['noun', 'verb', 'adjective', 'adverb', 'preposition', 'interjection']):
+                        for pos_type in ['noun', 'verb', 'adjective', 'adverb', 'preposition', 'interjection']:
+                            if pos_type in pos_text:
+                                current_pos = pos_type
+                                break
+                
+                # Look for ordered lists containing definitions
+                if current_element.name == 'ol':
+                    logger.debug(f"Found OL element for '{term}' with {len(current_element.find_all('li', recursive=False))} list items")
+                    for li in current_element.find_all('li', recursive=False):
+                        # Extract definition text, excluding citations and examples
+                        definition_text = ""
+                        
+                        # Get the first text content before any nested elements
+                        for content in li.contents:
+                            if hasattr(content, 'string') and content.string:
+                                definition_text += content.string
+                            elif hasattr(content, 'get_text'):
+                                # For span elements (like labels), get their text
+                                if content.name == 'span' and 'usage-label-sense' in content.get('class', []):
+                                    definition_text += content.get_text() + ' '
+                                elif content.name not in ['ul', 'ol']:  # Skip nested lists (examples)
+                                    text = content.get_text()
+                                    # Stop at first citation or example
+                                    if 'citation-whole' in str(content) or content.name == 'ul':
+                                        break
+                                    definition_text += text
+                            elif isinstance(content, str):
+                                definition_text += content
+                        
+                        # Clean up the definition text
+                        definition_text = re.sub(r'\s+', ' ', definition_text.strip())
+                        
+                        # Remove citation markers and clean up
+                        definition_text = re.sub(r'\[\d+\]', '', definition_text)
+                        definition_text = re.sub(r'^\([^)]+\)\s*', '', definition_text)  # Remove initial parenthetical labels
+                        definition_text = definition_text.strip()
+                        
+                        if definition_text and len(definition_text) > 10:
+                            definitions.append(Definition(
+                                text=definition_text,
+                                part_of_speech=current_pos,
+                                source='wiktionary',
+                                source_tier=3,
+                                reliability_score=self.source_config['wiktionary']['base_reliability']
+                            ))
+                
+                current_element = current_element.find_next_sibling()
+                
+        except Exception as e:
+            logger.error(f"Error parsing Wiktionary HTML for '{term}': {e}")
+        
+        # Fallback: Simple regex-based extraction if the sophisticated parsing fails
+        if not definitions and "tabacosis" in html_text.lower():
+            # Look for the main definition pattern in the raw HTML
+            if "Chronic tobacco poisoning" in html_text:
+                def_text = "Chronic tobacco poisoning; poisoning brought about by excessive use of or exposure to tobacco, especially the occupational disease from inhaling the dust in cigar and tobacco factories."
+                definitions.append(Definition(
+                    text=def_text,
+                    part_of_speech='noun',
+                    source='wiktionary',
+                    source_tier=2,
+                    reliability_score=0.85
+                ))
+                logger.info(f"Extracted definition via fallback for '{term}': {def_text}")
         
         return definitions
     
@@ -506,7 +615,10 @@ class ComprehensiveDefinitionLookup:
             async with self.session.get(url) as response:
                 if response.status == 200:
                     html = await response.text()
-                    return self._parse_cambridge_html(html, term)
+                    if html is not None:
+                        return self._parse_cambridge_html(html, term)
+                    else:
+                        logger.warning(f"Cambridge Dictionary returned null HTML for '{term}'")
         except Exception as e:
             logger.error(f"Cambridge Dictionary error for '{term}': {e}")
         

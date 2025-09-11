@@ -262,10 +262,22 @@ function showQuestion(questionNum) {
     // For matching questions, check if they need button state fix
     const currentQuestionData = quizData[questionNum - 1];
     if (currentQuestionData && currentQuestionData.questionType === 'matching') {
-        // Delay to ensure DOM is fully updated, then check matching completion
+        // IMMEDIATE check - no delay
+        checkMatchingCompletion(questionNum);
+        
+        // Multiple checks with increasing delays to ensure reliability
         setTimeout(() => {
             checkMatchingCompletion(questionNum);
-        }, 200);
+        }, 100);
+        setTimeout(() => {
+            checkMatchingCompletion(questionNum);
+        }, 300);
+        setTimeout(() => {
+            checkMatchingCompletion(questionNum);
+        }, 600);
+        setTimeout(() => {
+            checkMatchingCompletion(questionNum);
+        }, 1000);
     }
 }
 
@@ -390,12 +402,24 @@ function previousQuestion() {
         updateProgress();
         
         // Check if this is a matching question and fix button state if needed
-        const currentQuestionData = quizData[currentQuestion - 1];
+        const currentQuestionData = quizData[currentQuestion];
         if (currentQuestionData && currentQuestionData.questionType === 'matching') {
-            // Small delay to ensure DOM is updated
+            // IMMEDIATE check - no delay
+            checkMatchingCompletion(currentQuestion);
+            
+            // Multiple checks with increasing delays to ensure reliability
             setTimeout(() => {
                 checkMatchingCompletion(currentQuestion);
-            }, 100);
+            }, 50);
+            setTimeout(() => {
+                checkMatchingCompletion(currentQuestion);
+            }, 200);
+            setTimeout(() => {
+                checkMatchingCompletion(currentQuestion);
+            }, 500);
+            setTimeout(() => {
+                checkMatchingCompletion(currentQuestion);
+            }, 1000);
         }
     }
 }
@@ -1047,7 +1071,121 @@ function handleMatchingChange() {
 // Initialize drag-and-drop when page loads
 document.addEventListener('DOMContentLoaded', function() {
     initializeMatchingQuestions();
+    setupFeedbackObserver();
+    setupMatchingCompletionMonitor();
 });
+
+// Set up MutationObserver to watch for feedback elements being added
+function setupFeedbackObserver() {
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            // Check for added nodes that might be feedback elements
+            mutation.addedNodes.forEach(function(node) {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    // Check if this is a feedback element
+                    if (node.classList && (
+                        node.classList.contains('matching-feedback') ||
+                        node.classList.contains('alert-success') ||
+                        node.classList.contains('alert-warning') ||
+                        node.classList.contains('alert-info') ||
+                        node.classList.contains('feedback-message')
+                    )) {
+                        // Find the question this feedback belongs to
+                        const questionElement = node.closest('[data-question]');
+                        if (questionElement) {
+                            const questionId = questionElement.dataset.question;
+                            console.log('Feedback detected for question', questionId, 'by MutationObserver');
+                            
+                            // Small delay to ensure DOM is settled, then check completion
+                            setTimeout(() => {
+                                checkMatchingCompletion(questionId);
+                            }, 50);
+                        }
+                    }
+                    
+                    // Also check if any child elements are feedback elements
+                    const feedbackChildren = node.querySelectorAll && node.querySelectorAll('.matching-feedback, .alert-success, .alert-warning, .alert-info, .feedback-message');
+                    if (feedbackChildren && feedbackChildren.length > 0) {
+                        feedbackChildren.forEach(function(feedbackChild) {
+                            const questionElement = feedbackChild.closest('[data-question]');
+                            if (questionElement) {
+                                const questionId = questionElement.dataset.question;
+                                console.log('Feedback child detected for question', questionId, 'by MutationObserver');
+                                
+                                setTimeout(() => {
+                                    checkMatchingCompletion(questionId);
+                                }, 50);
+                            }
+                        });
+                    }
+                }
+            });
+            
+            // Also check for text changes that might indicate feedback
+            if (mutation.type === 'childList' && mutation.target.classList && 
+                (mutation.target.classList.contains('alert') || 
+                 mutation.target.classList.contains('feedback-message'))) {
+                const questionElement = mutation.target.closest('[data-question]');
+                if (questionElement) {
+                    const questionId = questionElement.dataset.question;
+                    console.log('Feedback text change detected for question', questionId, 'by MutationObserver');
+                    
+                    setTimeout(() => {
+                        checkMatchingCompletion(questionId);
+                    }, 50);
+                }
+            }
+        });
+    });
+    
+    // Start observing the entire quiz container for changes
+    const quizContainer = document.getElementById('quiz-container');
+    if (quizContainer) {
+        observer.observe(quizContainer, {
+            childList: true,
+            subtree: true,
+            attributes: false,
+            characterData: true
+        });
+        console.log('Feedback MutationObserver initialized');
+    }
+}
+
+// Set up continuous monitoring for matching completion
+function setupMatchingCompletionMonitor() {
+    let lastCheckedQuestion = null;
+    
+    // Check for matching completion every 500ms
+    setInterval(function() {
+        // Get the currently visible question
+        const visibleQuestion = document.querySelector('[data-question]:not([style*="display: none"])');
+        if (!visibleQuestion) return;
+        
+        const questionId = visibleQuestion.dataset.question;
+        const questionData = quizData[questionId];
+        
+        // Only check matching questions
+        if (!questionData || questionData.questionType !== 'matching') return;
+        
+        // Check if this is a new question or if we need to recheck
+        const shouldCheck = lastCheckedQuestion !== questionId || isQuestionAnswered(questionId);
+        
+        if (shouldCheck) {
+            // Check if button is disabled but question is answered
+            const nextBtn = document.getElementById(`next-btn-${questionId}`);
+            const hasAnswers = isQuestionAnswered(questionId);
+            
+            if (nextBtn && nextBtn.disabled && hasAnswers) {
+                console.log(`Background monitor: fixing disabled button for answered question ${questionId}`);
+                checkMatchingCompletion(questionId);
+            }
+            
+            lastCheckedQuestion = questionId;
+        }
+    }, 500);
+    
+    console.log('Matching completion background monitor initialized');
+}
 
 // Initialize
 updateProgress();

@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Word Lookup - Vocabulary Explorer{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-md-8 mx-auto">
+            <h2 class="mb-4">🔍 Word Lookup</h2>
+            <p class="text-muted mb-4">Look up definitions from multiple sources with reliability scoring</p>
+            
+            <!-- Search Form -->
+            <form method="POST" class="mb-4">
+                <div class="input-group">
+                    <input type="text" name="term" class="form-control form-control-lg" 
+                           placeholder="Enter a word to look up..." 
+                           value="{% if term %}{{ term }}{% endif %}" 
+                           required autofocus>
+                    <button class="btn btn-primary btn-lg" type="submit">
+                        🔍 Look Up
+                    </button>
+                </div>
+            </form>
+            
+            {% if error %}
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle"></i> {{ error }}
+            </div>
+            {% endif %}
+            
+            {% if term and has_results %}
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">
+                        <strong>"{{ term }}"</strong>
+                    </h4>
+                    <div class="text-end">
+                        <span class="badge bg-success">Reliability: {{ "%.1f"|format(result.overall_reliability * 100) }}%</span>
+                        {% if result.cache_hit %}
+                        <span class="badge bg-info">Cached</span>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="card-body">
+                    <!-- Sources consulted -->
+                    <p class="text-muted mb-3">
+                        <small>
+                            <i class="fas fa-database"></i> Sources consulted: 
+                            {{ result.sources_consulted | join(", ") }}
+                        </small>
+                    </p>
+                    
+                    <!-- Definitions by part of speech -->
+                    {% for pos, definitions in result.definitions_by_pos.items() %}
+                    <div class="mb-4">
+                        <h5 class="text-primary border-bottom pb-2">
+                            {{ pos.upper() }}
+                            <span class="badge bg-light text-dark ms-2">{{ definitions|length }} definition{{ 's' if definitions|length > 1 else '' }}</span>
+                        </h5>
+                        
+                        {% for definition in definitions %}
+                        <div class="definition-item mb-3 p-3 border-start border-4 border-primary bg-light">
+                            <div class="definition-text mb-2">
+                                <p class="mb-1">{{ definition.text }}</p>
+                            </div>
+                            
+                            <!-- Source info -->
+                            <div class="definition-meta d-flex justify-content-between align-items-center">
+                                <small class="text-muted">
+                                    <i class="fas fa-book"></i> 
+                                    <strong>{{ definition.source }}</strong>
+                                    (Tier {{ definition.source_tier }}, 
+                                    Reliability: {{ "%.0f"|format(definition.reliability_score * 100) }}%)
+                                </small>
+                                
+                                {% if definition.pronunciation %}
+                                <small class="text-muted">
+                                    <i class="fas fa-volume-up"></i> {{ definition.pronunciation }}
+                                </small>
+                                {% endif %}
+                            </div>
+                            
+                            <!-- Examples if available -->
+                            {% if definition.examples %}
+                            <div class="examples mt-2">
+                                <small class="text-success">
+                                    <i class="fas fa-quote-left"></i> Examples:
+                                </small>
+                                <ul class="list-unstyled mt-1">
+                                    {% for example in definition.examples[:3] %}
+                                    <li><small class="text-muted fst-italic">• {{ example }}</small></li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                            {% endif %}
+                            
+                            <!-- Etymology if available -->
+                            {% if definition.etymology %}
+                            <div class="etymology mt-2">
+                                <small class="text-info">
+                                    <i class="fas fa-history"></i> Etymology: {{ definition.etymology }}
+                                </small>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                    
+                    <!-- Lookup metadata -->
+                    <div class="mt-4 pt-3 border-top">
+                        <small class="text-muted">
+                            <i class="fas fa-clock"></i> 
+                            Looked up on {{ result.lookup_timestamp.strftime('%Y-%m-%d at %H:%M:%S') }}
+                        </small>
+                    </div>
+                </div>
+            </div>
+            
+            {% elif term and not has_results %}
+            <div class="alert alert-warning">
+                <i class="fas fa-search"></i> 
+                No definitions found for "<strong>{{ term }}</strong>". 
+                Try checking the spelling or searching for a different word.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Features info -->
+    {% if not term %}
+    <div class="row mt-5">
+        <div class="col-md-10 mx-auto">
+            <div class="row text-center">
+                <div class="col-md-4 mb-3">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div class="mb-3">🌐</div>
+                            <h6>Multiple Sources</h6>
+                            <p class="small text-muted">Searches across Free Dictionary API, Wiktionary, Cambridge, and more</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div class="mb-3">📊</div>
+                            <h6>Reliability Scoring</h6>
+                            <p class="small text-muted">Each definition rated 0-100% based on source quality and consistency</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div class="mb-3">⚡</div>
+                            <h6>Fast & Cached</h6>
+                            <p class="small text-muted">Results cached for speed with intelligent rate limiting</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.definition-item {
+    transition: transform 0.2s ease;
+}
+
+.definition-item:hover {
+    transform: translateX(5px);
+    background-color: #f8f9fa !important;
+}
+
+.border-start {
+    border-left-width: 4px !important;
+}
+
+.input-group .form-control:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+</style>
+{% endblock %}

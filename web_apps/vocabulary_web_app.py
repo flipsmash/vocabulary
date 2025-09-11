@@ -26,6 +26,8 @@ from core.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
 import re
+from core.comprehensive_definition_lookup import ComprehensiveDefinitionLookup
+import asyncio
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -473,6 +475,49 @@ async def browse(request: Request,
         "prev_page": page - 1,
         "page_numbers": page_numbers
     })
+
+@app.get("/lookup", response_class=HTMLResponse)
+async def word_lookup_page(request: Request, current_user: Optional[User] = Depends(get_optional_current_user)):
+    """Display word lookup page"""
+    return templates.TemplateResponse("lookup.html", {
+        "request": request,
+        "current_user": current_user
+    })
+
+@app.post("/lookup", response_class=HTMLResponse) 
+async def word_lookup_results(
+    request: Request,
+    term: str = Form(...),
+    current_user: Optional[User] = Depends(get_optional_current_user)
+):
+    """Look up word definitions using comprehensive lookup system"""
+    if not term or not term.strip():
+        return templates.TemplateResponse("lookup.html", {
+            "request": request,
+            "current_user": current_user,
+            "error": "Please enter a word to look up"
+        })
+    
+    try:
+        async with ComprehensiveDefinitionLookup() as lookup_system:
+            result = await lookup_system.lookup_term(term.strip())
+            
+        return templates.TemplateResponse("lookup.html", {
+            "request": request, 
+            "current_user": current_user,
+            "term": term,
+            "result": result,
+            "has_results": bool(result.definitions_by_pos)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error looking up word '{term}': {e}")
+        return templates.TemplateResponse("lookup.html", {
+            "request": request,
+            "current_user": current_user,
+            "term": term,
+            "error": f"Error looking up word: {str(e)}"
+        })
 
 @app.get("/api/words")
 async def search_words(
