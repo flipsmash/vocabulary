@@ -6,19 +6,30 @@
 <div class="container mt-4">
     <div class="row justify-content-center">
         <div class="col-12">
-            <!-- Quiz Progress -->
-            <div class="card mb-4">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h5 class="mb-0">Question <span id="current-question">1</span> of {{ questions|length }}</h5>
-                            <small class="text-muted">{{ difficulty|title }} difficulty</small>
-                        </div>
-                        <div>
-                            <div class="progress" style="width: 200px; height: 8px;">
-                                <div class="progress-bar" id="progress-bar" role="progressbar" style="width: 0%"></div>
+            <!-- Enhanced Quiz Progress -->
+            <div class="quiz-progress-card card mb-4 border-0 shadow-sm">
+                <div class="card-body py-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div class="quiz-progress-info">
+                            <h4 class="mb-1 text-primary">Question <span id="current-question" class="fw-bold">1</span> of {{ questions|length }}</h4>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-light text-dark px-3 py-2">{{ difficulty|title }} difficulty</span>
+                                <span class="text-muted small">Mixed question types</span>
                             </div>
                         </div>
+                        <div class="quiz-progress-visual text-end">
+                            <div class="progress-percentage text-primary fw-bold mb-1" id="progress-percentage">0%</div>
+                            <div class="progress" style="width: 240px; height: 12px; border-radius: 6px;">
+                                <div class="progress-bar bg-primary" id="progress-bar" role="progressbar" style="width: 0%; border-radius: 6px; transition: width 0.3s ease;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="quiz-progress-steps d-flex justify-content-between">
+                        {% for i in range(1, questions|length + 1) %}
+                        <div class="progress-step" data-step="{{ i }}">
+                            <div class="step-circle">{{ i }}</div>
+                        </div>
+                        {% endfor %}
                     </div>
                 </div>
             </div>
@@ -26,29 +37,73 @@
             <!-- Quiz Questions -->
             <div id="quiz-container">
                 {% for question in questions %}
-                <div class="question-card card mb-4" data-question="{{ question.id }}" {% if question.id != 1 %}style="display: none;"{% endif %}>
-                    <div class="card-body">
-                        <h4 class="card-title">{{ question.question }}</h4>
+                <div class="question-card card mb-4 border-0 shadow-sm" data-question="{{ question.id }}" {% if question.id != 1 %}style="display: none;"{% endif %}>
+                    <div class="card-body p-5">
+                        <!-- Question Header with improved typography -->
+                        <div class="question-header mb-4">
+                            {% if question.question_type == "true_false" %}
+                                {% set question_parts = question.question.split("'") %}
+                                {% if question_parts|length >= 3 %}
+                                <div class="question-statement">
+                                    <h3 class="question-type-label text-primary mb-3">📝 True or False</h3>
+                                    <div class="question-word-highlight mb-3">
+                                        <span class="question-prefix text-muted">Does the word</span>
+                                        <span class="featured-word">"{{ question_parts[1] }}"</span>
+                                        <span class="question-suffix text-muted">mean:</span>
+                                    </div>
+                                    <div class="definition-block">
+                                        {% set definition_part = question.question.split("means '")[1].rstrip("' ") if "means '" in question.question else question.question.split("'")[-2] %}
+                                        <blockquote class="definition-quote">
+                                            <p class="definition-text">{{ definition_part }}</p>
+                                        </blockquote>
+                                    </div>
+                                </div>
+                                {% else %}
+                                <h3 class="question-title">{{ question.question }}</h3>
+                                {% endif %}
+                            {% elif question.question_type == "multiple_choice" %}
+                                <h3 class="question-type-label text-primary mb-3">🎯 Multiple Choice</h3>
+                                <h4 class="question-title">{{ question.question }}</h4>
+                            {% else %}
+                                <h4 class="question-title">{{ question.question }}</h4>
+                            {% endif %}
+                        </div>
                         
                         <!-- Question Options -->
                         <div class="options mt-4">
                             {% if question.question_type == "true_false" %}
-                            <!-- True/False Options -->
-                            <div class="form-check mb-3">
-                                <input class="form-check-input" type="radio" name="answer_{{ question.id }}" 
-                                       id="option_{{ question.id }}_true" value="true"
-                                       data-question="{{ question.id }}">
-                                <label class="form-check-label" for="option_{{ question.id }}_true">
-                                    <strong>True</strong>
-                                </label>
-                            </div>
-                            <div class="form-check mb-3">
-                                <input class="form-check-input" type="radio" name="answer_{{ question.id }}" 
-                                       id="option_{{ question.id }}_false" value="false"
-                                       data-question="{{ question.id }}">
-                                <label class="form-check-label" for="option_{{ question.id }}_false">
-                                    <strong>False</strong>
-                                </label>
+                            <!-- Enhanced True/False Options -->
+                            <div class="true-false-container">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <div class="tf-option-card true-option">
+                                            <input class="form-check-input d-none" type="radio" name="answer_{{ question.id }}"
+                                                   id="option_{{ question.id }}_true" value="true"
+                                                   data-question="{{ question.id }}">
+                                            <label class="tf-option-label" for="option_{{ question.id }}_true">
+                                                <div class="tf-option-content">
+                                                    <div class="tf-icon">✓</div>
+                                                    <div class="tf-text">True</div>
+                                                    <div class="tf-description">This definition is correct</div>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="tf-option-card false-option">
+                                            <input class="form-check-input d-none" type="radio" name="answer_{{ question.id }}"
+                                                   id="option_{{ question.id }}_false" value="false"
+                                                   data-question="{{ question.id }}">
+                                            <label class="tf-option-label" for="option_{{ question.id }}_false">
+                                                <div class="tf-option-content">
+                                                    <div class="tf-icon">✗</div>
+                                                    <div class="tf-text">False</div>
+                                                    <div class="tf-description">This definition is incorrect</div>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             {% elif question.question_type == "matching" %}
                             <!-- Matching Options - Drag Definitions onto Terms -->
@@ -113,38 +168,76 @@
                                 </div>
                             </div>
                             {% else %}
-                            <!-- Multiple Choice Options -->
-                            {% for option in question.options %}
-                            <div class="form-check mb-3">
-                                <input class="form-check-input" type="radio" name="answer_{{ question.id }}" 
-                                       id="option_{{ question.id }}_{{ loop.index0 }}" value="{{ loop.index0 }}"
-                                       data-question="{{ question.id }}"
-                                       data-word-id="{% if question.option_word_ids %}{{ question.option_word_ids[loop.index0] }}{% endif %}">
-                                <label class="form-check-label" for="option_{{ question.id }}_{{ loop.index0 }}">
-                                    {{ option }}
-                                </label>
+                            <!-- Enhanced Multiple Choice Options -->
+                            <div class="options-container">
+                                {% for option in question.options %}
+                                <div class="option-card mb-3">
+                                    <input class="form-check-input d-none" type="radio" name="answer_{{ question.id }}"
+                                           id="option_{{ question.id }}_{{ loop.index0 }}" value="{{ loop.index0 }}"
+                                           data-question="{{ question.id }}"
+                                           data-word-id="{% if question.option_word_ids %}{{ question.option_word_ids[loop.index0] }}{% endif %}">
+                                    <label class="option-label" for="option_{{ question.id }}_{{ loop.index0 }}">
+                                        <div class="option-content">
+                                            <div class="option-letter">{{ ['A', 'B', 'C', 'D'][loop.index0] }}</div>
+                                            <div class="option-text">
+                                                {% if '; ' in option %}
+                                                    {% set option_parts = option.split('; ') %}
+                                                    <div class="option-main">{{ option_parts[0] }}</div>
+                                                    {% if option_parts|length > 1 %}
+                                                    <div class="option-details">
+                                                        {% for detail in option_parts[1:] %}
+                                                        <span class="detail-item">{{ detail }}</span>{% if not loop.last %}; {% endif %}
+                                                        {% endfor %}
+                                                    </div>
+                                                    {% endif %}
+                                                {% else %}
+                                                    <div class="option-main">{{ option }}</div>
+                                                {% endif %}
+                                            </div>
+                                            <div class="option-selector">
+                                                <div class="radio-circle"></div>
+                                            </div>
+                                        </div>
+                                    </label>
+                                </div>
+                                {% endfor %}
                             </div>
-                            {% endfor %}
                             {% endif %}
                         </div>
                         
-                        <!-- Answer feedback (hidden initially) -->
-                        <div class="answer-feedback mt-4" style="display: none;">
+                        <!-- Enhanced Answer feedback (hidden initially) -->
+                        <div class="answer-feedback mt-5" style="display: none;">
                             <div class="alert" role="alert">
-                                <strong class="feedback-result"></strong>
-                                <p class="feedback-explanation mb-0 mt-2">{{ question.explanation }}</p>
+                                <div class="feedback-card border-0 shadow-sm">
+                                    <div class="feedback-header">
+                                        <div class="feedback-icon"></div>
+                                        <div class="feedback-content">
+                                            <h5 class="feedback-result mb-1"></h5>
+                                            <p class="feedback-explanation mb-0">{{ question.explanation }}</p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         
-                        <!-- Navigation -->
-                        <div class="d-flex justify-content-between mt-4">
-                            <button class="btn btn-outline-secondary" id="prev-btn" onclick="previousQuestion()" 
-                                    {% if question.id == 1 %}style="visibility: hidden;"{% endif %}>
-                                ← Previous
-                            </button>
-                            <button class="btn btn-primary" id="next-btn-{{ question.id }}" onclick="nextQuestion()" disabled>
-                                {% if question.id == questions|length %}Finish Quiz{% else %}Next →{% endif %}
-                            </button>
+                        <!-- Enhanced Navigation -->
+                        <div class="quiz-navigation mt-5">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <button class="btn btn-outline-secondary btn-lg px-4" id="prev-btn" onclick="previousQuestion()"
+                                        {% if question.id == 1 %}style="visibility: hidden;"{% endif %}>
+                                    <i class="fas fa-chevron-left me-2"></i> Previous
+                                </button>
+                                <div class="navigation-help text-center">
+                                    <small class="text-muted">Select an answer to continue</small>
+                                </div>
+                                <button class="btn btn-primary btn-lg px-4" id="next-btn-{{ question.id }}" onclick="nextQuestion()" disabled>
+                                    {% if question.id == questions|length %}
+                                        <i class="fas fa-flag-checkered me-2"></i> Finish Quiz
+                                    {% else %}
+                                        Next <i class="fas fa-chevron-right ms-2"></i>
+                                    {% endif %}
+                                </button>
+                            </div>
                         </div>
                         
                         <!-- Hidden data -->
@@ -185,7 +278,20 @@
                             </div>
                         </div>
                     </div>
-                    
+
+                    <!-- Comprehensive Review Section -->
+                    <div id="comprehensive-review" class="mt-5">
+                        <div class="card border-info">
+                            <div class="card-header bg-info text-white text-start">
+                                <h5 class="mb-0">📝 Complete Review - All Terms & Definitions</h5>
+                                <small>Review all vocabulary from this quiz, including individual terms from matching questions</small>
+                            </div>
+                            <div class="card-body" id="review-content">
+                                <!-- Review content will be populated by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="mt-4">
                         <a href="/quiz" class="btn btn-primary me-2">Take Another Quiz</a>
                         <a href="/" class="btn btn-outline-secondary">Back to Home</a>
@@ -211,6 +317,8 @@ const quizData = {
         correctMatches: {{ question.correct_matches|tojson }},
         terms: {{ question.terms|tojson }},
         definitions: {{ question.definitions|tojson }},
+        {% elif question.question_type == "multiple_choice" %}
+        options: {{ question.options|tojson }},
         {% endif %}
         wordId: {{ question.word_id }},
         questionType: "{{ question.question_type }}",
@@ -225,6 +333,25 @@ function updateProgress() {
     const progress = ((currentQuestion - 1) / totalQuestions) * 100;
     document.getElementById('progress-bar').style.width = progress + '%';
     document.getElementById('current-question').textContent = currentQuestion;
+
+    // Update percentage display
+    const percentageElement = document.getElementById('progress-percentage');
+    if (percentageElement) {
+        percentageElement.textContent = Math.round(progress) + '%';
+    }
+
+    // Update progress steps
+    const steps = document.querySelectorAll('.progress-step');
+    steps.forEach((step, index) => {
+        const stepNumber = index + 1;
+        step.classList.remove('completed', 'current');
+
+        if (stepNumber < currentQuestion) {
+            step.classList.add('completed');
+        } else if (stepNumber === currentQuestion) {
+            step.classList.add('current');
+        }
+    });
 }
 
 function showQuestion(questionNum) {
@@ -310,33 +437,43 @@ function nextQuestion() {
             return;
         }
         
-        // Check correctness against quiz data
+        // Check correctness per term against quiz data
         const questionData = quizData[currentQuestion];
         const correctMatches = questionData.correctMatches;
-        let isCorrect = true;
-        
+        let correctTermCount = 0;
+        let totalTermCount = 0;
+        const termResults = {};
+
         for (let termIdx in userMatches) {
-            if (userMatches[termIdx] !== correctMatches[termIdx]) {
-                isCorrect = false;
-                break;
+            totalTermCount++;
+            const isTermCorrect = userMatches[termIdx] === correctMatches[termIdx];
+            if (isTermCorrect) {
+                correctTermCount++;
             }
+            termResults[termIdx] = {
+                userAnswer: userMatches[termIdx],
+                correctAnswer: correctMatches[termIdx],
+                isCorrect: isTermCorrect
+            };
         }
+
+        // Add the correct term count to the overall score
+        correctAnswers += correctTermCount;
         
-        if (isCorrect) {
-            correctAnswers++;
-        }
-        
-        // Store user answer
+        // Store user answer with per-term results
         userAnswers[currentQuestion] = {
             matches: userMatches,
             questionType: 'matching',
-            isCorrect: isCorrect
+            termResults: termResults,
+            correctTermCount: correctTermCount,
+            totalTermCount: totalTermCount,
+            isCorrect: correctTermCount === totalTermCount // All terms correct
         };
+
+        console.log('Stored matching answer:', userMatches, 'Per-term results:', termResults, `${correctTermCount}/${totalTermCount} correct`);
         
-        console.log('Stored matching answer:', userMatches, 'Correct:', isCorrect);
-        
-        // Show matching feedback like other question types
-        showMatchingFeedback(currentQuestion, userMatches, correctMatches, isCorrect);
+        // Show matching feedback with per-term results
+        showMatchingFeedback(currentQuestion, userMatches, correctMatches, termResults, correctTermCount, totalTermCount);
         
         // Continue with next question after delay (like other question types)
         setTimeout(() => {
@@ -362,7 +499,8 @@ function nextQuestion() {
     } else {
         userAnswer = parseInt(selectedOption.value);
         correctAnswer = quizData[currentQuestion].correctAnswer;
-        isCorrect = userAnswer === correctAnswer;
+        // Ensure both are same type for comparison - critical bug fix
+        isCorrect = userAnswer === parseInt(correctAnswer);
     }
     
     // Get the chosen distractor word ID for mistake tracking
@@ -427,35 +565,51 @@ function previousQuestion() {
 function showFeedback(questionNum, isCorrect) {
     const feedbackDiv = document.querySelector(`[data-question="${questionNum}"] .answer-feedback`);
     const resultSpan = feedbackDiv.querySelector('.feedback-result');
-    const alertDiv = feedbackDiv.querySelector('.alert');
-    
+    const alertDiv = feedbackDiv.querySelector('.feedback-card');
+
     if (isCorrect) {
-        alertDiv.className = 'alert alert-success';
-        resultSpan.textContent = '✓ Correct!';
+        feedbackDiv.querySelector('.alert').className = 'alert alert-success';
+        resultSpan.textContent = 'Correct!';
     } else {
-        alertDiv.className = 'alert alert-danger';
-        resultSpan.textContent = '✗ Incorrect';
+        feedbackDiv.querySelector('.alert').className = 'alert alert-danger';
+        resultSpan.textContent = 'Incorrect';
     }
-    
+
     feedbackDiv.style.display = 'block';
-    
+
     // Disable all options
     document.querySelectorAll(`input[name="answer_${questionNum}"]`).forEach(input => {
         input.disabled = true;
     });
+
+    // Update navigation help text
+    const navHelp = document.querySelector('.navigation-help small');
+    if (navHelp) {
+        navHelp.textContent = 'Review the feedback and continue';
+    }
 }
 
 function showResults() {
     // Hide quiz container
     document.getElementById('quiz-container').style.display = 'none';
-    
+
     // Show results
     const resultsDiv = document.getElementById('quiz-results');
     resultsDiv.style.display = 'block';
-    
+
+    // Calculate actual total questions including individual terms in matching questions
+    let actualTotalQuestions = 0;
+    for (let i = 1; i <= totalQuestions; i++) {
+        if (userAnswers[i] && userAnswers[i].questionType === 'matching') {
+            actualTotalQuestions += userAnswers[i].totalTermCount;
+        } else {
+            actualTotalQuestions += 1; // Regular question counts as 1
+        }
+    }
+
     // Update result numbers
-    const incorrectCount = totalQuestions - correctAnswers;
-    const accuracy = Math.round((correctAnswers / totalQuestions) * 100);
+    const incorrectCount = actualTotalQuestions - correctAnswers;
+    const accuracy = Math.round((correctAnswers / actualTotalQuestions) * 100);
     
     document.getElementById('correct-count').textContent = correctAnswers;
     document.getElementById('incorrect-count').textContent = incorrectCount;
@@ -463,11 +617,360 @@ function showResults() {
     
     // Hide progress bar
     document.querySelector('.card.mb-4').style.display = 'none';
-    
-    // Submit results to server if session ID exists
-    if (sessionId && sessionId !== 'None') {
-        submitQuizResults();
+
+    // Populate comprehensive review section
+    populateComprehensiveReview();
+
+    // DON'T auto-submit - let user review first
+    // Add a submit button instead
+    addSubmitButton();
+}
+
+function populateComprehensiveReview(userAnswersData = null, quizDataParam = null) {
+    const reviewContent = document.getElementById('review-content');
+    if (!reviewContent) {
+        console.error('review-content element not found!');
+        return;
     }
+
+    console.log('Starting populateComprehensiveReview');
+
+    // Use provided data or try to get from various sources
+    let actualUserAnswers = userAnswersData || window.userAnswers || userAnswers || {};
+    let actualQuizData = quizDataParam || window.quizData || quizData || {};
+
+    console.log('Raw userAnswers keys:', Object.keys(actualUserAnswers));
+    console.log('Raw userAnswers:', actualUserAnswers);
+    console.log('Raw quizData keys:', Object.keys(actualQuizData));
+
+    // Check if the data structure is different than expected
+    for (let key in actualUserAnswers) {
+        console.log(`userAnswer[${key}]:`, actualUserAnswers[key]);
+    }
+
+    // Check if we have real quiz data
+    if (!actualUserAnswers || Object.keys(actualUserAnswers).length === 0) {
+        console.error('No quiz data found! Cannot populate comprehensive review.');
+        reviewContent.innerHTML = '<div class="alert alert-warning"><strong>No quiz data available for review.</strong> Please try taking the quiz again.</div>';
+        return;
+    }
+
+    let reviewHTML = '<div class="row">';
+    let termCount = 0;
+
+    // Collect all terms for review
+    for (let questionId in actualUserAnswers) {
+        console.log(`Processing question ${questionId}`);
+        const answer = actualUserAnswers[questionId];
+        const questionData = actualQuizData[questionId];
+
+        console.log('Answer:', answer);
+        console.log('Question data:', questionData);
+
+        if (!answer || !questionData) {
+            console.warn(`Missing data for question ${questionId}`);
+            continue;
+        }
+
+        // Handle different data structures based on what was actually stored
+        console.log(`Question ${questionId} condition check:`, answer.questionType === 'matching', !!(answer.termResults && questionData.terms));
+        if (answer.questionType === 'matching' || (answer.termResults && questionData.terms)) {
+            console.log(`Processing question ${questionId} as MATCHING`);
+            // Add each term from matching questions - termResults can be array or object
+            const termResults = answer.termResults;
+            if (Array.isArray(termResults)) {
+                // Handle array format
+                for (let i = 0; i < termResults.length; i++) {
+                    const termResult = termResults[i];
+
+                    // For matching questions, terms are stored as strings in questionData.terms array
+                    const termName = questionData.terms[i];
+                    // Get the correct definition for this term
+                    const correctDefIndex = questionData.correctMatches[i];
+                    const correctDefinition = questionData.definitions[correctDefIndex];
+
+                    reviewHTML += `
+                        <div class="col-md-6 mb-3">
+                            <div class="card h-100 ${termResult.isCorrect ? 'border-success' : 'border-danger'}">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <h6 class="card-title mb-1">
+                                            <strong>${termName}</strong>
+                                        </h6>
+                                        <span class="badge ${termResult.isCorrect ? 'bg-success' : 'bg-danger'}">
+                                            ${termResult.isCorrect ? '✓' : '✗'}
+                                        </span>
+                                    </div>
+                                    <p class="card-text mb-2"><strong>Definition:</strong> ${correctDefinition}</p>
+
+                                    ${termResult.isCorrect ?
+                                        `<div class="alert alert-success p-2 mb-2">
+                                            <small><strong>✓ Correct Match:</strong> ${correctDefinition}</small>
+                                        </div>` :
+                                        `<div class="alert alert-danger p-2 mb-2">
+                                            <small class="d-block"><strong>✗ You matched with:</strong> ${questionData.definitions[termResult.userAnswer]}</small>
+                                            <small class="d-block"><strong>✓ Should be:</strong> ${correctDefinition}</small>
+                                        </div>`
+                                    }
+
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <small class="text-muted">Matching</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    termCount++;
+                    console.log(`Added matching term: ${termName}`);
+                }
+            } else if (typeof termResults === 'object' && termResults !== null) {
+                // Handle object format (e.g., {0: {...}, 1: {...}, 2: {...}})
+                for (let termIdx in termResults) {
+                    const termResult = termResults[termIdx];
+                    const termIndex = parseInt(termIdx);
+
+                    // For matching questions, terms are stored as strings in questionData.terms array
+                    const termName = questionData.terms[termIndex];
+                    // Get the correct definition for this term
+                    const correctDefIndex = questionData.correctMatches[termIndex];
+                    const correctDefinition = questionData.definitions[correctDefIndex];
+
+                    reviewHTML += `
+                        <div class="col-md-6 mb-3">
+                            <div class="card h-100 ${termResult.isCorrect ? 'border-success' : 'border-danger'}">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <h6 class="card-title mb-1">
+                                            <strong>${termName}</strong>
+                                        </h6>
+                                        <span class="badge ${termResult.isCorrect ? 'bg-success' : 'bg-danger'}">
+                                            ${termResult.isCorrect ? '✓' : '✗'}
+                                        </span>
+                                    </div>
+                                    <p class="card-text mb-2"><strong>Definition:</strong> ${correctDefinition}</p>
+
+                                    ${termResult.isCorrect ?
+                                        `<div class="alert alert-success p-2 mb-2">
+                                            <small><strong>✓ Correct Match:</strong> ${correctDefinition}</small>
+                                        </div>` :
+                                        `<div class="alert alert-danger p-2 mb-2">
+                                            <small class="d-block"><strong>✗ You matched with:</strong> ${questionData.definitions[termResult.userAnswer]}</small>
+                                            <small class="d-block"><strong>✓ Should be:</strong> ${correctDefinition}</small>
+                                        </div>`
+                                    }
+
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <small class="text-muted">Matching</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    termCount++;
+                    console.log(`Added matching term: ${termName}`);
+                }
+            } else {
+                console.warn('termResults is not an array or object:', termResults);
+            }
+        } else {
+            // Handle different property names for non-matching questions
+            console.log(`ENTERING NON-MATCHING BRANCH for question ${questionId}, questionType: ${questionData.questionType}`);
+            const isCorrect = answer.isCorrect !== undefined ? answer.isCorrect : false;
+            let userAnswerText = 'Not answered';
+            let userSelectedIndex = answer.selected;
+
+            // Extract term from question text for multiple choice/true-false
+            let termName = 'Unknown term';
+            let termDefinition = 'No definition available';
+            let correctAnswerText = 'Unknown';
+
+            // Try to extract from explanation - multiple patterns
+            if (questionData.explanation) {
+                // Pattern 1: "TRUE: 'term' does mean 'definition'"
+                const trueMatch = questionData.explanation.match(/TRUE:\s*['"]([^'"]+)['"] does mean ['"]([^'"]+)['"]/);
+                if (trueMatch) {
+                    termName = trueMatch[1];
+                    termDefinition = trueMatch[2];
+                }
+
+                // Pattern 2: "FALSE: 'term' actually means 'definition'"
+                const falseMatch = questionData.explanation.match(/FALSE:\s*['"]([^'"]+)['"] actually means ['"]([^'"]+)['"]/);
+                if (falseMatch) {
+                    termName = falseMatch[1];
+                    termDefinition = falseMatch[2];
+                }
+
+                // Pattern 3: "'term' means: definition" (original)
+                const explMatch = questionData.explanation.match(/['"]([^'"]+)['"] means:\s*(.+)/);
+                if (explMatch) {
+                    termName = explMatch[1];
+                    termDefinition = explMatch[2];
+                }
+            }
+
+            // Debug what's actually in questionData
+            console.log(`Question ${questionId} - questionData.explanation:`, questionData.explanation);
+
+            // Extract term from explanation text since questionData.question is undefined
+            if (questionData.explanation) {
+                // First decode HTML entities for easier regex matching
+                const decodedExplanation = questionData.explanation
+                    .replace(/&#39;/g, "'")
+                    .replace(/&quot;/g, '"')
+                    .replace(/&amp;/g, '&')
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>');
+
+                console.log(`Decoded explanation: ${decodedExplanation}`);
+
+                // For TF questions: "FALSE: 'taw' actually means..." or "TRUE: 'word' means..."
+                const tfMatch = decodedExplanation.match(/(?:TRUE|FALSE):\s*'([^']+)'/);
+                if (tfMatch) {
+                    termName = tfMatch[1];
+                    console.log(`TF term extracted from explanation: ${termName}`);
+                }
+
+                // For MC questions: "'kinderspiel' means: A dramatic piece..."
+                const mcMatch = decodedExplanation.match(/'([^']+)'\s+means:/);
+                if (mcMatch) {
+                    termName = mcMatch[1];
+                    console.log(`MC term extracted from explanation: ${termName}`);
+                }
+
+                // For the comprehensive review, we should use the actual definition from the database
+                // rather than trying to parse it from explanation text
+                if (questionData.wordId && termName) {
+                    // Fetch the actual definition from the database
+                    fetch(`/api/words/${questionData.wordId}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            termDefinition = data.word.definition;
+                            console.log(`Fetched definition for ${termName}: ${termDefinition}`);
+                            // Update the review display with the real definition
+                            updateTermDefinitionInReview(questionId, termDefinition);
+                        })
+                        .catch(error => {
+                            console.error(`Failed to fetch definition for ${termName}:`, error);
+                            termDefinition = 'Definition unavailable';
+                        });
+                }
+            } else {
+                console.log(`Question ${questionId} - NO explanation available`);
+            }
+
+            // For multiple choice, try to get the answer text from various sources
+            if (questionData.questionType === 'multiple_choice') {
+                console.log(`Processing MC question ${questionId}, correctAnswer: ${questionData.correctAnswer}, userSelected: ${answer.selected}`);
+                // If options array exists, use it
+                if (questionData.options && questionData.correctAnswer !== undefined) {
+                    correctAnswerText = questionData.options[questionData.correctAnswer];
+                    if (answer.selected !== undefined && questionData.options) {
+                        userAnswerText = questionData.options[answer.selected];
+                    }
+                    console.log(`Using options array: user="${userAnswerText}", correct="${correctAnswerText}"`);
+                } else {
+                    // Fallback: use simple text based on answer indices
+                    correctAnswerText = `Answer choice ${questionData.correctAnswer}`;
+                    if (answer.selected !== undefined) {
+                        userAnswerText = `Answer choice ${answer.selected}`;
+                    }
+                    console.log(`Using fallback: user="${userAnswerText}", correct="${correctAnswerText}"`);
+                }
+            }
+
+            // For true/false, correct answer is True/False
+            if (questionData.questionType === 'true_false') {
+                correctAnswerText = questionData.correctAnswer ? 'True' : 'False';
+                userAnswerText = answer.selected ? 'True' : 'False';
+                // termDefinition should already be set from explanation extraction above
+            }
+
+            // Add single term from other question types
+            reviewHTML += `
+                <div class="col-md-6 mb-3" data-question-id="${questionId}">
+                    <div class="card h-100 ${isCorrect ? 'border-success' : 'border-danger'}">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h6 class="card-title mb-1">
+                                    <strong>${termName}</strong>
+                                </h6>
+                                <span class="badge ${isCorrect ? 'bg-success' : 'bg-danger'}">
+                                    ${isCorrect ? '✓' : '✗'}
+                                </span>
+                            </div>
+                            <p class="card-text mb-2"><strong>Definition:</strong> <span class="definition-text">${termDefinition}</span></p>
+
+                            ${!isCorrect ?
+                                `<div class="alert alert-danger p-2 mb-2">
+                                    <small class="d-block"><strong>✗ Your answer:</strong> ${userAnswerText}</small>
+                                    <small class="d-block"><strong>✓ Correct answer:</strong> ${correctAnswerText}</small>
+                                </div>` : ''
+                            }
+
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="text-muted">${questionData.questionType || questionData.question_type || 'QUESTION'}</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            termCount++;
+            console.log(`Adding non-matching question ${questionId}: ${questionData?.term || 'unknown'}`);
+        }
+    }
+
+    reviewHTML += '</div>';
+
+    console.log(`Generated review HTML for ${termCount} terms:`, reviewHTML);
+
+    if (termCount === 0) {
+        reviewHTML = '<div class="alert alert-info">No quiz data available for review. Please try taking another quiz.</div>';
+        console.warn('No terms found for review - showing fallback message');
+    }
+
+    reviewContent.innerHTML = reviewHTML;
+    console.log('Review content populated successfully');
+}
+
+function updateTermDefinitionInReview(questionId, definition) {
+    // Find the term card for this question and update its definition
+    const reviewContent = document.getElementById('review-content');
+    if (reviewContent) {
+        // Look for definition text to update - use a more specific selector
+        const definitionElement = reviewContent.querySelector(`[data-question-id="${questionId}"] .definition-text`);
+        if (definitionElement) {
+            definitionElement.textContent = definition;
+            console.log(`Updated definition display for question ${questionId}`);
+        } else {
+            console.log(`Could not find definition element for question ${questionId}`);
+        }
+    }
+}
+
+function addSubmitButton() {
+    // Add a button to submit results to server (optional)
+    const resultsSection = document.getElementById('quiz-results');
+    if (!resultsSection) return;
+
+    // Check if button already exists
+    if (document.getElementById('submit-results-btn')) return;
+
+    // Create submit button container
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'text-center mt-4 mb-4';
+    buttonContainer.innerHTML = `
+        <button id="submit-results-btn" class="btn btn-primary btn-lg me-3" onclick="submitQuizResults()">
+            💾 Save Results & Continue
+        </button>
+        <button class="btn btn-outline-secondary" onclick="location.href='/quiz'">
+            🔄 Take Another Quiz
+        </button>
+        <button class="btn btn-outline-info" onclick="location.href='/'">
+            🏠 Back to Home
+        </button>
+    `;
+
+    resultsSection.appendChild(buttonContainer);
 }
 
 function handleMatchingChange(selectElement) {
@@ -551,27 +1054,94 @@ function handleMatchingChange(selectElement) {
 }
 
 function submitQuizResults() {
+    // Calculate actual total questions including individual terms in matching questions
+    let actualTotalQuestions = 0;
+    for (let i = 1; i <= totalQuestions; i++) {
+        if (userAnswers[i] && userAnswers[i].questionType === 'matching') {
+            actualTotalQuestions += userAnswers[i].totalTermCount;
+        } else {
+            actualTotalQuestions += 1; // Regular question counts as 1
+        }
+    }
+
     // Prepare results data
     const questionResults = [];
     for (let questionId in userAnswers) {
         const answer = userAnswers[questionId];
-        questionResults.push({
-            word_id: quizData[questionId].wordId,
-            question_type: quizData[questionId].questionType,
-            is_correct: answer.isCorrect,
-            response_time_ms: answer.responseTime || 3000, // Default if not tracked
-            chosen_distractor_id: answer.isCorrect ? null : (answer.chosenDistractorId ? parseInt(answer.chosenDistractorId) : null)
-        });
+        const questionData = quizData[questionId];
+
+        if (answer.questionType === 'matching') {
+            // Create one result record per term in matching questions
+            for (let termIdx in answer.termResults) {
+                const termResult = answer.termResults[termIdx];
+                questionResults.push({
+                    word_id: questionData.words[termIdx].id, // Get specific word ID for this term
+                    question_type: 'matching',
+                    is_correct: termResult.isCorrect,
+                    response_time_ms: answer.responseTime || 3000,
+                    chosen_distractor_id: null, // Matching doesn't use distractor IDs
+                    user_answer: termResult.userAnswer,
+                    correct_answer: termResult.correctAnswer
+                });
+            }
+        } else {
+            // Handle regular questions as before
+            questionResults.push({
+                word_id: questionData.wordId,
+                question_type: questionData.questionType,
+                is_correct: answer.isCorrect,
+                response_time_ms: answer.responseTime || 3000,
+                chosen_distractor_id: answer.isCorrect ? null : (answer.chosenDistractorId ? parseInt(answer.chosenDistractorId) : null)
+            });
+        }
     }
     
+    // Collect all terms for comprehensive review
+    const allTermsReview = [];
+    for (let questionId in userAnswers) {
+        const answer = userAnswers[questionId];
+        const questionData = quizData[questionId];
+
+        if (answer.questionType === 'matching') {
+            // Add each term from matching questions
+            for (let termIdx in answer.termResults) {
+                const termResult = answer.termResults[termIdx];
+                const termData = questionData.words[termIdx];
+                allTermsReview.push({
+                    term: termData.term,
+                    definition: termData.definition,
+                    part_of_speech: termData.part_of_speech || 'NOUN',
+                    domain: termData.domain || '',
+                    question_type: 'matching',
+                    is_correct: termResult.isCorrect,
+                    user_answer: questionData.definitions[termResult.userAnswer] || '',
+                    correct_answer: questionData.definitions[termResult.correctAnswer] || ''
+                });
+            }
+        } else {
+            // Add single term from other question types
+            allTermsReview.push({
+                term: questionData.term,
+                definition: questionData.definition,
+                part_of_speech: questionData.part_of_speech || 'NOUN',
+                domain: questionData.domain || '',
+                question_type: questionData.questionType,
+                is_correct: answer.isCorrect,
+                user_answer: answer.selectedOption || '',
+                correct_answer: questionData.correctAnswer || ''
+            });
+        }
+    }
+
     const resultsData = {
         correctCount: correctAnswers,
-        totalQuestions: totalQuestions,
-        accuracy: Math.round((correctAnswers / totalQuestions) * 100),
+        totalQuestions: actualTotalQuestions,
+        accuracy: Math.round((correctAnswers / actualTotalQuestions) * 100),
         difficulty: "{{ difficulty }}",
         quizType: "{{ quiz_type }}",
-        score: Math.round((correctAnswers / totalQuestions) * 100),
-        questions: questionResults
+        score: Math.round((correctAnswers / actualTotalQuestions) * 100),
+        questions: questionResults,
+        reviewData: allTermsReview
     };
     
     // Submit via form
@@ -995,54 +1565,72 @@ function validateCurrentMatches(questionId) {
     console.log(`Matching validation: ${correctCount}/${termSlots.length} correct`);
 }
 
-function showMatchingFeedback(questionId, userMatches, correctMatches, isCorrect) {
+function showMatchingFeedback(questionId, userMatches, correctMatches, termResults, correctTermCount, totalTermCount) {
     const termSlots = document.querySelectorAll(`.term-slot[data-question="${questionId}"]`);
     const questionData = quizData[questionId];
-    
+
     // Show which matches were correct/incorrect with stronger visual feedback
     termSlots.forEach(slot => {
         const termIndex = parseInt(slot.dataset.termIndex);
-        const userDefIndex = userMatches[termIndex];
-        const correctDefIndex = correctMatches[termIndex];
-        
+        const termResult = termResults[termIndex];
+
         // Remove existing feedback classes
         slot.classList.remove('border-success', 'border-warning', 'border-danger');
-        
-        if (userDefIndex === correctDefIndex) {
+
+        if (termResult && termResult.isCorrect) {
             slot.classList.add('border-success');
             slot.style.backgroundColor = '#d4edda';
+
+            // Add checkmark or success indicator
+            let successIcon = slot.querySelector('.match-result-icon');
+            if (!successIcon) {
+                successIcon = document.createElement('span');
+                successIcon.className = 'match-result-icon badge bg-success ms-2';
+                successIcon.textContent = '✓';
+                slot.appendChild(successIcon);
+            }
         } else {
             slot.classList.add('border-danger');
             slot.style.backgroundColor = '#f8d7da';
+
+            // Add X or error indicator
+            let errorIcon = slot.querySelector('.match-result-icon');
+            if (!errorIcon) {
+                errorIcon = document.createElement('span');
+                errorIcon.className = 'match-result-icon badge bg-danger ms-2';
+                errorIcon.textContent = '✗';
+                slot.appendChild(errorIcon);
+            }
         }
-        
     });
-    
+
     // Show overall feedback message
     const container = document.querySelector(`.matching-container[data-question="${questionId}"]`) ||
                       document.querySelector(`[data-question="${questionId}"] .matching-container`);
-    
+
     if (container) {
         // Remove existing feedback
         const existingFeedback = container.querySelector('.matching-feedback');
         if (existingFeedback) {
             existingFeedback.remove();
         }
-        
+
         // Add feedback message
         const feedbackDiv = document.createElement('div');
-        feedbackDiv.className = `matching-feedback alert mt-3 ${isCorrect ? 'alert-success' : 'alert-warning'}`;
-        
-        const correctCount = Object.keys(userMatches).reduce((count, termIdx) => {
-            return count + (userMatches[termIdx] === correctMatches[termIdx] ? 1 : 0);
-        }, 0);
-        
-        const totalCount = Object.keys(correctMatches).length;
-        
-        if (isCorrect) {
-            feedbackDiv.innerHTML = `<strong>🎉 Perfect!</strong> You matched all ${totalCount} terms correctly!`;
+        const isPerfect = correctTermCount === totalTermCount;
+        feedbackDiv.className = `matching-feedback alert mt-3 ${isPerfect ? 'alert-success' : 'alert-info'}`;
+
+        if (isPerfect) {
+            feedbackDiv.innerHTML = `<strong>🎉 Perfect!</strong> You matched all ${totalTermCount} terms correctly!`;
         } else {
-            feedbackDiv.innerHTML = `<strong>📊 Result:</strong> ${correctCount}/${totalCount} correct matches. <span class="text-success">Green borders</span> show correct matches, <span class="text-danger">red borders</span> show incorrect ones.`;
+            const percentage = Math.round((correctTermCount / totalTermCount) * 100);
+            feedbackDiv.innerHTML = `
+                <strong>📊 Result:</strong> ${correctTermCount}/${totalTermCount} correct matches (${percentage}%)
+                <br><small class="text-muted">
+                    <span class="text-success">✓ Green borders</span> show correct matches,
+                    <span class="text-danger">✗ red borders</span> show incorrect ones.
+                </small>
+            `;
         }
         
         container.appendChild(feedbackDiv);
@@ -1192,6 +1780,520 @@ updateProgress();
 </script>
 
 <style>
+/* ========================================
+   ENHANCED QUIZ INTERFACE STYLES
+   ======================================== */
+
+/* Enhanced Quiz Progress */
+.quiz-progress-card {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    border-left: 4px solid var(--color-primary) !important;
+}
+
+.quiz-progress-info h4 {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.progress-percentage {
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.quiz-progress-steps {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e2e8f0;
+}
+
+.progress-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+}
+
+.step-circle {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background-color: #e2e8f0;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.progress-step.completed .step-circle {
+    background-color: var(--color-primary);
+    color: white;
+}
+
+.progress-step.current .step-circle {
+    background-color: var(--color-primary);
+    color: white;
+    transform: scale(1.1);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+
+/* Enhanced Question Cards */
+.question-card {
+    border-radius: 16px !important;
+}
+
+.question-header {
+    border-bottom: 2px solid #f1f5f9;
+    padding-bottom: 1.5rem;
+}
+
+.question-type-label {
+    font-size: 1.1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.question-word-highlight {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    padding: 1rem 1.5rem;
+    border-radius: 12px;
+    border-left: 4px solid var(--color-primary);
+}
+
+.featured-word {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-primary);
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    padding: 0 0.5rem;
+}
+
+.definition-block {
+    margin-top: 1.5rem;
+}
+
+.definition-quote {
+    background: #ffffff;
+    border: 2px solid #f1f5f9;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin: 0;
+    position: relative;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.definition-quote::before {
+    content: '\201C';
+    font-size: 3rem;
+    color: var(--color-primary);
+    position: absolute;
+    top: -0.5rem;
+    left: 1rem;
+    line-height: 1;
+}
+
+.definition-text {
+    font-size: 1.1rem;
+    line-height: 1.6;
+    color: #374151;
+    margin: 0;
+    padding-left: 2rem;
+}
+
+/* Enhanced Multiple Choice Options */
+.options-container {
+    margin-top: 2rem;
+}
+
+.option-card {
+    transition: all 0.2s ease;
+}
+
+.option-label {
+    display: block;
+    background: #ffffff;
+    border: 2px solid #f1f5f9;
+    border-radius: 12px;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.option-label:hover {
+    border-color: var(--color-primary);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(37, 99, 235, 0.15);
+}
+
+.option-content {
+    display: flex;
+    align-items: flex-start;
+    padding: 1.25rem;
+    gap: 1rem;
+}
+
+.option-letter {
+    width: 32px;
+    height: 32px;
+    background: var(--color-primary);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+}
+
+.option-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.option-main {
+    font-size: 1rem;
+    line-height: 1.5;
+    color: #374151;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+
+.option-details {
+    font-size: 0.9rem;
+    line-height: 1.4;
+    color: #6b7280;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.detail-item {
+    padding: 0.25rem 0.5rem;
+    background: #f9fafb;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+}
+
+.option-selector {
+    flex-shrink: 0;
+    margin-top: 0.25rem;
+}
+
+.radio-circle {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #d1d5db;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.radio-circle::after {
+    content: '';
+    width: 8px;
+    height: 8px;
+    background: var(--color-primary);
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    transition: transform 0.2s ease;
+}
+
+/* Selected state */
+input[type="radio"]:checked + .option-label {
+    border-color: var(--color-primary);
+    background: rgba(37, 99, 235, 0.02);
+}
+
+input[type="radio"]:checked + .option-label .option-letter {
+    background: var(--color-primary);
+    transform: scale(1.1);
+}
+
+input[type="radio"]:checked + .option-label .radio-circle {
+    border-color: var(--color-primary);
+}
+
+input[type="radio"]:checked + .option-label .radio-circle::after {
+    transform: translate(-50%, -50%) scale(1);
+}
+
+/* Enhanced True/False Options */
+.true-false-container {
+    margin-top: 2rem;
+}
+
+.tf-option-card {
+    height: 100%;
+    transition: all 0.2s ease;
+}
+
+.tf-option-label {
+    display: block;
+    height: 100%;
+    background: #ffffff;
+    border: 2px solid #f1f5f9;
+    border-radius: 12px;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.tf-option-label:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
+}
+
+.true-option .tf-option-label:hover {
+    border-color: #10b981;
+    box-shadow: 0 12px 30px rgba(16, 185, 129, 0.2);
+}
+
+.false-option .tf-option-label:hover {
+    border-color: #ef4444;
+    box-shadow: 0 12px 30px rgba(239, 68, 68, 0.2);
+}
+
+.tf-option-content {
+    padding: 2rem 1.5rem;
+    text-align: center;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.tf-icon {
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin-bottom: 1rem;
+    color: #6b7280;
+    transition: all 0.2s ease;
+}
+
+.true-option .tf-icon {
+    color: #10b981;
+}
+
+.false-option .tf-icon {
+    color: #ef4444;
+}
+
+.tf-text {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 0.5rem;
+}
+
+.tf-description {
+    font-size: 0.9rem;
+    color: #6b7280;
+    line-height: 1.4;
+}
+
+/* Selected True/False state */
+input[type="radio"]:checked + .tf-option-label {
+    background: rgba(37, 99, 235, 0.05);
+    border-color: var(--color-primary);
+}
+
+.true-option input[type="radio"]:checked + .tf-option-label {
+    background: rgba(16, 185, 129, 0.05);
+    border-color: #10b981;
+}
+
+.false-option input[type="radio"]:checked + .tf-option-label {
+    background: rgba(239, 68, 68, 0.05);
+    border-color: #ef4444;
+}
+
+input[type="radio"]:checked + .tf-option-label .tf-icon {
+    transform: scale(1.2);
+}
+
+/* Enhanced Feedback */
+.feedback-card {
+    border-radius: 12px;
+    overflow: hidden;
+    animation: fadeInUp 0.4s ease-out;
+}
+
+.feedback-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1.5rem;
+}
+
+.feedback-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.feedback-content {
+    flex: 1;
+}
+
+.feedback-result {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.feedback-explanation {
+    color: #6b7280;
+    line-height: 1.5;
+    margin-top: 0.5rem;
+}
+
+/* Correct feedback styling */
+.alert-success .feedback-card {
+    background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+    border: 2px solid #10b981;
+}
+
+.alert-success .feedback-icon {
+    background: #10b981;
+    color: white;
+}
+
+.alert-success .feedback-icon::before {
+    content: '✓';
+}
+
+.alert-success .feedback-result {
+    color: #065f46;
+}
+
+/* Incorrect feedback styling */
+.alert-danger .feedback-card {
+    background: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%);
+    border: 2px solid #ef4444;
+}
+
+.alert-danger .feedback-icon {
+    background: #ef4444;
+    color: white;
+}
+
+.alert-danger .feedback-icon::before {
+    content: '✗';
+}
+
+.alert-danger .feedback-result {
+    color: #991b1b;
+}
+
+/* Enhanced Navigation */
+.quiz-navigation {
+    border-top: 2px solid #f1f5f9;
+    padding-top: 2rem;
+}
+
+.navigation-help {
+    font-style: italic;
+}
+
+/* Animations */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+    .quiz-progress-visual {
+        text-align: center !important;
+        margin-top: 1rem;
+    }
+
+    .quiz-progress-card .d-flex {
+        flex-direction: column;
+        align-items: stretch !important;
+    }
+
+    .quiz-progress-steps {
+        overflow-x: auto;
+        padding-bottom: 0.5rem;
+    }
+
+    .quiz-progress-steps .d-flex {
+        min-width: max-content;
+    }
+
+    .question-word-highlight {
+        padding: 0.75rem 1rem;
+    }
+
+    .featured-word {
+        font-size: 1.25rem;
+        display: block;
+        margin: 0.5rem 0;
+    }
+
+    .definition-text {
+        font-size: 1rem;
+        padding-left: 1rem;
+    }
+
+    .option-content {
+        padding: 1rem;
+    }
+
+    .option-details {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .detail-item {
+        display: block;
+        width: 100%;
+        text-align: left;
+    }
+
+    .tf-option-content {
+        padding: 1.5rem 1rem;
+    }
+
+    .quiz-navigation .d-flex {
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .navigation-help {
+        order: -1;
+    }
+}
+
 /* Drag and Drop Styling for Matching Questions */
 .matching-container .definition-item {
     transition: all 0.3s ease;
