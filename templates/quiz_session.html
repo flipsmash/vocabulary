@@ -312,7 +312,7 @@ let correctAnswers = 0;
 const quizData = {
     {% for question in questions %}
     {{ question.id }}: {
-        correctAnswer: {% if question.correct_answer is sameas true %}true{% elif question.correct_answer is sameas false %}false{% elif question.correct_answer %}{{ question.correct_answer }}{% else %}null{% endif %},
+        correctAnswer: {% if question.correct_answer is sameas true %}true{% elif question.correct_answer is sameas false %}false{% elif question.correct_answer is not none %}{{ question.correct_answer }}{% else %}null{% endif %},
         {% if question.question_type == "matching" %}
         correctMatches: {{ question.correct_matches|tojson }},
         terms: {{ question.terms|tojson }},
@@ -499,8 +499,9 @@ function nextQuestion() {
     } else {
         userAnswer = parseInt(selectedOption.value);
         correctAnswer = quizData[currentQuestion].correctAnswer;
-        // Ensure both are same type for comparison - critical bug fix
-        isCorrect = userAnswer === parseInt(correctAnswer);
+        // Ensure both are integers for comparison - handle any type inconsistencies
+        correctAnswer = typeof correctAnswer === 'number' ? correctAnswer : parseInt(correctAnswer);
+        isCorrect = userAnswer === correctAnswer;
     }
     
     // Get the chosen distractor word ID for mistake tracking
