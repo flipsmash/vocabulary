@@ -110,7 +110,8 @@
                             <div class="matching-container">
                                 <div class="matching-instructions mb-4 p-3 bg-light border-left border-primary">
                                     <h6 class="text-primary mb-2">🎯 How to Match</h6>
-                                    <p class="mb-0 small">Drag definitions from the right onto the matching terms on the left. Click a definition on a term to remove it if you change your mind.</p>
+                                    <p class="mb-0 small"><strong>Click Method:</strong> Click a definition to select it (blue border), then click a drop zone to place it.<br>
+                                    <strong>Drag Method:</strong> Drag definitions from the right onto the matching terms on the left. Click a definition on a term to remove it if you change your mind.</p>
                                 </div>
                                 
                                 <div class="row">
@@ -152,7 +153,7 @@
                                                  style="cursor: grab; transition: all 0.3s ease; font-size: 0.9em;">
                                                 <div class="d-flex align-items-start">
                                                     <div class="drag-handle me-2 text-muted flex-shrink-0" style="font-size: 0.8em; margin-top: 2px;">
-                                                        <i class="fas fa-grip-vertical"></i>
+                                                        ⋮⋮
                                                     </div>
                                                     <div class="definition-content flex-grow-1">
                                                         <span class="definition-text">{{ definition }}</span>
@@ -230,7 +231,7 @@
                                 <div class="navigation-help text-center">
                                     <small class="text-muted">Select an answer to continue</small>
                                 </div>
-                                <button class="btn btn-primary btn-lg px-4" id="next-btn-{{ question.id }}" onclick="nextQuestion()" disabled>
+                                <button class="btn btn-primary btn-lg px-4" id="next-btn-{{ question.id }}" onclick="window.nextQuestion(); return false;" disabled>
                                     {% if question.id == questions|length %}
                                         <i class="fas fa-flag-checkered me-2"></i> Finish Quiz
                                     {% else %}
@@ -364,6 +365,16 @@ function showQuestion(questionNum) {
     const currentCard = document.querySelector(`[data-question="${questionNum}"]`);
     if (currentCard) {
         currentCard.style.display = 'block';
+
+        // Initialize matching functionality ONLY for this specific question if it's a matching question
+        const isMatchingQuestion = currentCard.querySelector('.matching-container');
+        if (isMatchingQuestion) {
+            console.log('Showing matching question', questionNum, 'initializing drag and drop for this question only');
+            // Wait a brief moment for the DOM to be ready
+            setTimeout(() => {
+                initializeMatchingForQuestion(questionNum);
+            }, 50);
+        }
     }
     
     // Update navigation buttons
@@ -533,6 +544,9 @@ function nextQuestion() {
         }
     }, 2000);
 }
+
+// Make nextQuestion globally accessible for onclick handlers
+window.nextQuestion = nextQuestion;
 
 function previousQuestion() {
     if (currentQuestion > 1) {
@@ -1198,37 +1212,206 @@ let draggedElement = null;
 let draggedFromTermSlot = null;
 
 function initializeMatchingQuestions() {
+    console.log('Initializing matching questions...');
+
+    // Global variable for click-based matching
+    let selectedDefinition = null;
+
     // Add event listeners to draggable definitions
-    document.querySelectorAll('.draggable').forEach(item => {
+    const draggableElements = document.querySelectorAll('.draggable');
+    console.log('Found', draggableElements.length, 'draggable elements');
+    draggableElements.forEach((item, index) => {
+        console.log('Attaching drag events to element', index, item);
         item.addEventListener('dragstart', handleDragStart);
         item.addEventListener('dragend', handleDragEnd);
+
+        // Add click event for alternative interaction
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+
+            // Clear previous selections
+            document.querySelectorAll('.definition-item').forEach(d => {
+                d.style.border = '';
+                d.style.backgroundColor = '';
+            });
+
+            // Select this definition
+            selectedDefinition = {
+                element: this,
+                index: this.dataset.defIndex,
+                text: this.querySelector('.definition-text').textContent,
+                questionId: this.dataset.question
+            };
+
+            // Highlight selection
+            this.style.border = '3px solid #2563eb';
+            this.style.backgroundColor = '#dbeafe';
+
+            console.log('Selected definition:', selectedDefinition.text);
+        });
+
+        // Ensure draggable attribute is set
+        item.setAttribute('draggable', 'true');
+
+        // Add visual feedback for draggable items
+        item.style.cursor = 'grab';
     });
-    
+
     // Add event listeners to drop zones (term slots)
-    document.querySelectorAll('.drop-zone').forEach(dropZone => {
+    const dropZones = document.querySelectorAll('.drop-zone');
+    console.log('Found', dropZones.length, 'drop zones');
+    dropZones.forEach((dropZone, index) => {
+        console.log('Attaching drop events to zone', index, dropZone);
         dropZone.addEventListener('dragover', handleDragOver);
         dropZone.addEventListener('drop', handleDrop);
         dropZone.addEventListener('click', handleDropZoneClick);
+
+        // Add click handler for definition placement
+        const dropArea = dropZone.querySelector('.definition-drop-area');
+        if (dropArea) {
+            dropArea.addEventListener('click', function(e) {
+                e.preventDefault();
+
+                if (!selectedDefinition) {
+                    // Flash a message to select a definition first
+                    const originalText = this.textContent;
+                    this.textContent = 'Select a definition first!';
+                    this.style.color = '#ef4444';
+                    setTimeout(() => {
+                        this.textContent = originalText;
+                        this.style.color = '';
+                    }, 1500);
+                    return;
+                }
+
+                // Place the definition
+                this.innerHTML = selectedDefinition.text;
+                this.style.backgroundColor = '#e7f3ff';
+                this.style.color = '#1e40af';
+                this.style.fontWeight = '500';
+
+                // Hide the selected definition from the bank
+                selectedDefinition.element.style.display = 'none';
+
+                // Update hidden input
+                const termSlot = this.closest('.term-slot');
+                const hiddenInput = termSlot.querySelector('.term-match-input');
+                if (hiddenInput) {
+                    hiddenInput.value = selectedDefinition.index;
+                }
+
+                // Clear selection
+                selectedDefinition = null;
+
+                // Clear all selection highlights
+                document.querySelectorAll('.definition-item').forEach(d => {
+                    d.style.border = '';
+                    d.style.backgroundColor = '';
+                });
+
+                // Check completion
+                const questionId = termSlot.dataset.question;
+                checkMatchingCompletion(questionId);
+
+                console.log('Definition placed via click');
+            });
+        }
     });
-    
+
     // CRITICAL: Add event listeners to definitions banks (to allow dropping back)
-    document.querySelectorAll('.definitions-bank').forEach(bank => {
+    const banks = document.querySelectorAll('.definitions-bank');
+    console.log('Found', banks.length, 'definition banks');
+    banks.forEach((bank, index) => {
+        console.log('Attaching bank events to', index, bank);
         bank.addEventListener('dragover', handleDragOver);
         bank.addEventListener('drop', handleDropToBank);
     });
-    
+
     // Initialize matching state for all visible matching questions
     document.querySelectorAll('.matching-container').forEach(container => {
         const questionId = container.closest('[data-question]').dataset.question;
         if (questionId) {
             checkMatchingCompletion(questionId);
-            
+
             // If question is already answered, disable all drag interactions
             if (isQuestionAnswered(questionId)) {
                 disableMatchingInteractions(questionId);
             }
         }
     });
+
+    console.log('Matching questions initialization complete');
+}
+
+function initializeMatchingForQuestion(questionNum) {
+    console.log('Initializing matching for question', questionNum);
+
+    // Only target elements for this specific question
+    const questionCard = document.querySelector(`[data-question="${questionNum}"]`);
+    if (!questionCard) {
+        console.log('Question card not found for', questionNum);
+        return;
+    }
+
+    // Add event listeners to draggable definitions for this question only
+    const draggableElements = questionCard.querySelectorAll('.draggable');
+    console.log('Found', draggableElements.length, 'draggable elements for question', questionNum);
+    draggableElements.forEach((item, index) => {
+        // Remove existing listeners to prevent duplicates
+        item.removeEventListener('dragstart', handleDragStart);
+        item.removeEventListener('dragend', handleDragEnd);
+
+        // Add fresh listeners
+        console.log('Attaching drag events to element', index, 'for question', questionNum);
+        item.addEventListener('dragstart', handleDragStart);
+        item.addEventListener('dragend', handleDragEnd);
+
+        // Ensure draggable attribute is set
+        item.setAttribute('draggable', 'true');
+        item.style.cursor = 'grab';
+    });
+
+    // Add event listeners to drop zones for this question only
+    const dropZones = questionCard.querySelectorAll('.drop-zone');
+    console.log('Found', dropZones.length, 'drop zones for question', questionNum);
+    dropZones.forEach((dropZone, index) => {
+        // Remove existing listeners to prevent duplicates
+        dropZone.removeEventListener('dragover', handleDragOver);
+        dropZone.removeEventListener('drop', handleDrop);
+        dropZone.removeEventListener('click', handleDropZoneClick);
+
+        // Add fresh listeners
+        console.log('Attaching drop events to zone', index, 'for question', questionNum);
+        dropZone.addEventListener('dragover', handleDragOver);
+        dropZone.addEventListener('drop', handleDrop);
+        dropZone.addEventListener('click', handleDropZoneClick);
+    });
+
+    // Add event listeners to definitions bank for this question only
+    const bank = questionCard.querySelector('.definitions-bank');
+    if (bank) {
+        console.log('Found definition bank for question', questionNum);
+        // Remove existing listeners to prevent duplicates
+        bank.removeEventListener('dragover', handleDragOver);
+        bank.removeEventListener('drop', handleDropToBank);
+
+        // Add fresh listeners
+        bank.addEventListener('dragover', handleDragOver);
+        bank.addEventListener('drop', handleDropToBank);
+    }
+
+    // Check completion status for this question
+    if (questionCard.querySelector('.matching-container')) {
+        const questionId = questionCard.dataset.question;
+        checkMatchingCompletion(questionId);
+
+        // If question is already answered, disable all drag interactions
+        if (isQuestionAnswered(questionId)) {
+            disableMatchingInteractions(questionId);
+        }
+    }
+
+    console.log('Matching initialization complete for question', questionNum);
 }
 
 function handleDragStart(e) {
@@ -1659,10 +1842,44 @@ function handleMatchingChange() {
 
 // Initialize drag-and-drop when page loads
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded, initializing matching questions');
     initializeMatchingQuestions();
     setupFeedbackObserver();
     setupMatchingCompletionMonitor();
+
+    // CRITICAL FIX: Add robust Next button event handlers
+    console.log('Setting up Next button event handlers');
+    const nextButtons = document.querySelectorAll('button[id*="next-btn"]');
+    nextButtons.forEach((btn, index) => {
+        // Remove existing onclick to avoid conflicts
+        btn.removeAttribute('onclick');
+
+        // Add multiple event listeners for reliability
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log(`Next button ${index} clicked via event listener`);
+            if (typeof nextQuestion === 'function') {
+                nextQuestion();
+            } else {
+                console.error('nextQuestion function not available');
+            }
+        });
+
+        // Also set onclick as backup
+        btn.onclick = function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log(`Next button ${index} clicked via onclick`);
+            if (typeof nextQuestion === 'function') {
+                nextQuestion();
+            }
+        };
+
+        console.log(`Next button ${index} (${btn.id}) event handlers added`);
+    });
 });
+
 
 // Set up MutationObserver to watch for feedback elements being added
 function setupFeedbackObserver() {
@@ -2411,7 +2628,8 @@ input[type="radio"]:checked + .tf-option-label .tf-icon {
 }
 
 .definition-item .definition-content {
-    pointer-events: none; /* Ensure drag events work properly */
+    /* Removed pointer-events: none as it was interfering with drag functionality */
+    user-select: none; /* Prevent text selection during drag */
 }
 </style>
 {% endblock %}
