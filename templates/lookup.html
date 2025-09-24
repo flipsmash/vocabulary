@@ -10,13 +10,13 @@
             <p class="text-muted mb-4">Look up definitions from multiple sources with reliability scoring</p>
             
             <!-- Search Form -->
-            <form method="POST" class="mb-4">
+            <form method="POST" class="mb-4" id="lookup-form">
                 <div class="input-group">
-                    <input type="text" name="term" class="form-control form-control-lg" 
-                           placeholder="Enter a word to look up..." 
-                           value="{% if term %}{{ term }}{% endif %}" 
+                    <input type="text" name="term" id="term-input" class="form-control form-control-lg"
+                           placeholder="Enter a word to look up..."
+                           value="{% if term %}{{ term }}{% endif %}"
                            required autofocus>
-                    <button class="btn btn-primary btn-lg" type="submit">
+                    <button class="btn btn-primary btn-lg" type="submit" id="lookup-btn">
                         🔍 Look Up
                     </button>
                 </div>
@@ -184,5 +184,72 @@
     border-color: #0d6efd;
     box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
 }
+
+.lookup-loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
 </style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('lookup-form');
+    const input = document.getElementById('term-input');
+    const button = document.getElementById('lookup-btn');
+
+    // Handle Enter key press - allow default form submission
+    input.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            if (input.value.trim()) {
+                showLoadingState();
+                // Let the default form submission happen
+            } else {
+                e.preventDefault();
+                input.focus();
+            }
+        }
+    });
+
+    // Handle form submission
+    form.addEventListener('submit', function(e) {
+        const term = input.value.trim();
+        if (!term) {
+            e.preventDefault();
+            input.focus();
+            return;
+        }
+        showLoadingState();
+        // Allow the form to submit normally
+    });
+
+    function showLoadingState() {
+        button.innerHTML = '🔄 Looking up...';
+        button.disabled = true;
+        form.classList.add('lookup-loading');
+    }
+
+    // Clear previous results when user starts typing a new word
+    input.addEventListener('input', function() {
+        // Reset button state
+        button.innerHTML = '🔍 Look Up';
+        button.disabled = false;
+        form.classList.remove('lookup-loading');
+
+        // Clear any existing results when user modifies the search term
+        const existingResults = document.querySelector('.card');
+        const existingAlert = document.querySelector('.alert-warning');
+        if (existingResults || existingAlert) {
+            // Only clear if the input value differs from the current displayed term
+            const currentTerm = "{% if term %}{{ term }}{% endif %}";
+            if (input.value.trim() !== currentTerm) {
+                if (existingResults) existingResults.style.display = 'none';
+                if (existingAlert) existingAlert.style.display = 'none';
+            }
+        }
+    });
+
+    // Focus the input on page load
+    input.focus();
+});
+</script>
 {% endblock %}
