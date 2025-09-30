@@ -2,6 +2,14 @@
 
 {% block title %}Quiz Session{% endblock %}
 
+{% block extra_head %}
+<!-- React and React-DOM -->
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<!-- Our compiled React component -->
+<script src="/static/js/matching-quiz.js"></script>
+{% endblock %}
+
 {% block content %}
 <div class="container mt-4">
     <div class="row justify-content-center">
@@ -106,68 +114,144 @@
                                 </div>
                             </div>
                             {% elif question.question_type == "matching" %}
-                            <!-- Matching Options - Drag Definitions onto Terms -->
-                            <div class="matching-container">
-                                <div class="matching-instructions mb-4 p-3 bg-light border-left border-primary">
-                                    <h6 class="text-primary mb-2">🎯 How to Match</h6>
-                                    <p class="mb-0 small"><strong>Click Method:</strong> Click a definition to select it (blue border), then click a drop zone to place it.<br>
-                                    <strong>Drag Method:</strong> Drag definitions from the right onto the matching terms on the left. Click a definition on a term to remove it if you change your mind.</p>
-                                </div>
-                                
-                                <div class="row">
-                                    <!-- Drop Zones for Terms -->
-                                    <div class="col-lg-7">
-                                        <h6 class="text-primary mb-3">📝 Terms (Drop Definitions Here)</h6>
-                                        <div class="terms-list" id="terms-list-{{ question.id }}">
-                                            {% for term in question.terms %}
-                                            <div class="term-slot card mb-2 p-2 border-primary drop-zone position-relative" 
-                                                 data-term-index="{{ loop.index0 }}" 
-                                                 data-term="{{ term }}"
-                                                 data-question="{{ question.id }}">
-                                                <div class="d-flex align-items-start mb-1">
-                                                    <div class="term-number badge bg-primary me-2 flex-shrink-0">{{ loop.index }}</div>
-                                                    <strong class="term-text flex-shrink-0 me-3">{{ term }}</strong>
-                                                    <div class="definition-drop-area flex-grow-1" 
-                                                         style="min-height: 40px; border: 2px dashed #dee2e6; border-radius: 6px; padding: 8px; background: #f8f9fa; font-size: 0.9em;">
-                                                        <span class="drop-placeholder text-muted" style="font-style: italic;">
-                                                            Drop definition here...
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <input type="hidden" name="match_{{ question.id }}_{{ loop.index0 }}" 
-                                                       value="" class="term-match-input">
-                                            </div>
-                                            {% endfor %}
-                                        </div>
-                                    </div>
-                                    
-                                    <!-- Draggable Definitions -->
-                                    <div class="col-lg-5">
-                                        <h6 class="text-success mb-3">📚 Available Definitions</h6>
-                                        <div class="definitions-bank" id="definitions-bank-{{ question.id }}">
-                                            {% for definition in question.definitions %}
-                                            <div class="definition-item card mb-2 p-2 border-success draggable" 
-                                                 draggable="true"
-                                                 data-def-index="{{ loop.index0 }}" 
-                                                 data-question="{{ question.id }}"
-                                                 style="cursor: grab; transition: all 0.3s ease; font-size: 0.9em;">
-                                                <div class="d-flex align-items-start">
-                                                    <div class="drag-handle me-2 text-muted flex-shrink-0" style="font-size: 0.8em; margin-top: 2px;">
-                                                        ⋮⋮
-                                                    </div>
-                                                    <div class="definition-content flex-grow-1">
-                                                        <span class="definition-text">{{ definition }}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            {% endfor %}
-                                        </div>
-                                        <div class="text-muted text-center mt-3">
-                                            💡 Drag these definitions onto the terms
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                            <!-- Modern Matching Interface with Alpine.js + Sortable.js -->
+                            <!-- React Matching Quiz -->
+                            <div id="matching-quiz-{{ question.id }}"></div>
+
+                            <script>
+                            // Initialize React matching quiz when DOM is ready
+                            document.addEventListener('DOMContentLoaded', function() {
+                                if (window.mountMatchingQuiz) {
+                                    const assignments = {};
+                                    window.mountMatchingQuiz('matching-quiz-{{ question.id }}', {
+                                        questionId: {{ question.id }},
+                                        terms: {{ question.terms_json|safe }},
+                                        definitions: {{ question.definitions_json|safe }},
+                                        correctMatches: {{ question.correct_matches_json|safe }},
+                                        onAssignmentChange: function(newAssignments) {
+                                            // Store assignments globally for Next button logic
+                                            window.matchingAssignments = window.matchingAssignments || {};
+                                            window.matchingAssignments[{{ question.id }}] = newAssignments;
+
+                                            console.log('Stored global assignments for question {{ question.id }}:', newAssignments);
+
+                                            // Check if all terms are assigned
+                                            const terms = {{ question.terms_json|safe }};
+                                            const allAssigned = terms.every((_, index) =>
+                                                newAssignments.hasOwnProperty(index) && newAssignments[index] !== undefined
+                                            );
+
+                                            console.log('Assignment check:', JSON.stringify(newAssignments), 'Terms length:', terms.length, 'All assigned:', allAssigned);
+
+                                            // Enable/disable Next button and update help text
+                                            const nextBtn = document.getElementById('next-btn-{{ question.id }}');
+                                            const navHelp = document.querySelector('.navigation-help small');
+
+                                            if (nextBtn) {
+                                                nextBtn.disabled = !allAssigned;
+                                                console.log('Next button disabled:', !allAssigned);
+
+                                                // Add backup click handler
+                                                if (allAssigned && !nextBtn._backupHandlerAdded) {
+                                                    // Remove the disabled attribute completely
+                                                    nextBtn.removeAttribute('disabled');
+                                                    nextBtn.style.pointerEvents = 'auto';
+                                                    nextBtn.style.opacity = '1';
+
+                                                    nextBtn.addEventListener('click', function(e) {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        console.log('EventListener click handler executing');
+                                                        try {
+                                                            console.log('Checking function availability:', {
+                                                                nextQuestion: typeof nextQuestion,
+                                                                windowNextQuestion: typeof window.nextQuestion,
+                                                                directNextQuestion: typeof window.directNextQuestion
+                                                            });
+
+                                                            if (typeof nextQuestion === 'function') {
+                                                                console.log('✅ Using direct nextQuestion');
+                                                                nextQuestion();
+                                                            } else if (typeof window.nextQuestion === 'function') {
+                                                                console.log('✅ Using window.nextQuestion');
+                                                                window.nextQuestion();
+                                                            } else if (typeof window.directNextQuestion === 'function') {
+                                                                console.log('✅ Using window.directNextQuestion');
+                                                                window.directNextQuestion();
+                                                            } else {
+                                                                console.log('❌ No function available, trying after delay...');
+                                                                setTimeout(() => {
+                                                                    if (typeof nextQuestion === 'function') {
+                                                                        nextQuestion();
+                                                                    } else if (typeof window.nextQuestion === 'function') {
+                                                                        window.nextQuestion();
+                                                                    } else if (typeof window.directNextQuestion === 'function') {
+                                                                        window.directNextQuestion();
+                                                                    } else {
+                                                                        console.error('❌ Still no function available after delay');
+                                                                    }
+                                                                }, 100);
+                                                            }
+                                                        } catch (error) {
+                                                            console.error('❌ Error in event listener:', error);
+                                                        }
+                                                        return false;
+                                                    });
+                                                    nextBtn._backupHandlerAdded = true;
+
+                                                    // Use inline function with comprehensive function checks
+                                                    nextBtn.setAttribute('onclick', `
+                                                        try {
+                                                            console.log('Inline click handler executing');
+                                                            console.log('Function check:', {
+                                                                nextQuestion: typeof nextQuestion,
+                                                                windowNextQuestion: typeof window.nextQuestion,
+                                                                directNextQuestion: typeof window.directNextQuestion
+                                                            });
+
+                                                            if (typeof nextQuestion === 'function') {
+                                                                console.log('✅ Using direct nextQuestion from inline');
+                                                                nextQuestion();
+                                                            } else if (typeof window.nextQuestion === 'function') {
+                                                                console.log('✅ Using window.nextQuestion from inline');
+                                                                window.nextQuestion();
+                                                            } else if (typeof window.directNextQuestion === 'function') {
+                                                                console.log('✅ Using window.directNextQuestion from inline');
+                                                                window.directNextQuestion();
+                                                            } else {
+                                                                console.log('❌ No function available from inline, trying delay...');
+                                                                setTimeout(() => {
+                                                                    if (typeof window.nextQuestion === 'function') {
+                                                                        window.nextQuestion();
+                                                                    } else if (typeof window.directNextQuestion === 'function') {
+                                                                        window.directNextQuestion();
+                                                                    } else {
+                                                                        console.error('❌ Still no function from inline after delay');
+                                                                    }
+                                                                }, 100);
+                                                            }
+                                                        } catch (e) {
+                                                            console.error('❌ Error in inline handler:', e);
+                                                        }
+                                                        return false;
+                                                    `);
+                                                }
+                                            }
+
+                                            if (navHelp) {
+                                                if (allAssigned) {
+                                                    navHelp.textContent = 'All terms matched! Click Next to continue';
+                                                    navHelp.className = 'text-success';
+                                                } else {
+                                                    navHelp.textContent = 'Drag definitions to terms to continue';
+                                                    navHelp.className = 'text-muted';
+                                                }
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                            </script>
                             {% else %}
                             <!-- Enhanced Multiple Choice Options -->
                             <div class="options-container">
@@ -304,16 +388,47 @@
 </div>
 
 <script>
-let currentQuestion = 1;
+console.log('🔄 Script execution started');
+
+let currentQuestionIndex = 0; // Index in the questions array (0-based)
 let totalQuestions = {{ questions|length }};
 let userAnswers = {};
 let correctAnswers = 0;
 
-// Quiz data
-const quizData = {
+// Get the actual question IDs in order
+const questionIds = [
     {% for question in questions %}
+    {{ question.id }}{% if not loop.last %},{% endif %}
+    {% endfor %}
+];
+
+console.log('✅ Variables defined:', {currentQuestionIndex, totalQuestions, questionIds});
+
+// Define nextQuestion wrapper immediately to ensure global availability
+function safeNextQuestion() {
+    console.log('🚀 safeNextQuestion called');
+    if (typeof nextQuestion === 'function') {
+        return nextQuestion();
+    } else {
+        console.error('nextQuestion function not available yet');
+        // Try again after a short delay
+        setTimeout(() => {
+            if (typeof nextQuestion === 'function') {
+                nextQuestion();
+            }
+        }, 100);
+    }
+}
+window.safeNextQuestion = safeNextQuestion;
+
+// Quiz data
+console.log('🔄 About to define quiz data');
+
+try {
+    var quizData = {
+        {% for question in questions %}
     {{ question.id }}: {
-        correctAnswer: {% if question.correct_answer is sameas true %}true{% elif question.correct_answer is sameas false %}false{% elif question.correct_answer is not none %}{{ question.correct_answer }}{% else %}null{% endif %},
+        correctAnswer: {% if question.question_type == "matching" %}null{% elif question.correct_answer is sameas true %}true{% elif question.correct_answer is sameas false %}false{% elif question.correct_answer is not none %}{{ question.correct_answer }}{% else %}null{% endif %},
         {% if question.question_type == "matching" %}
         correctMatches: {{ question.correct_matches|tojson }},
         terms: {{ question.terms|tojson }},
@@ -326,14 +441,23 @@ const quizData = {
         explanation: "{{ question.explanation|replace('"', '\\"') }}"
     }{% if not loop.last %},{% endif %}
     {% endfor %}
-};
+    };
+    console.log('✅ Quiz data successfully defined:', Object.keys(quizData));
+} catch (error) {
+    console.error('❌ Error defining quiz data:', error);
+    // Create empty fallback
+    var quizData = {};
+}
 
+console.log('✅ About to define sessionId');
 const sessionId = "{{ session_id }}";
+console.log('✅ SessionId defined:', sessionId);
 
 function updateProgress() {
-    const progress = ((currentQuestion - 1) / totalQuestions) * 100;
+    const currentQuestionNumber = currentQuestionIndex + 1;
+    const progress = (currentQuestionIndex / totalQuestions) * 100;
     document.getElementById('progress-bar').style.width = progress + '%';
-    document.getElementById('current-question').textContent = currentQuestion;
+    document.getElementById('current-question').textContent = currentQuestionNumber;
 
     // Update percentage display
     const percentageElement = document.getElementById('progress-percentage');
@@ -347,109 +471,125 @@ function updateProgress() {
         const stepNumber = index + 1;
         step.classList.remove('completed', 'current');
 
-        if (stepNumber < currentQuestion) {
+        if (stepNumber < currentQuestionNumber) {
             step.classList.add('completed');
-        } else if (stepNumber === currentQuestion) {
+        } else if (stepNumber === currentQuestionNumber) {
             step.classList.add('current');
         }
     });
 }
 
-function showQuestion(questionNum) {
+function showQuestion(questionId) {
     // Hide all questions
     document.querySelectorAll('.question-card').forEach(card => {
         card.style.display = 'none';
     });
-    
+
     // Show current question
-    const currentCard = document.querySelector(`[data-question="${questionNum}"]`);
+    const currentCard = document.querySelector(`[data-question="${questionId}"]`);
     if (currentCard) {
         currentCard.style.display = 'block';
 
         // Initialize matching functionality ONLY for this specific question if it's a matching question
         const isMatchingQuestion = currentCard.querySelector('.matching-container');
         if (isMatchingQuestion) {
-            console.log('Showing matching question', questionNum, 'initializing drag and drop for this question only');
+            console.log('Showing matching question', questionId, 'initializing drag and drop for this question only');
             // Wait a brief moment for the DOM to be ready
             setTimeout(() => {
-                initializeMatchingForQuestion(questionNum);
-            }, 50);
+                // Find the Alpine.js component for this question and call initSortable
+                const matchingContainer = isMatchingQuestion;
+                if (matchingContainer && matchingContainer._x_dataStack && matchingContainer._x_dataStack.length > 0 && matchingContainer._x_dataStack[0]) {
+                    console.log('Calling initSortable on visible question component');
+                    matchingContainer._x_dataStack[0].initSortable();
+                } else {
+                    console.log('Alpine.js data stack not ready for matching question', questionId);
+                }
+            }, 200);  // Longer delay to ensure DOM is ready
         }
     }
     
     // Update navigation buttons
     const prevBtn = document.getElementById('prev-btn');
-    const nextBtn = document.getElementById(`next-btn-${questionNum}`);
-    
-    if (questionNum === 1) {
-        prevBtn.style.visibility = 'hidden';
-    } else {
-        prevBtn.style.visibility = 'visible';
+    const nextBtn = document.getElementById(`next-btn-${questionId}`);
+
+    if (prevBtn) {
+        if (currentQuestionIndex === 0) {
+            prevBtn.style.visibility = 'hidden';
+        } else {
+            prevBtn.style.visibility = 'visible';
+        }
     }
-    
-    if (questionNum === totalQuestions) {
-        nextBtn.textContent = 'Finish Quiz';
-    } else {
-        nextBtn.textContent = 'Next →';
+
+    if (nextBtn) {
+        if (currentQuestionIndex === totalQuestions - 1) {
+            nextBtn.textContent = 'Finish Quiz';
+        } else {
+            nextBtn.textContent = 'Next →';
+        }
     }
-    
-    // Check if question is already answered
-    const selectedOption = document.querySelector(`input[name="answer_${questionNum}"]:checked`);
-    nextBtn.disabled = !selectedOption;
-    
-    // For matching questions, check if they need button state fix
-    const currentQuestionData = quizData[questionNum - 1];
+
+    // Check if question is already answered - but skip for matching questions
+    const currentQuestionData = quizData && quizData[questionId];
     if (currentQuestionData && currentQuestionData.questionType === 'matching') {
-        // IMMEDIATE check - no delay
-        checkMatchingCompletion(questionNum);
-        
-        // Multiple checks with increasing delays to ensure reliability
-        setTimeout(() => {
-            checkMatchingCompletion(questionNum);
-        }, 100);
-        setTimeout(() => {
-            checkMatchingCompletion(questionNum);
-        }, 300);
-        setTimeout(() => {
-            checkMatchingCompletion(questionNum);
-        }, 600);
-        setTimeout(() => {
-            checkMatchingCompletion(questionNum);
-        }, 1000);
+        // For matching questions, the React component handles button state
+        console.log('Matching question detected, skipping radio button check');
+        // Initial state - will be updated by React component
+        if (nextBtn) nextBtn.disabled = true;
+
+        // Set initial help text for matching questions
+        const navHelp = document.querySelector('.navigation-help small');
+        if (navHelp) {
+            navHelp.textContent = 'Drag definitions to terms to continue';
+            navHelp.className = 'text-muted';
+        }
+    } else {
+        // For non-matching questions, check if option is selected
+        const selectedOption = document.querySelector(`input[name="answer_${questionId}"]:checked`);
+        nextBtn.disabled = !selectedOption;
     }
 }
 
+console.log('✅ About to define nextQuestion function');
+
 function nextQuestion() {
-    const questionType = quizData[currentQuestion].questionType;
-    console.log('Next question clicked, current:', currentQuestion, 'type:', questionType);
+    console.log('✅ nextQuestion function executing');
+    const currentQuestionId = questionIds[currentQuestionIndex];
+    console.log('Current question ID:', currentQuestionId, 'Index:', currentQuestionIndex);
+    console.log('QuizData available:', typeof quizData, 'Keys:', quizData ? Object.keys(quizData) : 'undefined');
+
+    if (!quizData) {
+        console.error('❌ quizData is not available');
+        return;
+    }
+
+    const currentQuestionData = quizData[currentQuestionId];
+    if (!currentQuestionData) {
+        console.error('❌ No quiz data found for question', currentQuestionId);
+        console.log('Available question IDs in quizData:', Object.keys(quizData));
+        return;
+    }
+    const questionType = currentQuestionData.questionType;
     
     let userAnswer, correctAnswer, isCorrect;
     
     if (questionType === "matching") {
-        // Handle matching questions - collect matches from hidden inputs
-        const termSlots = document.querySelectorAll(`.term-slot[data-question="${currentQuestion}"]`);
-        const userMatches = {};
-        let allMatched = true;
-        
-        termSlots.forEach(slot => {
-            const termIndex = parseInt(slot.dataset.termIndex);
-            const hiddenInput = slot.querySelector('.term-match-input');
-            const defIndex = hiddenInput ? hiddenInput.value : '';
-            
-            if (defIndex === '') {
-                allMatched = false;
-            } else {
-                userMatches[termIndex] = parseInt(defIndex);
-            }
-        });
-        
-        if (!allMatched) {
-            console.error('Not all matches completed for question', currentQuestion);
+        // Handle matching questions - get matches from React component global state
+        const userMatches = window.matchingAssignments && window.matchingAssignments[currentQuestionId]
+            ? window.matchingAssignments[currentQuestionId]
+            : {};
+
+        // Check if all terms have matches
+        const questionData = currentQuestionData;
+        const expectedTermCount = questionData.terms ? questionData.terms.length : 0;
+        const actualMatchCount = Object.keys(userMatches).length;
+
+        if (actualMatchCount !== expectedTermCount) {
+            console.error('Not all matches completed for question', currentQuestionId);
             return;
         }
         
         // Check correctness per term against quiz data
-        const questionData = quizData[currentQuestion];
+        // Reuse the questionData variable already declared above
         const correctMatches = questionData.correctMatches;
         let correctTermCount = 0;
         let totalTermCount = 0;
@@ -472,7 +612,7 @@ function nextQuestion() {
         correctAnswers += correctTermCount;
         
         // Store user answer with per-term results
-        userAnswers[currentQuestion] = {
+        userAnswers[currentQuestionId] = {
             matches: userMatches,
             questionType: 'matching',
             termResults: termResults,
@@ -482,15 +622,15 @@ function nextQuestion() {
         };
 
         console.log('Stored matching answer:', userMatches, 'Per-term results:', termResults, `${correctTermCount}/${totalTermCount} correct`);
-        
+
         // Show matching feedback with per-term results
-        showMatchingFeedback(currentQuestion, userMatches, correctMatches, termResults, correctTermCount, totalTermCount);
+        showMatchingFeedback(currentQuestionId, userMatches, correctMatches, termResults, correctTermCount, totalTermCount);
         
         // Continue with next question after delay (like other question types)
         setTimeout(() => {
-            if (currentQuestion < totalQuestions) {
-                currentQuestion++;
-                showQuestion(currentQuestion);
+            if (currentQuestionIndex < totalQuestions - 1) {
+                currentQuestionIndex++;
+                showQuestion(questionIds[currentQuestionIndex]);
                 updateProgress();
             } else {
                 showResults();
@@ -500,16 +640,16 @@ function nextQuestion() {
     }
     
     // Handle multiple choice and true/false questions
-    const selectedOption = document.querySelector(`input[name="answer_${currentQuestion}"]:checked`);
+    const selectedOption = document.querySelector(`input[name="answer_${currentQuestionId}"]:checked`);
     if (!selectedOption) return;
     
     if (questionType === "true_false") {
         userAnswer = selectedOption.value === "true";
-        correctAnswer = quizData[currentQuestion].correctAnswer;
+        correctAnswer = currentQuestionData.correctAnswer;
         isCorrect = userAnswer === correctAnswer;
     } else {
         userAnswer = parseInt(selectedOption.value);
-        correctAnswer = quizData[currentQuestion].correctAnswer;
+        correctAnswer = currentQuestionData.correctAnswer;
         // Ensure both are integers for comparison - handle any type inconsistencies
         correctAnswer = typeof correctAnswer === 'number' ? correctAnswer : parseInt(correctAnswer);
         isCorrect = userAnswer === correctAnswer;
@@ -519,7 +659,7 @@ function nextQuestion() {
     const chosenDistractorId = selectedOption.getAttribute('data-word-id');
     
     // Store user answer
-    userAnswers[currentQuestion] = {
+    userAnswers[currentQuestionId] = {
         selected: userAnswer,
         correct: correctAnswer,
         isCorrect: isCorrect,
@@ -531,13 +671,13 @@ function nextQuestion() {
     }
     
     // Show feedback
-    showFeedback(currentQuestion, isCorrect);
-    
+    showFeedback(currentQuestionId, isCorrect);
+
     // Move to next question after delay
     setTimeout(() => {
-        if (currentQuestion < totalQuestions) {
-            currentQuestion++;
-            showQuestion(currentQuestion);
+        if (currentQuestionIndex < totalQuestions - 1) {
+            currentQuestionIndex++;
+            showQuestion(questionIds[currentQuestionIndex]);
             updateProgress();
         } else {
             showResults();
@@ -547,33 +687,19 @@ function nextQuestion() {
 
 // Make nextQuestion globally accessible for onclick handlers
 window.nextQuestion = nextQuestion;
+console.log('✅ nextQuestion function defined and assigned to window.nextQuestion');
+
+// Also create a direct reference for the inline handlers
+window.directNextQuestion = nextQuestion;
+console.log('✅ directNextQuestion also assigned');
 
 function previousQuestion() {
-    if (currentQuestion > 1) {
-        currentQuestion--;
-        showQuestion(currentQuestion);
+    if (currentQuestionIndex > 0) {
+        currentQuestionIndex--;
+        showQuestion(questionIds[currentQuestionIndex]);
         updateProgress();
-        
-        // Check if this is a matching question and fix button state if needed
-        const currentQuestionData = quizData[currentQuestion];
-        if (currentQuestionData && currentQuestionData.questionType === 'matching') {
-            // IMMEDIATE check - no delay
-            checkMatchingCompletion(currentQuestion);
-            
-            // Multiple checks with increasing delays to ensure reliability
-            setTimeout(() => {
-                checkMatchingCompletion(currentQuestion);
-            }, 50);
-            setTimeout(() => {
-                checkMatchingCompletion(currentQuestion);
-            }, 200);
-            setTimeout(() => {
-                checkMatchingCompletion(currentQuestion);
-            }, 500);
-            setTimeout(() => {
-                checkMatchingCompletion(currentQuestion);
-            }, 1000);
-        }
+
+        // For matching questions, button state is handled by React component
     }
 }
 
@@ -601,6 +727,60 @@ function showFeedback(questionNum, isCorrect) {
     const navHelp = document.querySelector('.navigation-help small');
     if (navHelp) {
         navHelp.textContent = 'Review the feedback and continue';
+    }
+}
+
+function showMatchingFeedback(questionId, userMatches, correctMatches, termResults, correctTermCount, totalTermCount) {
+    console.log('Showing matching feedback for question', questionId);
+
+    // Find the feedback container for this question
+    const feedbackDiv = document.querySelector(`[data-question="${questionId}"] .answer-feedback`);
+    if (!feedbackDiv) {
+        console.warn('No feedback div found for matching question', questionId);
+        return;
+    }
+
+    const resultSpan = feedbackDiv.querySelector('.feedback-result');
+    const alertDiv = feedbackDiv.querySelector('.alert');
+
+    // Determine overall correctness
+    const allCorrect = correctTermCount === totalTermCount;
+
+    if (allCorrect) {
+        if (alertDiv) alertDiv.className = 'alert alert-success';
+        if (resultSpan) resultSpan.textContent = `Perfect! All ${totalTermCount} matches correct!`;
+    } else {
+        if (alertDiv) alertDiv.className = 'alert alert-warning';
+        if (resultSpan) resultSpan.textContent = `${correctTermCount} out of ${totalTermCount} matches correct`;
+    }
+
+    // Show detailed feedback for each term if there's a feedback details area
+    const feedbackDetails = feedbackDiv.querySelector('.feedback-details');
+    if (feedbackDetails && termResults) {
+        let detailsHTML = '<ul class="list-unstyled mt-2 small">';
+        for (let termIdx in termResults) {
+            const result = termResults[termIdx];
+            const icon = result.isCorrect ? '✅' : '❌';
+            detailsHTML += `<li>${icon} Term ${parseInt(termIdx) + 1}: ${result.isCorrect ? 'Correct' : 'Incorrect'}</li>`;
+        }
+        detailsHTML += '</ul>';
+        feedbackDetails.innerHTML = detailsHTML;
+    }
+
+    // Show the feedback
+    feedbackDiv.style.display = 'block';
+
+    // Disable the matching interface (make items non-draggable)
+    const matchingContainer = document.querySelector(`[data-question="${questionId}"] .matching-container`);
+    if (matchingContainer) {
+        matchingContainer.style.pointerEvents = 'none';
+        matchingContainer.style.opacity = '0.7';
+    }
+
+    // Update navigation help text
+    const navHelp = document.querySelector('.navigation-help small');
+    if (navHelp) {
+        navHelp.textContent = 'Review the matching results and continue';
     }
 }
 
@@ -636,9 +816,12 @@ function showResults() {
     // Populate comprehensive review section
     populateComprehensiveReview();
 
-    // DON'T auto-submit - let user review first
-    // Add a submit button instead
-    addSubmitButton();
+    // AUTO-SUBMIT results in background - no manual action required
+    console.log('🔄 Auto-saving quiz results...');
+    autoSaveQuizResults();
+
+    // Show navigation buttons (no manual save needed)
+    addNavigationButtons();
 }
 
 function populateComprehensiveReview(userAnswersData = null, quizDataParam = null) {
@@ -1179,16 +1362,176 @@ function submitQuizResults() {
     form.submit();
 }
 
+function autoSaveQuizResults() {
+    // Calculate actual total questions including individual terms in matching questions
+    let actualTotalQuestions = 0;
+    for (let i = 1; i <= totalQuestions; i++) {
+        if (userAnswers[i] && userAnswers[i].questionType === 'matching') {
+            actualTotalQuestions += userAnswers[i].totalTermCount;
+        } else {
+            actualTotalQuestions += 1; // Regular question counts as 1
+        }
+    }
+
+    // Prepare results data (same as submitQuizResults but for AJAX)
+    const questionResults = [];
+    for (let questionId in userAnswers) {
+        const answer = userAnswers[questionId];
+        const questionData = quizData[questionId];
+
+        if (answer.questionType === 'matching') {
+            // Create one result record per term in matching questions
+            for (let termIdx in answer.termResults) {
+                const termResult = answer.termResults[termIdx];
+                questionResults.push({
+                    word_id: questionData.words[termIdx].id, // Get specific word ID for this term
+                    question_type: 'matching',
+                    is_correct: termResult.isCorrect,
+                    response_time_ms: answer.responseTime || 3000,
+                    chosen_distractor_id: null, // Matching doesn't use distractor IDs
+                    user_answer: termResult.userAnswer,
+                    correct_answer: termResult.correctAnswer
+                });
+            }
+        } else {
+            // Handle regular questions as before
+            questionResults.push({
+                word_id: questionData.wordId,
+                question_type: questionData.questionType,
+                is_correct: answer.isCorrect,
+                response_time_ms: answer.responseTime || 3000,
+                chosen_distractor_id: answer.isCorrect ? null : (answer.chosenDistractorId ? parseInt(answer.chosenDistractorId) : null)
+            });
+        }
+    }
+
+    // Collect all terms for comprehensive review
+    const allTermsReview = [];
+    for (let questionId in userAnswers) {
+        const answer = userAnswers[questionId];
+        const questionData = quizData[questionId];
+
+        if (answer.questionType === 'matching') {
+            // Add each term from matching questions
+            for (let termIdx in answer.termResults) {
+                const termResult = answer.termResults[termIdx];
+                const termData = questionData.words[termIdx];
+                allTermsReview.push({
+                    term: termData.term,
+                    definition: termData.definition,
+                    part_of_speech: termData.part_of_speech || 'NOUN',
+                    domain: termData.domain || '',
+                    question_type: 'matching',
+                    is_correct: termResult.isCorrect,
+                    user_answer: questionData.definitions[termResult.userAnswer] || '',
+                    correct_answer: questionData.definitions[termResult.correctAnswer] || ''
+                });
+            }
+        } else {
+            // Add single term from other question types
+            allTermsReview.push({
+                term: questionData.term,
+                definition: questionData.definition,
+                part_of_speech: questionData.part_of_speech || 'NOUN',
+                domain: questionData.domain || '',
+                question_type: questionData.questionType,
+                is_correct: answer.isCorrect,
+                user_answer: answer.selectedOption || '',
+                correct_answer: questionData.correctAnswer || ''
+            });
+        }
+    }
+
+    const resultsData = {
+        correctCount: correctAnswers,
+        totalQuestions: actualTotalQuestions,
+        accuracy: Math.round((correctAnswers / actualTotalQuestions) * 100),
+        difficulty: "{{ difficulty }}",
+        quizType: "{{ quiz_type }}",
+        score: Math.round((correctAnswers / actualTotalQuestions) * 100),
+        questions: questionResults,
+        reviewData: allTermsReview
+    };
+
+    // Submit via AJAX instead of form redirect
+    fetch('/quiz/submit', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `session_id=${encodeURIComponent(sessionId)}&results=${encodeURIComponent(JSON.stringify(resultsData))}`
+    })
+    .then(response => {
+        if (response.ok) {
+            console.log('✅ Quiz results saved successfully');
+            // Show success indicator
+            showSaveSuccessIndicator();
+        } else {
+            console.error('❌ Failed to save quiz results');
+            showSaveErrorIndicator();
+        }
+    })
+    .catch(error => {
+        console.error('❌ Error saving quiz results:', error);
+        showSaveErrorIndicator();
+    });
+}
+
+function addNavigationButtons() {
+    // Add navigation buttons (no manual save needed)
+    const resultsSection = document.getElementById('quiz-results');
+    if (!resultsSection) return;
+
+    // Check if buttons already exist
+    if (document.getElementById('navigation-buttons')) return;
+
+    // Create navigation button container
+    const buttonContainer = document.createElement('div');
+    buttonContainer.id = 'navigation-buttons';
+    buttonContainer.className = 'text-center mt-4 mb-4';
+    buttonContainer.innerHTML = `
+        <div class="alert alert-success d-none" id="save-success">
+            ✅ Results saved successfully!
+        </div>
+        <div class="alert alert-danger d-none" id="save-error">
+            ❌ Failed to save results. Please try refreshing the page.
+        </div>
+        <button class="btn btn-primary btn-lg me-3" onclick="location.href='/quiz'">
+            🔄 Take Another Quiz
+        </button>
+        <button class="btn btn-outline-info" onclick="location.href='/'">
+            🏠 Back to Home
+        </button>
+    `;
+
+    resultsSection.appendChild(buttonContainer);
+}
+
+function showSaveSuccessIndicator() {
+    const successDiv = document.getElementById('save-success');
+    if (successDiv) {
+        successDiv.classList.remove('d-none');
+    }
+}
+
+function showSaveErrorIndicator() {
+    const errorDiv = document.getElementById('save-error');
+    if (errorDiv) {
+        errorDiv.classList.remove('d-none');
+    }
+}
+
 // Enable next button when option is selected
 document.addEventListener('change', function(e) {
     if (e.target.type === 'radio') {
-        const questionNum = parseInt(e.target.dataset.question);
-        console.log('Radio change event:', questionNum, 'current:', currentQuestion);
-        if (questionNum === currentQuestion) {
-            const nextBtn = document.getElementById(`next-btn-${questionNum}`);
+        const questionId = parseInt(e.target.dataset.question);
+        const currentQuestionId = questionIds[currentQuestionIndex];
+        console.log('Radio change event:', questionId, 'current:', currentQuestionId);
+        if (questionId === currentQuestionId) {
+            const nextBtn = document.getElementById(`next-btn-${questionId}`);
             if (nextBtn) {
                 nextBtn.disabled = false;
-                console.log('Next button enabled for question', questionNum);
+                console.log('Next button enabled for question', questionId);
             }
         }
     }
@@ -1197,9 +1540,10 @@ document.addEventListener('change', function(e) {
 // Also add click event listener as backup
 document.addEventListener('click', function(e) {
     if (e.target.type === 'radio') {
-        const questionNum = parseInt(e.target.dataset.question);
-        if (questionNum === currentQuestion) {
-            const nextBtn = document.getElementById(`next-btn-${questionNum}`);
+        const questionId = parseInt(e.target.dataset.question);
+        const currentQuestionId = questionIds[currentQuestionIndex];
+        if (questionId === currentQuestionId) {
+            const nextBtn = document.getElementById(`next-btn-${questionId}`);
             if (nextBtn) {
                 nextBtn.disabled = false;
             }
@@ -1207,793 +1551,8 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// Drag and Drop Functionality for Matching Questions
-let draggedElement = null;
-let draggedFromTermSlot = null;
+// Old complex drag-and-drop code has been removed - now using Alpine.js + Sortable.js
 
-function initializeMatchingQuestions() {
-    console.log('Initializing matching questions...');
-
-    // Global variable for click-based matching
-    let selectedDefinition = null;
-
-    // Add event listeners to draggable definitions
-    const draggableElements = document.querySelectorAll('.draggable');
-    console.log('Found', draggableElements.length, 'draggable elements');
-    draggableElements.forEach((item, index) => {
-        console.log('Attaching drag events to element', index, item);
-        item.addEventListener('dragstart', handleDragStart);
-        item.addEventListener('dragend', handleDragEnd);
-
-        // Add click event for alternative interaction
-        item.addEventListener('click', function(e) {
-            e.preventDefault();
-
-            // Clear previous selections
-            document.querySelectorAll('.definition-item').forEach(d => {
-                d.style.border = '';
-                d.style.backgroundColor = '';
-            });
-
-            // Select this definition
-            selectedDefinition = {
-                element: this,
-                index: this.dataset.defIndex,
-                text: this.querySelector('.definition-text').textContent,
-                questionId: this.dataset.question
-            };
-
-            // Highlight selection
-            this.style.border = '3px solid #2563eb';
-            this.style.backgroundColor = '#dbeafe';
-
-            console.log('Selected definition:', selectedDefinition.text);
-        });
-
-        // Ensure draggable attribute is set
-        item.setAttribute('draggable', 'true');
-
-        // Add visual feedback for draggable items
-        item.style.cursor = 'grab';
-    });
-
-    // Add event listeners to drop zones (term slots)
-    const dropZones = document.querySelectorAll('.drop-zone');
-    console.log('Found', dropZones.length, 'drop zones');
-    dropZones.forEach((dropZone, index) => {
-        console.log('Attaching drop events to zone', index, dropZone);
-        dropZone.addEventListener('dragover', handleDragOver);
-        dropZone.addEventListener('drop', handleDrop);
-        dropZone.addEventListener('click', handleDropZoneClick);
-
-        // Add click handler for definition placement
-        const dropArea = dropZone.querySelector('.definition-drop-area');
-        if (dropArea) {
-            dropArea.addEventListener('click', function(e) {
-                e.preventDefault();
-
-                if (!selectedDefinition) {
-                    // Flash a message to select a definition first
-                    const originalText = this.textContent;
-                    this.textContent = 'Select a definition first!';
-                    this.style.color = '#ef4444';
-                    setTimeout(() => {
-                        this.textContent = originalText;
-                        this.style.color = '';
-                    }, 1500);
-                    return;
-                }
-
-                // Place the definition
-                this.innerHTML = selectedDefinition.text;
-                this.style.backgroundColor = '#e7f3ff';
-                this.style.color = '#1e40af';
-                this.style.fontWeight = '500';
-
-                // Hide the selected definition from the bank
-                selectedDefinition.element.style.display = 'none';
-
-                // Update hidden input
-                const termSlot = this.closest('.term-slot');
-                const hiddenInput = termSlot.querySelector('.term-match-input');
-                if (hiddenInput) {
-                    hiddenInput.value = selectedDefinition.index;
-                }
-
-                // Clear selection
-                selectedDefinition = null;
-
-                // Clear all selection highlights
-                document.querySelectorAll('.definition-item').forEach(d => {
-                    d.style.border = '';
-                    d.style.backgroundColor = '';
-                });
-
-                // Check completion
-                const questionId = termSlot.dataset.question;
-                checkMatchingCompletion(questionId);
-
-                console.log('Definition placed via click');
-            });
-        }
-    });
-
-    // CRITICAL: Add event listeners to definitions banks (to allow dropping back)
-    const banks = document.querySelectorAll('.definitions-bank');
-    console.log('Found', banks.length, 'definition banks');
-    banks.forEach((bank, index) => {
-        console.log('Attaching bank events to', index, bank);
-        bank.addEventListener('dragover', handleDragOver);
-        bank.addEventListener('drop', handleDropToBank);
-    });
-
-    // Initialize matching state for all visible matching questions
-    document.querySelectorAll('.matching-container').forEach(container => {
-        const questionId = container.closest('[data-question]').dataset.question;
-        if (questionId) {
-            checkMatchingCompletion(questionId);
-
-            // If question is already answered, disable all drag interactions
-            if (isQuestionAnswered(questionId)) {
-                disableMatchingInteractions(questionId);
-            }
-        }
-    });
-
-    console.log('Matching questions initialization complete');
-}
-
-function initializeMatchingForQuestion(questionNum) {
-    console.log('Initializing matching for question', questionNum);
-
-    // Only target elements for this specific question
-    const questionCard = document.querySelector(`[data-question="${questionNum}"]`);
-    if (!questionCard) {
-        console.log('Question card not found for', questionNum);
-        return;
-    }
-
-    // Add event listeners to draggable definitions for this question only
-    const draggableElements = questionCard.querySelectorAll('.draggable');
-    console.log('Found', draggableElements.length, 'draggable elements for question', questionNum);
-    draggableElements.forEach((item, index) => {
-        // Remove existing listeners to prevent duplicates
-        item.removeEventListener('dragstart', handleDragStart);
-        item.removeEventListener('dragend', handleDragEnd);
-
-        // Add fresh listeners
-        console.log('Attaching drag events to element', index, 'for question', questionNum);
-        item.addEventListener('dragstart', handleDragStart);
-        item.addEventListener('dragend', handleDragEnd);
-
-        // Ensure draggable attribute is set
-        item.setAttribute('draggable', 'true');
-        item.style.cursor = 'grab';
-    });
-
-    // Add event listeners to drop zones for this question only
-    const dropZones = questionCard.querySelectorAll('.drop-zone');
-    console.log('Found', dropZones.length, 'drop zones for question', questionNum);
-    dropZones.forEach((dropZone, index) => {
-        // Remove existing listeners to prevent duplicates
-        dropZone.removeEventListener('dragover', handleDragOver);
-        dropZone.removeEventListener('drop', handleDrop);
-        dropZone.removeEventListener('click', handleDropZoneClick);
-
-        // Add fresh listeners
-        console.log('Attaching drop events to zone', index, 'for question', questionNum);
-        dropZone.addEventListener('dragover', handleDragOver);
-        dropZone.addEventListener('drop', handleDrop);
-        dropZone.addEventListener('click', handleDropZoneClick);
-    });
-
-    // Add event listeners to definitions bank for this question only
-    const bank = questionCard.querySelector('.definitions-bank');
-    if (bank) {
-        console.log('Found definition bank for question', questionNum);
-        // Remove existing listeners to prevent duplicates
-        bank.removeEventListener('dragover', handleDragOver);
-        bank.removeEventListener('drop', handleDropToBank);
-
-        // Add fresh listeners
-        bank.addEventListener('dragover', handleDragOver);
-        bank.addEventListener('drop', handleDropToBank);
-    }
-
-    // Check completion status for this question
-    if (questionCard.querySelector('.matching-container')) {
-        const questionId = questionCard.dataset.question;
-        checkMatchingCompletion(questionId);
-
-        // If question is already answered, disable all drag interactions
-        if (isQuestionAnswered(questionId)) {
-            disableMatchingInteractions(questionId);
-        }
-    }
-
-    console.log('Matching initialization complete for question', questionNum);
-}
-
-function handleDragStart(e) {
-    if (e.target.classList.contains('definition-item')) {
-        // Check if this question already has feedback displayed (already answered)
-        const questionElement = e.target.closest('[data-question]') || document;
-        const questionId = questionElement.dataset.question;
-        
-        if (isQuestionAnswered(questionId)) {
-            // Prevent dragging on answered questions
-            e.preventDefault();
-            return false;
-        }
-        
-        draggedElement = e.target;
-        e.target.style.opacity = '0.5';
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', ''); // Required for some browsers
-        
-        // Check if dragging from a term slot
-        const termSlot = e.target.closest('.term-slot');
-        if (termSlot) {
-            draggedFromTermSlot = termSlot;
-        } else {
-            draggedFromTermSlot = null;
-        }
-        
-        // Add visual feedback
-        document.querySelectorAll('.drop-zone').forEach(zone => {
-            zone.classList.add('drag-active');
-        });
-    }
-}
-
-function handleDragOver(e) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    
-    // Add visual feedback for valid drop target
-    if (e.currentTarget.classList.contains('drop-zone')) {
-        e.currentTarget.classList.add('drag-over');
-    }
-}
-
-function handleDrop(e) {
-    e.preventDefault();
-    e.currentTarget.classList.remove('drag-over');
-    
-    if (draggedElement && e.currentTarget.classList.contains('drop-zone')) {
-        const dropZone = e.currentTarget.querySelector('.definition-drop-area');
-        const termSlot = e.currentTarget.closest('.term-slot');
-        
-        // If there's already a definition in this slot, move it back to definitions bank
-        const existingDef = dropZone.querySelector('.definition-item');
-        if (existingDef) {
-            moveDefinitionToBank(existingDef);
-        }
-        
-        // Move the dragged element to this drop zone
-        dropZone.innerHTML = '';
-        const clonedElement = draggedElement.cloneNode(true);
-        clonedElement.style.cursor = 'pointer';
-        
-        // CRITICAL: Add drag event listeners to cloned element so it can be dragged back
-        clonedElement.addEventListener('dragstart', handleDragStart);
-        clonedElement.addEventListener('dragend', handleDragEnd);
-        
-        dropZone.appendChild(clonedElement);
-        
-        // If dragging from definitions bank, hide original
-        if (!draggedFromTermSlot) {
-            draggedElement.style.display = 'none';
-        } else {
-            // If dragging from another term slot, clear that slot
-            const originalDropArea = draggedFromTermSlot.querySelector('.definition-drop-area');
-            originalDropArea.innerHTML = '<span class="drop-placeholder text-muted" style="font-style: italic; font-size: 0.9em;">Drop definition here...</span>';
-        }
-        
-        // Update the hidden input for this term
-        const termIndex = termSlot.dataset.termIndex;
-        const defIndex = draggedElement.dataset.defIndex;
-        const questionId = termSlot.dataset.question;
-        const hiddenInput = termSlot.querySelector('.term-match-input');
-        if (hiddenInput) {
-            hiddenInput.value = defIndex;
-        }
-        
-        // Check if matching is complete
-        checkMatchingCompletion(questionId);
-    }
-}
-
-function handleDragEnd(e) {
-    e.target.style.opacity = '1';
-    
-    // Remove drag indicators
-    document.querySelectorAll('.drop-zone').forEach(zone => {
-        zone.classList.remove('drag-active', 'drag-over');
-    });
-    
-    draggedElement = null;
-    draggedFromTermSlot = null;
-}
-
-function moveDefinitionToBank(defElement) {
-    const defIndex = defElement.dataset.defIndex;
-    const questionId = defElement.dataset.question;
-    const definitionsBank = document.getElementById(`definitions-bank-${questionId}`);
-    
-    // Find the original definition in the bank and show it
-    const originalDef = definitionsBank.querySelector(`[data-def-index="${defIndex}"]`);
-    if (originalDef) {
-        originalDef.style.display = 'block';
-    }
-}
-
-function handleDropZoneClick(e) {
-    // Allow clicking on a definition in a term slot to remove it
-    const clickedDef = e.target.closest('.definition-item');
-    if (clickedDef) {
-        const termSlot = e.currentTarget.closest('.term-slot') || e.target.closest('.term-slot');
-        const questionId = termSlot.dataset.question;
-        
-        // Check if this question already has feedback displayed (already answered)
-        if (isQuestionAnswered(questionId)) {
-            // Prevent click-to-remove on answered questions
-            return false;
-        }
-        
-        const dropArea = termSlot.querySelector('.definition-drop-area');
-        
-        // Clear any feedback styling first
-        termSlot.classList.remove('border-success', 'border-danger', 'border-warning');
-        termSlot.style.backgroundColor = '';
-        
-        // Move definition back to bank
-        moveDefinitionToBank(clickedDef);
-        
-        // Clear the drop area
-        dropArea.innerHTML = '<span class="drop-placeholder text-muted" style="font-style: italic; font-size: 0.9em;">Drop definition here...</span>';
-        
-        // Clear the hidden input
-        const hiddenInput = termSlot.querySelector('.term-match-input');
-        if (hiddenInput) {
-            hiddenInput.value = '';
-        }
-        
-        // Check completion status and update Next button
-        checkMatchingCompletion(questionId);
-        
-        console.log('Definition removed from term slot');
-    }
-}
-
-function handleDropToBank(e) {
-    e.preventDefault();
-    e.currentTarget.classList.remove('drag-over');
-    
-    if (draggedElement && draggedFromTermSlot) {
-        // Only allow dropping back to bank if dragged from a term slot
-        const defIndex = draggedElement.dataset.defIndex;
-        const questionId = draggedElement.dataset.question;
-        
-        // Clear the original term slot
-        const originalDropArea = draggedFromTermSlot.querySelector('.definition-drop-area');
-        originalDropArea.innerHTML = '<span class="drop-placeholder text-muted" style="font-style: italic; font-size: 0.9em;">Drop definition here...</span>';
-        
-        // Clear the hidden input
-        const hiddenInput = draggedFromTermSlot.querySelector('.term-match-input');
-        if (hiddenInput) {
-            hiddenInput.value = '';
-        }
-        
-        // Clear any feedback styling from the term slot
-        draggedFromTermSlot.classList.remove('border-success', 'border-danger', 'border-warning');
-        draggedFromTermSlot.style.backgroundColor = '';
-        
-        // Show the original definition in the bank
-        const definitionsBank = document.getElementById(`definitions-bank-${questionId}`);
-        const originalDef = definitionsBank.querySelector(`[data-def-index="${defIndex}"]`);
-        if (originalDef) {
-            originalDef.style.display = 'block';
-        }
-        
-        // Update completion status
-        checkMatchingCompletion(questionId);
-        
-        console.log('Definition dragged back to bank');
-    }
-    
-    // Reset drag state
-    draggedElement = null;
-    draggedFromTermSlot = null;
-}
-
-function getDragAfterElement(container, y) {
-    const draggableElements = [...container.querySelectorAll('.definition-item:not(.opacity-50)')];
-    
-    return draggableElements.reduce((closest, child) => {
-        const box = child.getBoundingClientRect();
-        const offset = y - box.top - box.height / 2;
-        
-        if (offset < 0 && offset > closest.offset) {
-            return { offset: offset, element: child };
-        } else {
-            return closest;
-        }
-    }, { offset: Number.NEGATIVE_INFINITY }).element;
-}
-
-function updateMatchingInputs(questionId) {
-    const container = document.getElementById(`definitions-sortable-${questionId}`);
-    const definitionItems = container.querySelectorAll('.definition-item');
-    
-    definitionItems.forEach((item, newIndex) => {
-        const originalIndex = item.dataset.originalIndex;
-        const input = item.querySelector('.match-input');
-        if (input) {
-            // Update the hidden input to reflect new position
-            input.value = newIndex; // This represents which term position this definition matches
-        }
-        
-        // Update visual indicator
-        const badge = item.querySelector('.definition-number');
-        if (badge) {
-            badge.textContent = newIndex + 1;
-        }
-    });
-}
-
-function isQuestionAnswered(questionId) {
-    // Return true if there's any feedback element that was created after completing the question
-    
-    const questionElement = document.querySelector(`[data-question="${questionId}"]`) || document;
-    
-    // Look for the specific feedback div that gets added after completing a matching question
-    const specificFeedback = questionElement.querySelector('.feedback-message');
-    if (specificFeedback && (specificFeedback.textContent.includes('Perfect!') || specificFeedback.textContent.includes('Result:'))) {
-        return true;
-    }
-    
-    // Look for alert elements that might contain feedback (including partial scores)
-    const alertElements = questionElement.querySelectorAll('.alert-success, .alert-info, .alert-warning');
-    for(let alert of alertElements) {
-        // Check for any result feedback, not just perfect scores
-        if (alert.textContent.includes('Perfect!') || 
-            alert.textContent.includes('You matched all') || 
-            alert.textContent.includes('Result:') ||
-            alert.textContent.includes('correct matches')) {
-            return true;
-        }
-    }
-    
-    return false;
-}
-
-function disableMatchingInteractions(questionId) {
-    // Disable all drag and drop interactions for answered questions
-    const questionElement = document.querySelector(`[data-question="${questionId}"]`);
-    if (!questionElement) return;
-    
-    // Make all definitions non-draggable
-    questionElement.querySelectorAll('.definition-item').forEach(item => {
-        item.draggable = false;
-        item.style.cursor = 'default';
-        item.style.opacity = '0.8';
-    });
-    
-    // Disable drop zones
-    questionElement.querySelectorAll('.drop-zone').forEach(zone => {
-        zone.style.pointerEvents = 'none';
-    });
-    
-    console.log(`Disabled interactions for answered question ${questionId}`);
-}
-
-function checkMatchingCompletion(questionId) {
-    const termSlots = document.querySelectorAll(`.term-slot[data-question="${questionId}"]`);
-    let filledSlots = 0;
-    
-    // Count how many term slots have definitions
-    termSlots.forEach(slot => {
-        const hiddenInput = slot.querySelector('.term-match-input');
-        if (hiddenInput && hiddenInput.value !== '') {
-            filledSlots++;
-        }
-    });
-    
-    // Check if feedback is already displayed (question already answered)
-    const hasFeedback = isQuestionAnswered(questionId);
-    
-    // Enable next button if all slots are filled OR if feedback is already shown
-    const nextBtn = document.getElementById(`next-btn-${questionId}`);
-    if (nextBtn) {
-        // If feedback is shown, always enable the button (question is already answered)
-        if (hasFeedback) {
-            nextBtn.disabled = false;
-        } else {
-            // Only check slot completion for unanswered questions
-            nextBtn.disabled = filledSlots < termSlots.length;
-        }
-        console.log(`Matching completion: ${filledSlots}/${termSlots.length} slots filled, feedback shown: ${hasFeedback}, button disabled: ${nextBtn.disabled}`);
-    }
-    
-    // Provide visual feedback about current matches if all filled
-    if (filledSlots === termSlots.length) {
-        validateCurrentMatches(questionId);
-    }
-}
-
-function validateCurrentMatches(questionId) {
-    const termSlots = document.querySelectorAll(`.term-slot[data-question="${questionId}"]`);
-    const questionData = quizData[questionId];
-    if (!questionData || !questionData.correctMatches) return;
-    
-    let correctCount = 0;
-    
-    termSlots.forEach(slot => {
-        const termIndex = parseInt(slot.dataset.termIndex);
-        const hiddenInput = slot.querySelector('.term-match-input');
-        const userDefIndex = hiddenInput ? parseInt(hiddenInput.value) : -1;
-        const correctDefIndex = questionData.correctMatches[termIndex];
-        
-        // Remove existing feedback classes
-        slot.classList.remove('border-success', 'border-warning', 'border-danger');
-        
-        if (userDefIndex === correctDefIndex) {
-            slot.classList.add('border-success');
-            correctCount++;
-        } else {
-            slot.classList.add('border-warning');
-        }
-    });
-    
-    console.log(`Matching validation: ${correctCount}/${termSlots.length} correct`);
-}
-
-function showMatchingFeedback(questionId, userMatches, correctMatches, termResults, correctTermCount, totalTermCount) {
-    const termSlots = document.querySelectorAll(`.term-slot[data-question="${questionId}"]`);
-    const questionData = quizData[questionId];
-
-    // Show which matches were correct/incorrect with stronger visual feedback
-    termSlots.forEach(slot => {
-        const termIndex = parseInt(slot.dataset.termIndex);
-        const termResult = termResults[termIndex];
-
-        // Remove existing feedback classes
-        slot.classList.remove('border-success', 'border-warning', 'border-danger');
-
-        if (termResult && termResult.isCorrect) {
-            slot.classList.add('border-success');
-            slot.style.backgroundColor = '#d4edda';
-
-            // Add checkmark or success indicator
-            let successIcon = slot.querySelector('.match-result-icon');
-            if (!successIcon) {
-                successIcon = document.createElement('span');
-                successIcon.className = 'match-result-icon badge bg-success ms-2';
-                successIcon.textContent = '✓';
-                slot.appendChild(successIcon);
-            }
-        } else {
-            slot.classList.add('border-danger');
-            slot.style.backgroundColor = '#f8d7da';
-
-            // Add X or error indicator
-            let errorIcon = slot.querySelector('.match-result-icon');
-            if (!errorIcon) {
-                errorIcon = document.createElement('span');
-                errorIcon.className = 'match-result-icon badge bg-danger ms-2';
-                errorIcon.textContent = '✗';
-                slot.appendChild(errorIcon);
-            }
-        }
-    });
-
-    // Show overall feedback message
-    const container = document.querySelector(`.matching-container[data-question="${questionId}"]`) ||
-                      document.querySelector(`[data-question="${questionId}"] .matching-container`);
-
-    if (container) {
-        // Remove existing feedback
-        const existingFeedback = container.querySelector('.matching-feedback');
-        if (existingFeedback) {
-            existingFeedback.remove();
-        }
-
-        // Add feedback message
-        const feedbackDiv = document.createElement('div');
-        const isPerfect = correctTermCount === totalTermCount;
-        feedbackDiv.className = `matching-feedback alert mt-3 ${isPerfect ? 'alert-success' : 'alert-info'}`;
-
-        if (isPerfect) {
-            feedbackDiv.innerHTML = `<strong>🎉 Perfect!</strong> You matched all ${totalTermCount} terms correctly!`;
-        } else {
-            const percentage = Math.round((correctTermCount / totalTermCount) * 100);
-            feedbackDiv.innerHTML = `
-                <strong>📊 Result:</strong> ${correctTermCount}/${totalTermCount} correct matches (${percentage}%)
-                <br><small class="text-muted">
-                    <span class="text-success">✓ Green borders</span> show correct matches,
-                    <span class="text-danger">✗ red borders</span> show incorrect ones.
-                </small>
-            `;
-        }
-        
-        container.appendChild(feedbackDiv);
-        
-        // CRITICAL: Ensure Next button stays functional after feedback
-        const nextBtn = document.querySelector(`[data-question="${questionId}"] button[id*="next"]`) || 
-                         document.querySelector('button:contains("Next")') ||
-                         document.querySelector('button[onclick*="next"]') ||
-                         document.querySelector('.btn:contains("Next →")');
-        
-        if (nextBtn) {
-            nextBtn.disabled = false;
-            nextBtn.style.pointerEvents = 'auto';
-            console.log('Next button re-enabled after feedback');
-        }
-    }
-}
-
-// Replace the old handleMatchingChange function
-function handleMatchingChange() {
-    // This function is no longer needed with drag-and-drop
-    // but keeping it to prevent errors from old calls
-    console.log('handleMatchingChange called - using drag-and-drop instead');
-}
-
-// Initialize drag-and-drop when page loads
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded, initializing matching questions');
-    initializeMatchingQuestions();
-    setupFeedbackObserver();
-    setupMatchingCompletionMonitor();
-
-    // CRITICAL FIX: Add robust Next button event handlers
-    console.log('Setting up Next button event handlers');
-    const nextButtons = document.querySelectorAll('button[id*="next-btn"]');
-    nextButtons.forEach((btn, index) => {
-        // Remove existing onclick to avoid conflicts
-        btn.removeAttribute('onclick');
-
-        // Add multiple event listeners for reliability
-        btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log(`Next button ${index} clicked via event listener`);
-            if (typeof nextQuestion === 'function') {
-                nextQuestion();
-            } else {
-                console.error('nextQuestion function not available');
-            }
-        });
-
-        // Also set onclick as backup
-        btn.onclick = function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log(`Next button ${index} clicked via onclick`);
-            if (typeof nextQuestion === 'function') {
-                nextQuestion();
-            }
-        };
-
-        console.log(`Next button ${index} (${btn.id}) event handlers added`);
-    });
-});
-
-
-// Set up MutationObserver to watch for feedback elements being added
-function setupFeedbackObserver() {
-    const observer = new MutationObserver(function(mutations) {
-        mutations.forEach(function(mutation) {
-            // Check for added nodes that might be feedback elements
-            mutation.addedNodes.forEach(function(node) {
-                if (node.nodeType === Node.ELEMENT_NODE) {
-                    // Check if this is a feedback element
-                    if (node.classList && (
-                        node.classList.contains('matching-feedback') ||
-                        node.classList.contains('alert-success') ||
-                        node.classList.contains('alert-warning') ||
-                        node.classList.contains('alert-info') ||
-                        node.classList.contains('feedback-message')
-                    )) {
-                        // Find the question this feedback belongs to
-                        const questionElement = node.closest('[data-question]');
-                        if (questionElement) {
-                            const questionId = questionElement.dataset.question;
-                            console.log('Feedback detected for question', questionId, 'by MutationObserver');
-                            
-                            // Small delay to ensure DOM is settled, then check completion
-                            setTimeout(() => {
-                                checkMatchingCompletion(questionId);
-                            }, 50);
-                        }
-                    }
-                    
-                    // Also check if any child elements are feedback elements
-                    const feedbackChildren = node.querySelectorAll && node.querySelectorAll('.matching-feedback, .alert-success, .alert-warning, .alert-info, .feedback-message');
-                    if (feedbackChildren && feedbackChildren.length > 0) {
-                        feedbackChildren.forEach(function(feedbackChild) {
-                            const questionElement = feedbackChild.closest('[data-question]');
-                            if (questionElement) {
-                                const questionId = questionElement.dataset.question;
-                                console.log('Feedback child detected for question', questionId, 'by MutationObserver');
-                                
-                                setTimeout(() => {
-                                    checkMatchingCompletion(questionId);
-                                }, 50);
-                            }
-                        });
-                    }
-                }
-            });
-            
-            // Also check for text changes that might indicate feedback
-            if (mutation.type === 'childList' && mutation.target.classList && 
-                (mutation.target.classList.contains('alert') || 
-                 mutation.target.classList.contains('feedback-message'))) {
-                const questionElement = mutation.target.closest('[data-question]');
-                if (questionElement) {
-                    const questionId = questionElement.dataset.question;
-                    console.log('Feedback text change detected for question', questionId, 'by MutationObserver');
-                    
-                    setTimeout(() => {
-                        checkMatchingCompletion(questionId);
-                    }, 50);
-                }
-            }
-        });
-    });
-    
-    // Start observing the entire quiz container for changes
-    const quizContainer = document.getElementById('quiz-container');
-    if (quizContainer) {
-        observer.observe(quizContainer, {
-            childList: true,
-            subtree: true,
-            attributes: false,
-            characterData: true
-        });
-        console.log('Feedback MutationObserver initialized');
-    }
-}
-
-// Set up continuous monitoring for matching completion
-function setupMatchingCompletionMonitor() {
-    let lastCheckedQuestion = null;
-    
-    // Check for matching completion every 500ms
-    setInterval(function() {
-        // Get the currently visible question
-        const visibleQuestion = document.querySelector('[data-question]:not([style*="display: none"])');
-        if (!visibleQuestion) return;
-        
-        const questionId = visibleQuestion.dataset.question;
-        const questionData = quizData[questionId];
-        
-        // Only check matching questions
-        if (!questionData || questionData.questionType !== 'matching') return;
-        
-        // Check if this is a new question or if we need to recheck
-        const shouldCheck = lastCheckedQuestion !== questionId || isQuestionAnswered(questionId);
-        
-        if (shouldCheck) {
-            // Check if button is disabled but question is answered
-            const nextBtn = document.getElementById(`next-btn-${questionId}`);
-            const hasAnswers = isQuestionAnswered(questionId);
-            
-            if (nextBtn && nextBtn.disabled && hasAnswers) {
-                console.log(`Background monitor: fixing disabled button for answered question ${questionId}`);
-                checkMatchingCompletion(questionId);
-            }
-            
-            lastCheckedQuestion = questionId;
-        }
-    }, 500);
-    
-    console.log('Matching completion background monitor initialized');
-}
-
-// Initialize
 updateProgress();
 </script>
 
@@ -2631,5 +2190,312 @@ input[type="radio"]:checked + .tf-option-label .tf-icon {
     /* Removed pointer-events: none as it was interfering with drag functionality */
     user-select: none; /* Prevent text selection during drag */
 }
+
+/* Modern Alpine.js Matching Quiz Styles */
+.sortable-ghost {
+    opacity: 0.5;
+    background-color: #e3f2fd !important;
+}
+
+.sortable-chosen {
+    transform: rotate(5deg);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.definition-item.selected {
+    border-color: var(--color-primary) !important;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+    transform: scale(1.02);
+}
+
+.term-slot.can-drop {
+    border-color: var(--color-primary) !important;
+    background-color: rgba(37, 99, 235, 0.05);
+}
 </style>
+
+<script>
+// Alpine.js Component for Modern Matching Quiz
+function matchingQuiz(questionId, terms, definitions, correctMatches) {
+    return {
+        questionId: questionId,
+        terms: terms,
+        definitions: definitions,
+        correctMatches: correctMatches,
+        assignments: {}, // termIndex -> definitionIndex
+        selectedDefinition: null,
+        sortables: {},
+
+        init() {
+            console.log('Initializing matching quiz for question:', questionId);
+        },
+
+        // Initialize Sortable.js for drag and drop (simplified)
+        initSortable() {
+            // Only initialize if this question is currently visible
+            const questionCard = document.querySelector(`[data-question="${this.questionId}"]`);
+            if (!questionCard || questionCard.style.display === 'none') {
+                console.log(`Skipping Sortable init for question ${this.questionId} - not visible`);
+                return;
+            }
+            console.log(`Initializing Sortable for visible question ${this.questionId}`);
+            // Make definitions bank sortable (source only)
+            const definitionsBank = document.getElementById('definitions-bank');
+            console.log('Looking for definitions bank:', definitionsBank);
+            if (definitionsBank) {
+                console.log('Creating Sortable on definitions bank');
+                this.sortables.definitionsBank = Sortable.create(definitionsBank, {
+                    group: {
+                        name: 'matching',
+                        pull: 'clone', // Clone items for drag
+                        put: false // Don't allow items back
+                    },
+                    sort: false,
+                    animation: 150,
+                    ghostClass: 'sortable-ghost',
+                    chosenClass: 'sortable-chosen'
+                });
+            }
+
+            // Make each term slot a simple drop target
+            this.terms.forEach((term, termIndex) => {
+                const termSlot = document.getElementById(`term-slot-${termIndex}`);
+                console.log(`Looking for term slot ${termIndex}:`, termSlot);
+                if (termSlot) {
+                    console.log(`Creating Sortable on term slot ${termIndex}`);
+                    this.sortables[`term-${termIndex}`] = Sortable.create(termSlot, {
+                        group: {
+                            name: 'matching',
+                            put: (to, from, dragEl, evt) => {
+                                // Only allow drop if term slot is empty
+                                const isEmpty = this.assignments[termIndex] === undefined;
+                                console.log(`Put validation for term ${termIndex}: isEmpty=${isEmpty}`);
+                                return isEmpty;
+                            },
+                            pull: true // Allow dragging out for rearrangement
+                        },
+                        revertOnSpill: true, // Return to original position if dropped in invalid location
+                        removeOnSpill: false, // Don't remove elements on invalid drops
+                        animation: 150,
+                        ghostClass: 'sortable-ghost',
+                        onAdd: (evt) => {
+                            this.handleDropToTerm(evt, termIndex);
+                        },
+                        onRemove: (evt) => {
+                            this.handleRemoveFromTerm(evt, termIndex);
+                        }
+                    });
+                }
+            });
+        },
+
+        // Handle drag and drop assignment
+        handleDragEnd(evt) {
+            // The actual assignment happens in onAdd of term slots
+            console.log('Drag ended:', evt);
+        },
+
+        // Handle drop to term slot (simplified)
+        handleDropToTerm(evt, termIndex) {
+            const definitionIndex = parseInt(evt.item.dataset.defIndex);
+
+            console.log('Dropped definition', definitionIndex, 'to term', termIndex);
+
+            // Check if term already has assignment (safety check)
+            if (this.assignments[termIndex] !== undefined) {
+                console.warn('Term already has assignment, rejecting drop');
+                // Don't remove the element - return it to original position instead
+                return;
+                return;
+            }
+
+            // Check if definition is already assigned elsewhere
+            if (this.isAssigned(definitionIndex)) {
+                console.warn('Definition already assigned elsewhere, rejecting drop');
+                // Don't remove the element - return it to original position instead
+                return;
+                return;
+            }
+
+            // Hide the dropped Sortable element to prevent duplicates
+            evt.item.style.display = 'none';
+
+            // Assign the definition to the term
+            this.assignDefinition(termIndex, definitionIndex);
+
+            // Force immediate Alpine.js reactivity update
+            console.log('Assignment updated:', termIndex, '->', definitionIndex);
+            console.log('Current assignments state:', this.assignments);
+
+            // Multiple approaches to force reactivity
+            this.$nextTick(() => {
+                console.log('$nextTick: checking assignment:', this.assignments[termIndex]);
+                // Force update of all reactive elements
+                this.$forceUpdate && this.$forceUpdate();
+
+                // Also trigger a manual DOM update
+                const termSlot = document.getElementById(`term-slot-${termIndex}`);
+                if (termSlot) {
+                    console.log('Manually triggering Alpine update on term slot');
+                    // Force Alpine to re-evaluate the x-show directive
+                    const assignedDiv = termSlot.querySelector('.assigned-definition');
+                    const placeholderDiv = termSlot.querySelector('.drop-placeholder');
+                    if (this.assignments[termIndex] !== undefined) {
+                        if (assignedDiv) assignedDiv.style.display = 'block';
+                        if (placeholderDiv) placeholderDiv.style.display = 'none';
+                    }
+                }
+            });
+        },
+
+        // Handle removal from term slot (for rearrangement)
+        handleRemoveFromTerm(evt, termIndex) {
+            const definitionIndex = parseInt(evt.item.dataset.defIndex);
+            console.log('Removed definition', definitionIndex, 'from term', termIndex);
+
+            // Show the element again when removed
+            evt.item.style.display = '';
+
+            // Unassign the definition from the term
+            this.removeAssignment(termIndex);
+
+            // Force Alpine.js reactivity update
+            this.$nextTick(() => {
+                console.log('Unassignment updated:', termIndex, 'removed', definitionIndex);
+                this.$forceUpdate && this.$forceUpdate();
+            });
+        },
+
+        // Click-based definition selection
+        selectDefinition(defIndex) {
+            if (this.isAssigned(defIndex)) return;
+
+            this.selectedDefinition = this.selectedDefinition === defIndex ? null : defIndex;
+        },
+
+        // Assign selected definition to term (click method)
+        assignSelectedToTerm(termIndex) {
+            if (this.selectedDefinition === null) return;
+            if (this.assignments[termIndex] !== undefined) return; // Already has assignment
+
+            this.assignDefinition(termIndex, this.selectedDefinition);
+            this.selectedDefinition = null;
+        },
+
+        // Core assignment logic
+        assignDefinition(termIndex, defIndex) {
+            // Remove any existing assignment for this definition
+            Object.keys(this.assignments).forEach(key => {
+                if (this.assignments[key] === defIndex) {
+                    delete this.assignments[key];
+                }
+            });
+
+            // Remove any existing assignment for this term
+            if (this.assignments[termIndex] !== undefined) {
+                delete this.assignments[termIndex];
+            }
+
+            // Make the assignment
+            this.assignments[termIndex] = defIndex;
+
+            console.log('Assignment made:', termIndex, '->', defIndex);
+            console.log('Current assignments:', this.assignments);
+        },
+
+        // Remove assignment
+        removeAssignment(termIndex) {
+            delete this.assignments[termIndex];
+            console.log('Assignment removed for term:', termIndex);
+        },
+
+        // Helper functions
+        isAssigned(defIndex) {
+            return Object.values(this.assignments).includes(defIndex);
+        },
+
+        getDefinitionText(defIndex) {
+            return this.definitions[defIndex] || '';
+        },
+
+        getAvailableCount() {
+            return this.definitions.length - Object.keys(this.assignments).length;
+        },
+
+        getTermSlotClass(termIndex) {
+            const classes = ['border'];
+
+            if (this.assignments[termIndex] !== undefined) {
+                classes.push('border-success');
+            } else if (this.selectedDefinition !== null) {
+                classes.push('can-drop', 'border-primary');
+            } else {
+                classes.push('border-muted');
+            }
+
+            return classes.join(' ');
+        },
+
+        getDefinitionClass(defIndex) {
+            const classes = ['border'];
+
+            // TEMPORARILY DISABLE ASSIGNMENT LOGIC TO TEST
+            if (false && this.isAssigned(defIndex)) {
+                // Keep assigned definitions visible but clearly marked as used
+                classes.push('border-secondary', 'bg-secondary', 'bg-opacity-25');
+            } else if (this.selectedDefinition === defIndex) {
+                classes.push('selected', 'border-primary');
+            } else {
+                classes.push('border-success');
+            }
+
+            return classes.join(' ');
+        },
+
+        // Validation and scoring (for integration with existing quiz system)
+        getAnswerData() {
+            return {
+                questionId: this.questionId,
+                questionType: 'matching',
+                assignments: this.assignments,
+                isComplete: Object.keys(this.assignments).length === this.terms.length
+            };
+        },
+
+        // Check if all terms are matched
+        isComplete() {
+            return Object.keys(this.assignments).length === this.terms.length;
+        }
+    };
+}
+
+// Version that reads data from DOM instead of parameters
+function matchingQuizFromDOM(questionId) {
+    try {
+        const dataScript = document.getElementById(`question-${questionId}-data`);
+        if (!dataScript) {
+            console.error(`No data script found for question ${questionId}`);
+            return matchingQuiz(questionId, ["Error"], ["No data found"], {0: 0});
+        }
+
+        const data = JSON.parse(dataScript.textContent);
+        return matchingQuiz(questionId, data.terms, data.definitions, data.correct_matches);
+    } catch (error) {
+        console.error('Error parsing question data:', error);
+        return matchingQuiz(questionId, ["Error"], ["Failed to load data"], {0: 0});
+    }
+}
+
+// Make functions globally available for Alpine.js
+window.matchingQuiz = matchingQuiz;
+window.matchingQuizFromDOM = matchingQuizFromDOM;
+
+// Initialize the quiz by showing the first question
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded - initializing quiz with first question');
+    showQuestion(questionIds[0]); // Show the first question by ID
+    updateProgress();
+});
+</script>
+
 {% endblock %}
