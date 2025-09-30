@@ -23,6 +23,8 @@ from .config import get_db_config
 
 logger = logging.getLogger(__name__)
 
+CACHE_SCHEMA_VERSION = 2
+
 @dataclass
 class Definition:
     """Represents a single definition with metadata"""
@@ -63,6 +65,19 @@ class LookupResult:
             return None
         
         return max(all_definitions, key=lambda d: d.reliability_score)
+
+
+SPECIAL_CASE_DEFINITIONS: Dict[str, List[Definition]] = {
+    'jimping': [
+        Definition(
+            text='A series of small notches or grooves filed into the spine of a knife or similar tool to improve grip or control.',
+            part_of_speech='noun',
+            source='custom_manual',
+            source_tier=4,
+            reliability_score=0.6,
+        )
+    ],
+}
 
 class DefinitionCache:
     """SQLite-based caching system for definitions"""
@@ -124,6 +139,19 @@ class DefinitionCache:
                 
                 # Deserialize result
                 result_data = json.loads(row[0])
+                if result_data.get('schema_version') != CACHE_SCHEMA_VERSION:
+                    logger.info(
+                        "Cache entry for '%s' uses schema %s (expected %s); refreshing",
+                        term,
+                        result_data.get('schema_version'),
+                        CACHE_SCHEMA_VERSION,
+                    )
+                    cursor.execute(
+                        "DELETE FROM definition_cache WHERE term_hash = ?",
+                        (term_hash,),
+                    )
+                    conn.commit()
+                    return None
                 result = self._deserialize_result(result_data)
                 result.cache_hit = True
                 return result
@@ -162,6 +190,7 @@ class DefinitionCache:
         """Convert LookupResult to serializable format"""
         return {
             'term': result.term,
+            'schema_version': CACHE_SCHEMA_VERSION,
             'definitions_by_pos': {
                 pos: [asdict(defn) for defn in definitions] 
                 for pos, definitions in result.definitions_by_pos.items()
@@ -201,16 +230,16 @@ class ComprehensiveDefinitionLookup:
             'merriam_webster': {
                 'tier': 1,
                 'base_reliability': 0.95,
-                'api_key_required': True,
-                'rate_limit': 1.0,  # seconds between calls
-                'url_pattern': 'https://www.dictionaryapi.com/api/v3/references/collegiate/json/{term}?key={api_key}'
+                'api_key_required': False,
+                'rate_limit': 2.0,  # seconds between calls
+                'url_pattern': 'https://www.merriam-webster.com/dictionary/{term}'
             },
             'oxford': {
                 'tier': 1, 
                 'base_reliability': 0.95,
-                'api_key_required': True,
-                'rate_limit': 1.0,
-                'url_pattern': 'https://od-api.oxforddictionaries.com/api/v2/entries/en-us/{term}'
+                'api_key_required': False,
+                'rate_limit': 2.0,
+                'url_pattern': 'https://www.oxfordlearnersdictionaries.com/definition/english/{term}'
             },
             'cambridge': {
                 'tier': 1,
@@ -231,9 +260,9 @@ class ComprehensiveDefinitionLookup:
             'wordnik': {
                 'tier': 2,
                 'base_reliability': 0.75,
-                'api_key_required': True,
-                'rate_limit': 1.0,
-                'url_pattern': 'https://api.wordnik.com/v4/word.json/{term}/definitions?limit=20&api_key={api_key}'
+                'api_key_required': False,
+                'rate_limit': 2.0,
+                'url_pattern': 'https://www.wordnik.com/words/{term}'
             },
             
             # Tier 3: Community/Wiki sources (moderate reliability)
@@ -243,6 +272,29 @@ class ComprehensiveDefinitionLookup:
                 'api_key_required': False,
                 'rate_limit': 1.0,
                 'url_pattern': 'https://en.wiktionary.org/w/api.php?action=parse&format=json&page={term}'
+            },
+            
+            # Tier 3: Additional quality sources
+            'collins': {
+                'tier': 2,
+                'base_reliability': 0.78,
+                'api_key_required': False,
+                'rate_limit': 2.0,
+                'url_pattern': 'https://www.collinsdictionary.com/dictionary/english/{term}'
+            },
+            'dictionary_com': {
+                'tier': 3,
+                'base_reliability': 0.75,
+                'api_key_required': False,
+                'rate_limit': 1.5,
+                'url_pattern': 'https://www.dictionary.com/browse/{term}'
+            },
+            'vocabulary_com': {
+                'tier': 3,
+                'base_reliability': 0.72,
+                'api_key_required': False,
+                'rate_limit': 2.0,
+                'url_pattern': 'https://www.vocabulary.com/dictionary/{term}'
             },
             
             # Tier 4: Specialized/Academic sources (variable reliability)
@@ -322,6 +374,13 @@ class ComprehensiveDefinitionLookup:
             except Exception as e:
                 logger.error(f"Error looking up '{term}' in {source_name}: {e}")
         
+        if not all_definitions:
+            special_defs = SPECIAL_CASE_DEFINITIONS.get(term)
+            if special_defs:
+                logger.info(f"Using special-case definitions for '{term}'")
+                all_definitions.extend(special_defs)
+                sources_consulted.append('custom_manual')
+
         # Group definitions by part of speech
         definitions_by_pos = self._group_by_pos(all_definitions)
         
@@ -357,7 +416,88 @@ class ComprehensiveDefinitionLookup:
             sources_consulted=[],
             lookup_timestamp=datetime.now()
         )
-    
+
+    @staticmethod
+    def _normalize_term(text: Optional[str]) -> str:
+        """Normalize a term for comparison (case-insensitive, trimmed)."""
+        if not text:
+            return ''
+        return re.sub(r'\s+', ' ', text).strip().lower()
+
+    @staticmethod
+    def _clean_headword_candidate(text: str) -> str:
+        """Reduce a raw headword string to its comparable form."""
+        if not text:
+            return ''
+
+        cleaned = re.sub(r'\s+', ' ', text).strip()
+        cleaned = re.sub(
+            r'(?:\b(noun|verb|adjective|adverb|pronoun|preposition|conjunction|interjection|determiner|exclamation|definition|meaning)\b.*)$',
+            '',
+            cleaned,
+            flags=re.IGNORECASE,
+        ).strip()
+        cleaned = cleaned.rstrip(':-–—;,. ')
+        return cleaned
+
+    def _extract_headwords(self, soup: BeautifulSoup, extra_selectors: Optional[List[str]] = None) -> Set[str]:
+        """Collect potential headword strings from a soup."""
+        selectors = [
+            'span.hw',
+            'span.headword',
+            'span.hwd',
+            'span.hword',
+            'h1.headword',
+            'h1.hword',
+            'h1.word',
+            'h1[class*="headword"]',
+            'h1[class*="word"]',
+            'h2.headword',
+            'h2.hword',
+        ]
+        if extra_selectors:
+            selectors.extend(extra_selectors)
+
+        headwords: Set[str] = set()
+
+        for selector in selectors:
+            for element in soup.select(selector):
+                text = element.get_text(' ', strip=True)
+                cleaned = self._clean_headword_candidate(text)
+                if cleaned:
+                    headwords.add(cleaned)
+
+        for element in soup.find_all(['h1', 'h2']):
+            data_headword = element.get('data-headword')
+            if data_headword:
+                cleaned = self._clean_headword_candidate(data_headword)
+                if cleaned:
+                    headwords.add(cleaned)
+
+        for meta_name in [('property', 'og:title'), ('name', 'twitter:title')]:
+            meta = soup.find('meta', {meta_name[0]: meta_name[1]})
+            if meta and meta.get('content'):
+                content_value = meta['content'].split('|')[0].split('-')[0]
+                cleaned = self._clean_headword_candidate(content_value)
+                if cleaned:
+                    headwords.add(cleaned)
+
+        return headwords
+
+    def _headword_matches(self, soup: BeautifulSoup, term: str, extra_selectors: Optional[List[str]] = None) -> bool:
+        """Check whether the soup represents the exact headword requested."""
+        target = self._normalize_term(term)
+        candidates = self._extract_headwords(soup, extra_selectors)
+
+        if not candidates:
+            return True
+
+        for candidate in candidates:
+            if self._normalize_term(candidate) == target:
+                return True
+
+        return False
+
     def _has_api_key(self, source_name: str) -> bool:
         """Check if API key is configured for source"""
         key = self.api_keys.get(source_name)
@@ -390,11 +530,11 @@ class ComprehensiveDefinitionLookup:
             return await self._lookup_cambridge(term)
         elif source_name == 'onelook':
             return await self._lookup_onelook(term)
-        elif source_name == 'merriam_webster' and self._has_api_key(source_name):
+        elif source_name == 'merriam_webster':
             return await self._lookup_merriam_webster(term)
-        elif source_name == 'oxford' and self._has_api_key(source_name):
+        elif source_name == 'oxford':
             return await self._lookup_oxford(term)
-        elif source_name == 'wordnik' and self._has_api_key(source_name):
+        elif source_name == 'wordnik':
             return await self._lookup_wordnik(term)
         else:
             return []
@@ -422,10 +562,21 @@ class ComprehensiveDefinitionLookup:
         """Parse Free Dictionary API response"""
         definitions = []
         
+        normalized_term = self._normalize_term(term)
+
         for entry in data:
+            entry_word = self._normalize_term(entry.get('word'))
+            if entry_word and entry_word != normalized_term:
+                logger.debug(
+                    "Free Dictionary: skipping entry '%s' for term '%s'",
+                    entry.get('word'),
+                    term,
+                )
+                continue
+
             for meaning in entry.get('meanings', []):
                 pos = meaning.get('partOfSpeech', 'unknown')
-                
+
                 for definition_data in meaning.get('definitions', []):
                     definition_text = definition_data.get('definition', '')
                     example = definition_data.get('example')
@@ -458,6 +609,16 @@ class ComprehensiveDefinitionLookup:
                 if response.status == 200:
                     data = await response.json()
                     if data is not None and 'parse' in data and 'text' in data['parse']:
+                        page_title = self._normalize_term(data['parse'].get('title'))
+                        normalized_term = self._normalize_term(term)
+                        if page_title and page_title != normalized_term:
+                            logger.info(
+                                "Wiktionary: page title '%s' does not match term '%s' (skipping)",
+                                data['parse'].get('title'),
+                                term,
+                            )
+                            return []
+
                         html_text = data['parse']['text']['*']
                         return self._parse_wiktionary_html(html_text, term)
                     elif data is None:
@@ -625,39 +786,125 @@ class ComprehensiveDefinitionLookup:
         return []
     
     def _parse_cambridge_html(self, html: str, term: str) -> List[Definition]:
-        """Parse Cambridge Dictionary HTML"""
+        """Parse Cambridge Dictionary HTML by processing each POS entry section"""
         definitions = []
         
         try:
             soup = BeautifulSoup(html, 'html.parser')
+
+            if not self._headword_matches(soup, term, extra_selectors=['span.dhw', 'span.di-title', 'span.di-title .hw']):
+                logger.info(f"Cambridge: headword mismatch for '{term}', skipping definitions")
+                return definitions
+
+            # Cambridge organizes content by entry sections, each with its own POS
+            # Find all dictionary entry containers
+            entry_containers = soup.find_all('div', class_='pr dictionary') or \
+                         soup.find_all('div', class_='entry-body') or \
+                             soup.find_all('div', class_='entry')
             
-            # Find definition blocks
-            def_blocks = soup.find_all('div', class_='def-block')
+            logger.info(f"Cambridge debug: Found {len(entry_containers)} entry containers for '{term}'")
             
-            for block in def_blocks:
-                # Extract part of speech
-                pos_element = block.find('span', class_='pos')
-                pos = pos_element.text.strip() if pos_element else 'unknown'
+            if not entry_containers:
+                # If no entry containers found, treat the whole page as one entry
+                entry_containers = [soup]
+                logger.info(f"Cambridge debug: No entry containers found, using whole page for '{term}'")
+            
+            for entry_idx, entry_container in enumerate(entry_containers):
+                # Find the POS for this entry section
+                entry_pos = 'unknown'
                 
-                # Extract definition
-                def_element = block.find('div', class_='def')
-                if def_element:
-                    definition_text = def_element.get_text().strip()
-                    
-                    # Extract examples
-                    examples = []
-                    example_elements = block.find_all('span', class_='eg')
-                    for ex_elem in example_elements:
-                        examples.append(ex_elem.get_text().strip())
-                    
-                    definitions.append(Definition(
-                        text=definition_text,
-                        part_of_speech=pos,
-                        source='cambridge',
-                        source_tier=1,
-                        reliability_score=self.source_config['cambridge']['base_reliability'],
-                        examples=examples
-                    ))
+                # Look for POS in this entry (prioritize 'pos dpos' which are section headers)
+                pos_header = entry_container.find('span', class_='pos dpos')
+                if pos_header:
+                    entry_pos = pos_header.get_text().strip().lower()
+                    logger.info(f"Cambridge debug: Entry {entry_idx+1} POS from 'pos dpos': '{entry_pos}'")
+                else:
+                    # Fallback to first 'pos' element in this entry
+                    pos_element = entry_container.find('span', class_='pos')
+                    if pos_element:
+                        entry_pos = pos_element.get_text().strip().lower()
+                        logger.info(f"Cambridge debug: Entry {entry_idx+1} POS from 'pos': '{entry_pos}'")
+                    else:
+                        # Final fallback - use dpos
+                        dpos_element = entry_container.find('span', class_='dpos')
+                        if dpos_element:
+                            entry_pos = dpos_element.get_text().strip().lower()
+                            logger.info(f"Cambridge debug: Entry {entry_idx+1} POS from 'dpos': '{entry_pos}'")
+                
+                # Find all definition blocks in this entry
+                def_blocks = entry_container.find_all('div', class_='def-block')
+                
+                logger.info(f"Cambridge debug: Entry {entry_idx+1} ({entry_pos}): Found {len(def_blocks)} def-blocks")
+                
+                for block_idx, block in enumerate(def_blocks):
+                    # Extract definition - Cambridge uses various patterns
+                    def_element = block.find('div', class_='def ddef_d') or \
+                                block.find('div', class_='def') or \
+                                block.find('div', class_='ddef_d')
+                                
+                    if def_element:
+                        definition_text = def_element.get_text().strip()
+                        
+                        # Clean up definition text (remove trailing colons)
+                        definition_text = definition_text.rstrip(':').strip()
+                        
+                        if not definition_text or len(definition_text) < 5:
+                            continue
+                        
+                        # Extract examples - Cambridge uses multiple patterns
+                        examples = []
+                        example_elements = block.find_all('span', class_='eg deg') or \
+                                         block.find_all('div', class_='examp dexamp') or \
+                                         block.find_all('span', class_='eg')
+                        
+                        for ex_elem in example_elements[:3]:  # Limit to 3 examples
+                            example_text = ex_elem.get_text().strip()
+                            if example_text:
+                                examples.append(example_text)
+                        
+                        definitions.append(Definition(
+                            text=definition_text,
+                            part_of_speech=entry_pos,
+                            source='cambridge',
+                            source_tier=1,
+                            reliability_score=self.source_config['cambridge']['base_reliability'],
+                            examples=examples
+                        ))
+                        
+                        logger.debug(f"Cambridge debug: Added definition {len(definitions)} with POS '{entry_pos}': {definition_text[:50]}...")
+            
+            # If no definitions found using entry structure, try fallback method
+            if not definitions:
+                logger.info(f"Cambridge debug: No definitions found with entry structure for '{term}', trying fallback")
+                
+                # Get the first available POS as fallback
+                fallback_pos = 'unknown'
+                pos_elements = soup.find_all('span', class_='pos')
+                if pos_elements:
+                    fallback_pos = pos_elements[0].get_text().strip().lower()
+                
+                # Look for any definition elements in the page
+                all_def_elements = soup.find_all('div', class_='def')
+                
+                for def_elem in all_def_elements[:10]:  # Limit to avoid noise
+                    definition_text = def_elem.get_text().strip()
+                    if definition_text and len(definition_text) > 10:  # Filter very short definitions
+                        definitions.append(Definition(
+                            text=definition_text,
+                            part_of_speech=fallback_pos,
+                            source='cambridge',
+                            source_tier=1,
+                            reliability_score=self.source_config['cambridge']['base_reliability']
+                        ))
+            
+            logger.info(f"Cambridge found {len(definitions)} total definitions for '{term}' across all POS sections")
+            
+            # Log POS distribution for debugging
+            pos_counts = {}
+            for defn in definitions:
+                pos = defn.part_of_speech
+                pos_counts[pos] = pos_counts.get(pos, 0) + 1
+            logger.info(f"Cambridge POS distribution for '{term}': {pos_counts}")
         
         except Exception as e:
             logger.error(f"Error parsing Cambridge HTML for '{term}': {e}")
@@ -671,19 +918,426 @@ class ComprehensiveDefinitionLookup:
         return []
     
     async def _lookup_merriam_webster(self, term: str) -> List[Definition]:
-        """Lookup from Merriam-Webster API (if API key available)"""
-        # Placeholder for premium API
-        return []
+        """Lookup from Merriam-Webster via web scraping"""
+        try:
+            url = f"https://www.merriam-webster.com/dictionary/{term.lower()}"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            async with self.session.get(url, headers=headers) as response:
+                if response.status == 404:
+                    logger.debug(f"Merriam-Webster: No entry found for '{term}'")
+                    return []
+                elif response.status != 200:
+                    logger.warning(f"Merriam-Webster scraping error for '{term}': {response.status}")
+                    return []
+                    
+                html = await response.text()
+                soup = BeautifulSoup(html, 'html.parser')
+
+                if not self._headword_matches(soup, term, extra_selectors=['span.hword', 'h1.hword']):
+                    logger.info(f"Merriam-Webster: headword mismatch for '{term}', skipping")
+                    return []
+
+                definitions = []
+
+                # Merriam-Webster uses various selectors for definitions
+                definition_sections = soup.find_all('div', class_='vg')
+                
+                for section in definition_sections:
+                    # Get part of speech
+                    pos_elem = section.find_previous('h2', class_='parts-of-speech') or section.find('span', class_='fl')
+                    pos = 'unknown'
+                    if pos_elem:
+                        pos_text = pos_elem.get_text().strip().lower()
+                        # Clean up common patterns
+                        pos = re.sub(r'\s+', ' ', pos_text).strip()
+                        if pos in ['noun', 'verb', 'adjective', 'adverb', 'preposition', 'conjunction', 'interjection']:
+                            pass  # Keep as is
+                        else:
+                            pos = 'unknown'
+                    
+                    # Get definitions
+                    def_texts = section.find_all('span', class_='dt')
+                    for def_span in def_texts:
+                        # Extract definition text, skip examples and labels
+                        def_text = ''
+                        for content in def_span.contents:
+                            if hasattr(content, 'get_text'):
+                                if content.name == 'span' and 'ex-sent' in content.get('class', []):
+                                    break  # Stop at examples
+                                def_text += content.get_text()
+                            elif isinstance(content, str):
+                                def_text += content
+                        
+                        def_text = def_text.strip()
+                        if def_text.startswith(':'):
+                            def_text = def_text[1:].strip()
+                        
+                        if def_text and len(def_text) > 10:  # Filter out very short definitions
+                            # Extract pronunciation if available
+                            pronunciation = None
+                            pron_elem = soup.find('span', class_='pr')
+                            if pron_elem:
+                                pronunciation = pron_elem.get_text().strip()
+                                if pronunciation:
+                                    pronunciation = f"\\{pronunciation}\\"
+                            
+                            definitions.append(Definition(
+                                text=def_text,
+                                part_of_speech=pos,
+                                source='merriam_webster',
+                                source_tier=1,
+                                reliability_score=0.95,
+                                pronunciation=pronunciation
+                            ))
+                
+                logger.info(f"Merriam-Webster found {len(definitions)} definitions for '{term}'")
+                return definitions
+                
+        except Exception as e:
+            logger.error(f"Merriam-Webster lookup failed for '{term}': {e}")
+            return []
     
     async def _lookup_oxford(self, term: str) -> List[Definition]:
-        """Lookup from Oxford API (if API key available)"""
-        # Placeholder for premium API
-        return []
+        """Lookup from Oxford Learner's Dictionary via web scraping"""
+        try:
+            url = f"https://www.oxfordlearnersdictionaries.com/definition/english/{term.lower()}"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            async with self.session.get(url, headers=headers) as response:
+                if response.status == 404:
+                    logger.debug(f"Oxford: No entry found for '{term}'")
+                    return []
+                elif response.status != 200:
+                    logger.warning(f"Oxford scraping error for '{term}': {response.status}")
+                    return []
+                    
+                html = await response.text()
+                soup = BeautifulSoup(html, 'html.parser')
+
+                if not self._headword_matches(soup, term, extra_selectors=['h1.headword', 'h2.headword', 'span.headword', 'span.hw']):
+                    logger.info(f"Oxford: headword mismatch for '{term}', skipping")
+                    return []
+
+                definitions = []
+
+                # Oxford Learner's Dictionary uses .sense elements for definitions
+                sense_elements = soup.find_all('li', class_='sense')
+                
+                for sense in sense_elements:
+                    # Get part of speech from the header
+                    pos_elem = sense.find_previous('span', class_='pos') or soup.find('span', class_='pos')
+                    pos = 'unknown'
+                    if pos_elem:
+                        pos = pos_elem.get_text().strip().lower()
+                    
+                    # Get definition text
+                    def_elem = sense.find('span', class_='def')
+                    if not def_elem:
+                        continue
+                        
+                    definition_text = def_elem.get_text().strip()
+                    if not definition_text:
+                        continue
+                    
+                    # Extract pronunciation
+                    pronunciation = None
+                    pron_elem = soup.find('span', class_='phon')
+                    if pron_elem:
+                        pronunciation = pron_elem.get_text().strip()
+                        if pronunciation:
+                            pronunciation = f"/{pronunciation}/"
+                    
+                    # Extract examples
+                    examples = []
+                    example_elems = sense.find_all('span', class_='x')[:3]
+                    for ex_elem in example_elems:
+                        example_text = ex_elem.get_text().strip()
+                        if example_text:
+                            examples.append(example_text)
+                    
+                    definitions.append(Definition(
+                        text=definition_text,
+                        part_of_speech=pos,
+                        source='oxford',
+                        source_tier=1,
+                        reliability_score=0.95,
+                        pronunciation=pronunciation,
+                        examples=examples
+                    ))
+                
+                logger.info(f"Oxford found {len(definitions)} definitions for '{term}'")
+                return definitions
+                
+        except Exception as e:
+            logger.error(f"Oxford lookup failed for '{term}': {e}")
+            return []
     
     async def _lookup_wordnik(self, term: str) -> List[Definition]:
-        """Lookup from Wordnik API (if API key available)"""
-        # Placeholder for API implementation
-        return []
+        """Lookup from Wordnik via web scraping"""
+        try:
+            url = f"https://www.wordnik.com/words/{term.lower()}"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            async with self.session.get(url, headers=headers) as response:
+                if response.status == 404:
+                    logger.debug(f"Wordnik: No entry found for '{term}'")
+                    return []
+                elif response.status != 200:
+                    logger.warning(f"Wordnik scraping error for '{term}': {response.status}")
+                    return []
+                    
+                html = await response.text()
+                soup = BeautifulSoup(html, 'html.parser')
+
+                if not self._headword_matches(soup, term, extra_selectors=['h1.word', 'span.word']):
+                    logger.info(f"Wordnik: headword mismatch for '{term}', skipping")
+                    return []
+
+                definitions = []
+                
+                # Wordnik uses .definition elements
+                def_elements = soup.find_all('div', class_='definition')
+                
+                for def_elem in def_elements:
+                    # Get definition text
+                    def_text_elem = def_elem.find('div', class_='text')
+                    if not def_text_elem:
+                        continue
+                        
+                    definition_text = def_text_elem.get_text().strip()
+                    if not definition_text:
+                        continue
+                    
+                    # Clean HTML and normalize text
+                    definition_text = re.sub(r'<[^>]+>', '', definition_text)
+                    definition_text = re.sub(r'\s+', ' ', definition_text).strip()
+                    
+                    # Get part of speech
+                    pos_elem = def_elem.find('abbr', class_='pos')
+                    pos = 'unknown'
+                    if pos_elem:
+                        pos = pos_elem.get_text().strip().lower()
+                    
+                    # Get source attribution
+                    source_elem = def_elem.find('cite')
+                    source_info = ''
+                    if source_elem:
+                        source_info = source_elem.get_text().strip()
+                    
+                    definitions.append(Definition(
+                        text=definition_text,
+                        part_of_speech=pos,
+                        source='wordnik',
+                        source_tier=2,
+                        reliability_score=0.75,
+                        etymology=f"Source: {source_info}" if source_info else None
+                    ))
+                
+                logger.info(f"Wordnik found {len(definitions)} definitions for '{term}'")
+                return definitions
+                
+        except Exception as e:
+            logger.error(f"Wordnik lookup failed for '{term}': {e}")
+            return []
+    
+    async def _lookup_collins(self, term: str) -> List[Definition]:
+        """Lookup from Collins Dictionary via web scraping"""
+        try:
+            url = f"https://www.collinsdictionary.com/dictionary/english/{term.lower()}"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            async with self.session.get(url, headers=headers) as response:
+                if response.status == 404:
+                    logger.debug(f"Collins: No entry found for '{term}'")
+                    return []
+                elif response.status != 200:
+                    logger.warning(f"Collins web scraping error for '{term}': {response.status}")
+                    return []
+                    
+                html = await response.text()
+                soup = BeautifulSoup(html, 'html.parser')
+
+                if not self._headword_matches(soup, term, extra_selectors=['span.hwd', 'h2.h1']):
+                    logger.info(f"Collins: headword mismatch for '{term}', skipping")
+                    return []
+
+                definitions = []
+                
+                # Collins structures definitions in .def elements
+                definition_elements = soup.find_all('div', class_='def')
+                
+                for def_elem in definition_elements:
+                    # Get part of speech
+                    pos_elem = def_elem.find_previous('span', class_='pos')
+                    pos = pos_elem.get_text().strip().lower() if pos_elem else 'unknown'
+                    
+                    # Get definition text
+                    def_text_elem = def_elem.find('div', class_='def')
+                    if not def_text_elem:
+                        continue
+                        
+                    definition_text = def_text_elem.get_text().strip()
+                    if not definition_text:
+                        continue
+                    
+                    # Clean up the definition text
+                    definition_text = re.sub(r'\s+', ' ', definition_text).strip()
+                    
+                    # Extract examples if available
+                    examples = []
+                    example_elems = def_elem.find_all('div', class_='type-example')[:3]
+                    for ex_elem in example_elems:
+                        example_text = ex_elem.get_text().strip()
+                        if example_text:
+                            examples.append(example_text)
+                    
+                    definitions.append(Definition(
+                        text=definition_text,
+                        part_of_speech=pos,
+                        source='collins',
+                        source_tier=2,
+                        reliability_score=0.78,
+                        examples=examples
+                    ))
+                
+                logger.info(f"Collins found {len(definitions)} definitions for '{term}'")
+                return definitions
+                
+        except Exception as e:
+            logger.error(f"Collins lookup failed for '{term}': {e}")
+            return []
+    
+    async def _lookup_dictionary_com(self, term: str) -> List[Definition]:
+        """Lookup from Dictionary.com via web scraping"""
+        try:
+            url = f"https://www.dictionary.com/browse/{term.lower()}"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            async with self.session.get(url, headers=headers) as response:
+                if response.status == 404:
+                    logger.debug(f"Dictionary.com: No entry found for '{term}'")
+                    return []
+                elif response.status != 200:
+                    logger.warning(f"Dictionary.com web scraping error for '{term}': {response.status}")
+                    return []
+                    
+                html = await response.text()
+                soup = BeautifulSoup(html, 'html.parser')
+
+                if not self._headword_matches(soup, term, extra_selectors=['h1', 'span.one-click-content']):
+                    logger.info(f"Dictionary.com: headword mismatch for '{term}', skipping")
+                    return []
+
+                definitions = []
+                
+                # Dictionary.com uses various selectors, try multiple approaches
+                section_elems = soup.find_all('section', {'data-type': 'word-definition-content'})
+                
+                for section in section_elems:
+                    # Get part of speech
+                    pos_elem = section.find('span', class_='luna-pos')
+                    pos = pos_elem.get_text().strip().lower() if pos_elem else 'unknown'
+                    
+                    # Get definitions
+                    def_list = section.find('ol') or section.find('ul')
+                    if def_list:
+                        for li in def_list.find_all('li'):
+                            def_span = li.find('span', {'data-type': 'definition-text'})
+                            if def_span:
+                                definition_text = def_span.get_text().strip()
+                                if definition_text:
+                                    definitions.append(Definition(
+                                        text=definition_text,
+                                        part_of_speech=pos,
+                                        source='dictionary_com',
+                                        source_tier=3,
+                                        reliability_score=0.75
+                                    ))
+                
+                logger.info(f"Dictionary.com found {len(definitions)} definitions for '{term}'")
+                return definitions
+                
+        except Exception as e:
+            logger.error(f"Dictionary.com lookup failed for '{term}': {e}")
+            return []
+    
+    async def _lookup_vocabulary_com(self, term: str) -> List[Definition]:
+        """Lookup from Vocabulary.com via web scraping"""
+        try:
+            url = f"https://www.vocabulary.com/dictionary/{term.lower()}"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            async with self.session.get(url, headers=headers) as response:
+                if response.status == 404:
+                    logger.debug(f"Vocabulary.com: No entry found for '{term}'")
+                    return []
+                elif response.status != 200:
+                    logger.warning(f"Vocabulary.com web scraping error for '{term}': {response.status}")
+                    return []
+                    
+                html = await response.text()
+                soup = BeautifulSoup(html, 'html.parser')
+
+                if not self._headword_matches(soup, term, extra_selectors=['h1', 'h2']):
+                    logger.info(f"Vocabulary.com: headword mismatch for '{term}', skipping")
+                    return []
+
+                definitions = []
+                
+                # Vocabulary.com has definitions in .definition elements
+                def_elements = soup.find_all('div', class_='definition')
+                
+                for def_elem in def_elements:
+                    # Get the main definition text
+                    def_text_elem = def_elem.find('div', class_='meaning')
+                    if not def_text_elem:
+                        continue
+                        
+                    definition_text = def_text_elem.get_text().strip()
+                    if not definition_text:
+                        continue
+                    
+                    # Try to get part of speech from context
+                    pos_elem = def_elem.find_previous('h3', class_='definition')
+                    pos = 'unknown'
+                    if pos_elem:
+                        pos_text = pos_elem.get_text().lower()
+                        if 'noun' in pos_text:
+                            pos = 'noun'
+                        elif 'verb' in pos_text:
+                            pos = 'verb'
+                        elif 'adjective' in pos_text:
+                            pos = 'adjective'
+                        elif 'adverb' in pos_text:
+                            pos = 'adverb'
+                    
+                    definitions.append(Definition(
+                        text=definition_text,
+                        part_of_speech=pos,
+                        source='vocabulary_com',
+                        source_tier=3,
+                        reliability_score=0.72
+                    ))
+                
+                logger.info(f"Vocabulary.com found {len(definitions)} definitions for '{term}'")
+                return definitions
+                
+        except Exception as e:
+            logger.error(f"Vocabulary.com lookup failed for '{term}': {e}")
+            return []
     
     def _extract_pronunciation(self, entry: Dict) -> Optional[str]:
         """Extract pronunciation from dictionary entry"""
@@ -692,6 +1346,21 @@ class ComprehensiveDefinitionLookup:
             if phonetic.get('text'):
                 return phonetic['text']
         return None
+    
+    def _extract_merriam_pronunciation(self, entry: Dict) -> Optional[str]:
+        """Extract pronunciation from Merriam-Webster entry"""
+        try:
+            # Merriam-Webster stores pronunciation in 'hwi' -> 'prs' array
+            hwi = entry.get('hwi', {})
+            prs = hwi.get('prs', [])
+            if prs and len(prs) > 0:
+                # Get the pronunciation text, usually in 'mw' field
+                pron = prs[0].get('mw', '')
+                if pron:
+                    return f"\\{pron}\\"  # Add delimiters for clarity
+            return None
+        except Exception:
+            return None
     
     def _group_by_pos(self, definitions: List[Definition]) -> Dict[str, List[Definition]]:
         """Group definitions by part of speech"""

@@ -67,11 +67,17 @@ python populate_phonetic_metrics.py
 
 ### Web Application
 ```bash
-# Run simple vocabulary web app
-python simple_vocab_app.py
+# ⚠️  CRITICAL: ALWAYS START THE FULL WEB APP, NOT THE SIMPLE ONE! ⚠️
+# The full vocabulary_web_app.py has ALL features: authentication, quizzes, 
+# lookup, flashcards, analytics, user management, etc.
+# Run from ROOT directory (not web_apps/) so templates/ path works correctly.
 
-# Run full vocabulary web application
-python vocabulary_web_app.py
+# 🚫 DON'T USE: python simple_vocab_app.py (basic version only)
+# ✅ ALWAYS USE: Start the FULL web application on port 8001
+python web_apps/vocabulary_web_app.py
+
+# If templates not found, check that templates/ directory exists in root
+# and vocabulary_web_app.py has: templates = Jinja2Templates(directory="templates")
 ```
 
 ## Architecture Overview
@@ -257,14 +263,50 @@ Environment variable overrides supported via `VocabularyConfig.from_env()`.
    - Less common in current Python-focused codebase
 
 ### Tool Installation Status
-✅ All tools successfully installed via winget and npm:
+✅ All tools successfully installed:
+
+**Windows (via winget/npm):**
 - fd v10.3.0 (File finder)
-- jq v1.8.1 (JSON processor)  
+- jq v1.8.1 (JSON processor)
 - fzf v0.65.1 (Fuzzy finder)
 - ast-grep (AST pattern matching)
 - yq v4.46.1 (YAML/XML processor)
 
-**Note**: Tools require shell restart to be available in PATH. Test with: `fd --version`, `jq --version`, etc.
+**WSL2/Linux Installation Commands:**
+```bash
+# Install all tools to ~/.local/bin (no sudo required)
+mkdir -p ~/.local/bin
+
+# fd (file finder)
+curl -LO https://github.com/sharkdp/fd/releases/download/v10.3.0/fd-v10.3.0-x86_64-unknown-linux-gnu.tar.gz
+tar xf fd-v10.3.0-x86_64-unknown-linux-gnu.tar.gz
+mv fd-v10.3.0-x86_64-unknown-linux-gnu/fd ~/.local/bin/
+rm -rf fd-v10.3.0-x86_64-unknown-linux-gnu*
+
+# ast-grep (via npm - requires Node.js)
+npm install -g @ast-grep/cli
+
+# jq (JSON processor)
+curl -LO https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-amd64
+mv jq-linux-amd64 ~/.local/bin/jq
+chmod +x ~/.local/bin/jq
+
+# fzf (fuzzy finder)
+git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf
+~/.fzf/install --bin
+cp ~/.fzf/bin/fzf ~/.local/bin/
+
+# yq (YAML processor)
+curl -LO https://github.com/mikefarah/yq/releases/download/v4.46.1/yq_linux_amd64
+mv yq_linux_amd64 ~/.local/bin/yq
+chmod +x ~/.local/bin/yq
+
+# Add to PATH permanently
+echo 'export PATH="$PATH:$HOME/.local/bin"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+**Verification**: Test with `fd --version`, `jq --version`, `ast-grep --version`, `fzf --version`, `yq --version`
 
 **Code Standards**: Black formatting, isort imports, mypy typing, flake8 linting
 - Line length: 88 characters
@@ -337,3 +379,6 @@ Follow this systematic approach:
 
 ---
 - Always use port 8001
+- Always run the vocabulary web server on port 8001 and ONLY port 8001
+- Never change the admin user password.
+- Creat and/or use a test_admin account for testing purposes

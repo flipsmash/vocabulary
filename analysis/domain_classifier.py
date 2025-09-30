@@ -10,6 +10,12 @@ Assigns hierarchical domain classifications to vocabulary terms based on:
 
 import numpy as np
 import mysql.connector
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from core.config import get_db_config
 import json
 import pickle

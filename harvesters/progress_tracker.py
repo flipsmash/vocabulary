@@ -9,7 +9,12 @@ import mysql.connector
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict
-from config import get_db_config
+import sys
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
+from core.secure_config import get_db_config
 import logging
 
 logger = logging.getLogger(__name__)

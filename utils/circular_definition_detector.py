@@ -8,7 +8,10 @@ import mysql.connector
 import re
 import logging
 from typing import List, Tuple, Optional, Dict
-from config import get_db_config
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from core.config import get_db_config
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -276,7 +279,7 @@ def main():
     
     # Scan definitions (limit to 1000 for testing)
     logger.info("Scanning definitions for circular references...")
-    stats = detector.scan_and_flag_definitions(limit=1000)
+    stats = detector.scan_and_flag_definitions()  # Process ALL definitions
     
     print("\nCIRCULAR DEFINITION DETECTION RESULTS")
     print("=" * 50)

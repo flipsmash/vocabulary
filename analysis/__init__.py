@@ -8,12 +8,12 @@ This package contains analytical tools for vocabulary processing:
 - Data processing utilities
 """
 
-from .frequency_analysis_system import FrequencyAnalysisSystem
+from .frequency_analysis_system import FrequencyCollectionManager
 from .domain_classifier import DomainClassifier
 from .definition_similarity_calculator import DefinitionSimilarityCalculator
 
 __all__ = [
-    'FrequencyAnalysisSystem',
+    'FrequencyCollectionManager',
     'DomainClassifier', 
     'DefinitionSimilarityCalculator'
 ]

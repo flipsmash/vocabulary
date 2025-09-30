@@ -6,9 +6,13 @@ Adds GPU acceleration for massive speed improvements
 
 import argparse
 import sys
+import os
 import logging
 import time
 from typing import Dict
+
+# Add current directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import existing components
 from core.custom_database_manager import CustomDatabaseManager

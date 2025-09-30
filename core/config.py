@@ -57,7 +57,7 @@ class VocabularyConfig:
             "openai/whisper",
         ],
         # Zipf >= threshold is considered common and filtered out
-        'zipf_common_threshold': 3.0,
+        'zipf_common_threshold': 2.2,
     }
     
     # Logging Configuration

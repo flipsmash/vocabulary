@@ -8,7 +8,7 @@
     <h2>Candidate Words Review</h2>
     <div class="d-flex gap-3">
       <!-- Status Filter -->
-      <select class="form-select form-select-sm" onchange="window.location.href='/candidates?status=' + this.value" style="width: 150px;">
+      <select class="form-select form-select-sm" onchange="window.location.href='/admin/candidates?status=' + this.value" style="width: 150px;">
         <option value="pending" {% if status == 'pending' %}selected{% endif %}>Pending</option>
         <option value="approved" {% if status == 'approved' %}selected{% endif %}>Approved</option>
         <option value="rejected" {% if status == 'rejected' %}selected{% endif %}>Rejected</option>
@@ -90,14 +90,14 @@
             </div>
             <div class="card-footer">
               <div class="d-flex justify-content-between">
-                <a href="/candidates/{{ candidate.id }}" class="btn btn-sm btn-outline-primary">View Details</a>
+                <a href="/admin/candidates/{{ candidate.id }}" class="btn btn-sm btn-outline-primary">View Details</a>
                 {% if status == 'pending' %}
                 <div class="btn-group" role="group">
-                  <form method="post" action="/candidates/{{ candidate.id }}/review" class="d-inline">
+                  <form method="post" action="/admin/candidates/{{ candidate.id }}/review" class="d-inline">
                     <input type="hidden" name="action" value="approved">
                     <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Approve this candidate?')">✓</button>
                   </form>
-                  <form method="post" action="/candidates/{{ candidate.id }}/review" class="d-inline">
+                  <form method="post" action="/admin/candidates/{{ candidate.id }}/review" class="d-inline">
                     <input type="hidden" name="action" value="rejected">
                     <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Reject this candidate?')">✗</button>
                   </form>
@@ -118,7 +118,7 @@
         <ul class="pagination justify-content-center">
           {% if page > 1 %}
             <li class="page-item">
-              <a class="page-link" href="/candidates?status={{ status }}&page={{ page - 1 }}">Previous</a>
+              <a class="page-link" href="/admin/candidates?status={{ status }}&page={{ page - 1 }}">Previous</a>
             </li>
           {% endif %}
           
@@ -129,7 +129,7 @@
               </li>
             {% elif (p <= 3) or (p >= total_pages - 2) or (p >= page - 2 and p <= page + 2) %}
               <li class="page-item">
-                <a class="page-link" href="/candidates?status={{ status }}&page={{ p }}">{{ p }}</a>
+                <a class="page-link" href="/admin/candidates?status={{ status }}&page={{ p }}">{{ p }}</a>
               </li>
             {% elif p == 4 and page > 6 %}
               <li class="page-item disabled">
@@ -144,7 +144,7 @@
           
           {% if page < total_pages %}
             <li class="page-item">
-              <a class="page-link" href="/candidates?status={{ status }}&page={{ page + 1 }}">Next</a>
+              <a class="page-link" href="/admin/candidates?status={{ status }}&page={{ page + 1 }}">Next</a>
             </li>
           {% endif %}
         </ul>

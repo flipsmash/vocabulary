@@ -9,7 +9,13 @@ Enhanced Vocabulary Quiz System with Advanced Features
 """
 
 import mysql.connector
-from core.config import get_db_config
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from core.secure_config import get_db_config
 from typing import List, Dict, Optional, Tuple, Any
 import random
 import logging

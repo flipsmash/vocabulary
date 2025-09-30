@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 import re
 import wordfreq
 from dataclasses import dataclass
-from config import get_db_config
+from core.config import get_db_config
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

@@ -6,6 +6,12 @@ Uses simple keyword matching for common domains
 
 import mysql.connector
 import re
+import sys
+import os
+
+# Add current directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from core.config import get_db_config
 from collections import defaultdict
 

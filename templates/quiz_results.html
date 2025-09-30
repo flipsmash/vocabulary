@@ -68,6 +68,12 @@
                                     {% endif %}
                                 </h6>
                                 <p class="mb-1"><strong>Definition:</strong> {{ word.definition }}</p>
+                                {% if word.question_type == 'matching' and word.user_answer and word.correct_answer %}
+                                <div class="mt-2 p-2 bg-white rounded border-start border-danger border-3">
+                                    <small class="text-danger d-block"><strong>You matched with:</strong> {{ word.user_answer }}</small>
+                                    <small class="text-success d-block"><strong>Correct match:</strong> {{ word.correct_answer }}</small>
+                                </div>
+                                {% endif %}
                                 <small class="text-muted">Question Type: {{ word.question_type|title }}</small>
                             </div>
                             {% endfor %}
@@ -94,6 +100,11 @@
                                     {% endif %}
                                 </h6>
                                 <p class="mb-1 text-muted">{{ word.definition }}</p>
+                                {% if word.question_type == 'matching' and word.correct_answer %}
+                                <div class="mt-1">
+                                    <small class="text-success"><strong>✓ Correctly matched with:</strong> {{ word.correct_answer }}</small>
+                                </div>
+                                {% endif %}
                                 <small class="text-muted">{{ word.question_type|title }}</small>
                             </div>
                             {% endfor %}
@@ -148,7 +159,61 @@
                     </div>
                 </div>
             </div>
-            
+
+            <!-- Comprehensive Review Section -->
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    <div class="card border-info">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="mb-0">📝 Complete Review - All Terms & Definitions</h5>
+                            <small>Review all vocabulary from this quiz, including individual terms from matching questions</small>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                {% for word in review_data %}
+                                <div class="col-md-6 mb-3">
+                                    <div class="card h-100 {% if word.is_correct %}border-success{% else %}border-danger{% endif %}">
+                                        <div class="card-body">
+                                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                                <h6 class="card-title mb-1">
+                                                    <strong>{{ word.term }}</strong>
+                                                    <span class="badge bg-secondary ms-2">{{ word.part_of_speech }}</span>
+                                                </h6>
+                                                <span class="badge {% if word.is_correct %}bg-success{% else %}bg-danger{% endif %}">
+                                                    {% if word.is_correct %}✓{% else %}✗{% endif %}
+                                                </span>
+                                            </div>
+                                            <p class="card-text mb-2"><strong>Definition:</strong> {{ word.definition }}</p>
+
+                                            {% if word.question_type == 'matching' %}
+                                                {% if word.is_correct %}
+                                                    <div class="alert alert-success p-2 mb-2">
+                                                        <small><strong>✓ Correct Match:</strong> {{ word.correct_answer }}</small>
+                                                    </div>
+                                                {% else %}
+                                                    <div class="alert alert-danger p-2 mb-2">
+                                                        <small class="d-block"><strong>✗ You matched with:</strong> {{ word.user_answer }}</small>
+                                                        <small class="d-block"><strong>✓ Should be:</strong> {{ word.correct_answer }}</small>
+                                                    </div>
+                                                {% endif %}
+                                            {% endif %}
+
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <small class="text-muted">{{ word.question_type|title }}</small>
+                                                {% if word.domain %}
+                                                <small class="badge bg-outline-secondary">{{ word.domain }}</small>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Action Buttons -->
             <div class="text-center">
                 <a href="/quiz" class="btn btn-primary btn-lg me-3">Take Another Quiz</a>

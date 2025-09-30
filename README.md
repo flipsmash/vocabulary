@@ -165,6 +165,8 @@ python cuda_enhanced_cli.py --status
 
 ## 📖 Documentation
 
+- For contributor and agent workflows, review [AGENTS.md](AGENTS.md) alongside the instructions here.
+
 ### 🌐 Web Application Guide
 
 #### 🎯 Quiz System

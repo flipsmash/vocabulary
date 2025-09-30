@@ -13,7 +13,11 @@ import shutil
 from pathlib import Path
 from typing import Optional, List, Tuple
 import logging
-from config import get_db_config
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from core.config import get_db_config
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

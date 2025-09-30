@@ -18,12 +18,29 @@ import hashlib
 
 from .respectful_scraper import RespectfulWebScraper
 from .universal_vocabulary_extractor import UniversalVocabularyExtractor, VocabularyCandidate
-from ..core.config import get_db_config
-from ..core.english_word_validator import validate_english_word
-from ..core.vocabulary_deduplicator import filter_duplicate_candidates
-from ..core.comprehensive_definition_lookup import enhance_candidate_with_definitions
+import sys
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
+from core.secure_config import get_db_config
+from core.english_word_validator import validate_english_word
+from core.vocabulary_deduplicator import filter_duplicate_candidates
+from wordfreq import zipf_frequency
 import mysql.connector
 from mysql.connector import Error
+
+
+# Quick stoplist to avoid work on extremely common vocabulary
+COMMON_WORDS = {
+    'the', 'and', 'that', 'have', 'with', 'this', 'from', 'would', 'there',
+    'about', 'could', 'should', 'other', 'which', 'their', 'every', 'because',
+    'between', 'people', 'through', 'never', 'always', 'where', 'while', 'those',
+    'being', 'after', 'before', 'against', 'under', 'among', 'again', 'even',
+    'first', 'little', 'great', 'world', 'might', 'house', 'another', 'something',
+    'nothing', 'woman', 'father', 'mother', 'brother', 'child', 'children',
+    'friend', 'heart', 'hands', 'eyes', 'once'
+}
 
 
 class ProjectGutenbergHarvester:
@@ -383,7 +400,7 @@ class ProjectGutenbergHarvester:
         title = book['title']
         period = book.get('literary_period', 'classical')
         
-        # Use universal extractor as base
+        # Use the universal extractor as the primary source of candidates
         base_candidates = self.extractor.extract_candidates(
             content,
             {
@@ -393,79 +410,14 @@ class ProjectGutenbergHarvester:
                 'literary_period': period
             }
         )
-        
-        # Enhance with classical literature-specific patterns
-        classical_candidates = self._extract_archaic_patterns(content, book)
-        
-        # Combine and deduplicate
-        all_candidates = base_candidates + classical_candidates
-        unique_candidates = self._deduplicate_by_term(all_candidates)
-        
-        # Score and filter for classical literature
+
+        # Deduplicate and score without specialising on archaic-only patterns
+        unique_candidates = self._deduplicate_by_term(base_candidates)
+
         scored_candidates = self._score_classical_candidates(unique_candidates, period)
-        
-        # Return top candidates
-        return scored_candidates[:30]  # Top 30 per book
-    
-    def _extract_archaic_patterns(self, content: str, book: Dict) -> List[Dict]:
-        """Extract archaic and classical vocabulary patterns"""
-        
-        # Patterns specific to classical literature
-        archaic_patterns = [
-            (r'\b[a-zA-Z]*(?:eth|est|st)\b', 'archaic_verb'),  # Archaic verb forms
-            (r'\b(?:whence|whither|wherefore|whilst|amongst|betwixt|oft|ere|nay|yea|forsooth|prithee|anon|mayhap|perchance)\b', 'archaic_adverb'),
-            (r'\b(?:thou|thee|thy|thine|ye|hath|doth|shalt|shouldst|wouldst|couldst)\b', 'archaic_pronoun_verb'),
-            (r'\b[a-zA-Z]*(?:ward|wise|like|some|fold)\b', 'archaic_suffix'),
-            (r'\b(?:bespeak|beseech|befall|bethink|bewail|begone|besmirch|bestow)\b', 'archaic_compound'),
-            (r'\b[a-zA-Z]{6,}(?:ous|eous|ious|uous)\b', 'classical_adjective'),
-            (r'\b[a-zA-Z]{7,}(?:tion|sion|ment|ness)\b', 'classical_abstract'),
-        ]
-        
-        candidates = []
-        sentences = re.split(r'[.!?]+', content)
-        
-        for pattern_re, pattern_type in archaic_patterns:
-            pattern = re.compile(pattern_re, re.IGNORECASE)
-            
-            for sentence in sentences:
-                sentence = sentence.strip()
-                if len(sentence) < 20 or len(sentence) > 300:
-                    continue
-                
-                matches = pattern.findall(sentence)
-                for match in matches:
-                    term = match.lower()
-                    
-                    # Filter out very common archaic words and short words
-                    if (len(term) >= 4 and 
-                        term not in {'thou', 'thee', 'thy', 'the', 'and', 'but', 'with', 'from', 'this', 'that'} and
-                        term.isalpha()):
-                        
-                        candidate = {
-                            'term': term,
-                            'original_form': match,
-                            'part_of_speech': 'unknown',
-                            'fine_pos': pattern_type,
-                            'lemma': term,
-                            'context': sentence[:250],
-                            'linguistic_features': {
-                                'archaic_pattern': pattern_type,
-                                'syllable_count': self._estimate_syllables(term),
-                                'literary_period': book.get('literary_period', 'classical')
-                            },
-                            'morphological_type': [pattern_type, 'classical'],
-                            'source_metadata': {
-                                'source_type': 'gutenberg',
-                                'author': book['author'],
-                                'title': book['title'],
-                                'literary_period': book.get('literary_period')
-                            },
-                            'preliminary_score': self._score_archaic_term(term, pattern_type)
-                        }
-                        
-                        candidates.append(candidate)
-        
-        return candidates
+
+        # Return all scored candidates so downstream filters decide what to keep
+        return scored_candidates
     
     def _deduplicate_by_term(self, candidates: List) -> List[Dict]:
         """Remove duplicate terms, keeping the best instance"""
@@ -508,104 +460,61 @@ class ProjectGutenbergHarvester:
         return list(term_to_best.values())
     
     def _score_classical_candidates(self, candidates: List[Dict], period: str) -> List[Dict]:
-        """Score candidates specifically for classical literature value"""
-        
+        """Score candidates with lightweight heuristics."""
+
         period_bonuses = {
-            'medieval': 2.0,
-            'elizabethan': 1.5,
-            'jacobean': 1.3,
-            'restoration': 1.2,
-            'augustan': 1.0,
-            'romantic': 0.8,
-            'classical': 1.0
+            'medieval': 0.8,
+            'elizabethan': 0.7,
+            'jacobean': 0.6,
+            'restoration': 0.5,
+            'augustan': 0.5,
+            'romantic': 0.4,
+            'classical': 0.4,
         }
-        
-        period_bonus = period_bonuses.get(period, 0.5)
-        
+
+        period_bonus = period_bonuses.get(period, 0.3)
+
         for candidate in candidates:
             score = candidate.get('preliminary_score', 5.0)
-            
-            # Period-specific bonus
+
+            # Period context provides a small bump to keep metadata valuable
             score += period_bonus
-            
-            # Archaic pattern bonuses
-            linguistic_features = candidate.get('linguistic_features', {})
-            archaic_pattern = linguistic_features.get('archaic_pattern', '')
-            
-            archaic_bonuses = {
-                'archaic_verb': 2.0,
-                'archaic_adverb': 1.5,
-                'archaic_pronoun_verb': 1.0,
-                'archaic_suffix': 1.2,
-                'archaic_compound': 1.8,
-                'classical_adjective': 1.0,
-                'classical_abstract': 1.3
-            }
-            
-            score += archaic_bonuses.get(archaic_pattern, 0.0)
-            
-            # Length and complexity bonuses
-            term_length = len(candidate['term'])
-            if 6 <= term_length <= 12:
-                score += 1.0
+
+            term = candidate['term']
+            term_length = len(term)
+
+            # Prefer medium-length or longer words; penalise very short single tokens
+            if ' ' not in term and term_length < 4:
+                score -= 1.0
+            elif 6 <= term_length <= 12:
+                score += 0.8
             elif term_length > 12:
-                score += 0.5
-            
-            # Context quality
+                score += 0.4
+
+            # Multi-word expressions and hyphenated forms tend to be more specialised
+            if ' ' in term:
+                score += 0.6
+            if '-' in term:
+                score += 0.3
+
+            # POS and morphological hints from the extractor
+            pos_hint = candidate.get('part_of_speech') or ''
+            if pos_hint.upper() in {'NOUN', 'ADJECTIVE'}:
+                score += 0.2
+
+            morph_types = candidate.get('morphological_type', [])
+            if morph_types:
+                score += min(0.2 * len(morph_types), 0.6)
+
+            # Reward richer contexts
             context_length = len(candidate.get('context', ''))
-            if context_length > 100:
-                score += 0.5
-            
-            candidate['preliminary_score'] = min(15.0, score)  # Cap at 15
-        
-        # Sort by score
+            if context_length > 80:
+                score += 0.3
+
+            candidate['preliminary_score'] = min(12.0, max(0.0, score))
+
         candidates.sort(key=lambda x: x['preliminary_score'], reverse=True)
         return candidates
-    
-    def _score_archaic_term(self, term: str, pattern_type: str) -> float:
-        """Score an archaic term based on its characteristics"""
-        base_score = 5.0
-        
-        # Pattern type scoring
-        pattern_scores = {
-            'archaic_verb': 7.0,
-            'archaic_adverb': 6.0,
-            'archaic_pronoun_verb': 5.0,
-            'archaic_suffix': 6.5,
-            'archaic_compound': 7.5,
-            'classical_adjective': 6.0,
-            'classical_abstract': 6.5
-        }
-        
-        base_score = pattern_scores.get(pattern_type, 5.0)
-        
-        # Length bonus
-        length = len(term)
-        if 8 <= length <= 12:
-            base_score += 1.0
-        elif 6 <= length <= 7:
-            base_score += 0.5
-        
-        return base_score
-    
-    def _estimate_syllables(self, word: str) -> int:
-        """Rough syllable estimation"""
-        word = word.lower()
-        vowels = 'aeiouy'
-        syllable_count = 0
-        previous_was_vowel = False
-        
-        for char in word:
-            is_vowel = char in vowels
-            if is_vowel and not previous_was_vowel:
-                syllable_count += 1
-            previous_was_vowel = is_vowel
-        
-        # Adjust for silent 'e'
-        if word.endswith('e') and syllable_count > 1:
-            syllable_count -= 1
-        
-        return max(1, syllable_count)
     
     async def store_candidates(self, candidates: List[Dict], batch_id: str):
         """Store classical vocabulary candidates in database"""
@@ -630,63 +539,91 @@ class ProjectGutenbergHarvester:
             
             values = []
             validated_candidates = []
-            
+            precheck_rejected = 0
+            non_english_rejected = 0
+            frequency_rejected = 0
+
             for candidate in filtered_candidates:
-                # Validate English word before storing
                 term = candidate['term']
+                normalized_term = term.lower()
+
+                # Quick heuristics to skip obviously common or short tokens
+                if (' ' not in normalized_term and len(normalized_term) < 4) or normalized_term in COMMON_WORDS:
+                    precheck_rejected += 1
+                    continue
+                if any(char.isdigit() for char in normalized_term):
+                    precheck_rejected += 1
+                    continue
+
+                # Validate English word before storing
                 is_english, reason = validate_english_word(term)
-                
+
                 if not is_english:
+                    non_english_rejected += 1
                     self.logger.debug(f"Rejected non-English word '{term}': {reason}")
                     continue
-                
-                # Enhance candidate with comprehensive definitions
-                enhanced_candidate = await enhance_candidate_with_definitions(candidate)
-                validated_candidates.append(enhanced_candidate)
-                
-                # Create rich metadata for classical literature
+
+                # Require the term to be rare according to wordfreq
+                zipf_score = zipf_frequency(term, 'en')
+                if zipf_score is not None and zipf_score >= 1.75:
+                    frequency_rejected += 1
+                    self.logger.debug(
+                        "Skipped common word '%s' (Zipf frequency %.2f)",
+                        term,
+                        zipf_score,
+                    )
+                    continue
+
+                source_metadata = candidate.get('source_metadata', {})
+                linguistic_features = candidate.get('linguistic_features', {})
+
                 metadata = {
-                    'author': enhanced_candidate['source_metadata'].get('author'),
-                    'title': enhanced_candidate['source_metadata'].get('title'), 
-                    'literary_period': enhanced_candidate['source_metadata'].get('literary_period'),
-                    'archaic_pattern': enhanced_candidate.get('linguistic_features', {}).get('archaic_pattern'),
-                    'morphological_type': enhanced_candidate.get('morphological_type', []),
+                    'author': source_metadata.get('author'),
+                    'title': source_metadata.get('title'),
+                    'literary_period': source_metadata.get('literary_period'),
+                    'linguistic_signals': {
+                        'pos': candidate.get('part_of_speech'),
+                        'features': linguistic_features,
+                    },
+                    'morphological_type': candidate.get('morphological_type', []),
                     'validation_reason': reason,
-                    'definitions': enhanced_candidate.get('definitions', {}),
-                    'definition_reliability': enhanced_candidate.get('definition_reliability', 0.0)
+                    'wordfreq_zipf': zipf_score,
                 }
-                
-                # Use enhanced definitions in raw_definition field if available
-                enhanced_definitions = enhanced_candidate.get('definitions', {})
-                if enhanced_definitions:
-                    definition_text = []
-                    for pos, defs in enhanced_definitions.items():
-                        if defs:
-                            definition_text.append(f"{pos}: {defs[0].get('definition', '')}")
-                    raw_definition = "; ".join(definition_text) if definition_text else f"Classical term from {enhanced_candidate['source_metadata'].get('author', 'unknown author')}"
-                else:
-                    raw_definition = f"Classical term from {enhanced_candidate['source_metadata'].get('author', 'unknown author')}"
-                
+
+                raw_definition = (
+                    f"Classical term from {source_metadata.get('author', 'unknown author')}"
+                )
+
                 values.append((
-                    enhanced_candidate['term'],
+                    term,
                     'gutenberg',
-                    enhanced_candidate.get('part_of_speech', 'unknown'),
-                    enhanced_candidate.get('preliminary_score', 5.0),
+                    candidate.get('part_of_speech', 'unknown'),
+                    candidate.get('preliminary_score', 5.0),
                     json.dumps(metadata),
-                    enhanced_candidate.get('context', '')[:500],
+                    candidate.get('context', '')[:500],
                     raw_definition[:500],
-                    json.dumps({'literary_period': enhanced_candidate['source_metadata'].get('literary_period')})[:500],
+                    json.dumps({'literary_period': source_metadata.get('literary_period')})[:500],
                     datetime.now()
                 ))
-            
+
+                validated_candidates.append(candidate)
+
             if values:
                 cursor.executemany(insert_query, values)
                 conn.commit()
-            
-            rejected_count = len(candidates) - len(validated_candidates)
-            total_filtered = dedup_stats['duplicates'] + rejected_count
-            self.logger.info(f"Stored {len(validated_candidates)} classical vocabulary candidates "
-                           f"(filtered {total_filtered} total: {dedup_stats['duplicates']} duplicates, {rejected_count} non-English)")
+
+            total_filtered = (
+                dedup_stats['duplicates'] + precheck_rejected + non_english_rejected + frequency_rejected
+            )
+            self.logger.info(
+                "Stored %d classical vocabulary candidates (filtered %d total: %d duplicates, %d pre-check, %d non-English, %d not rare enough)",
+                len(validated_candidates),
+                total_filtered,
+                dedup_stats['duplicates'],
+                precheck_rejected,
+                non_english_rejected,
+                frequency_rejected,
+            )
             
         except Error as e:
             self.logger.error(f"Database error storing candidates: {e}")

@@ -39,6 +39,12 @@ def main():
                        help='Calculate definition similarities')
     parser.add_argument('--similarity-threshold', type=float, default=0.3,
                        help='Similarity threshold for definition similarities')
+    parser.add_argument('--fill-missing-definitions', action='store_true',
+                       help='Fill NULL/empty definitions using the lookup system')
+    parser.add_argument('--fill-limit', type=int, default=None,
+                       help='Limit the number of rows scanned when filling definitions')
+    parser.add_argument('--fill-dry-run', action='store_true',
+                       help='Preview definition fixes without modifying the database')
     # Legacy ingestion options (experimental system was moved to abandoned/)
     # Use the current harvesting system instead: gutenberg_harvester.py, wiktionary_harvester.py, etc.
     
@@ -61,12 +67,29 @@ def main():
         elif args.calculate_definition_similarities:
             from analysis.definition_similarity_calculator import DefinitionSimilarityCalculator
             from core.config import get_db_config
-            
+
             print(f"[INFO] Calculating definition similarities (threshold: {args.similarity_threshold})")
             calculator = DefinitionSimilarityCalculator(get_db_config())
             similarities = calculator.calculate_all_similarities(args.similarity_threshold)
             print(f"[OK] Found {len(similarities)} semantic similarity pairs")
-            
+
+        elif args.fill_missing_definitions:
+            import logging
+            from core.definition_filler import fill_missing_definitions
+
+            logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+            print("[INFO] Filling missing definitions ...")
+            summary = fill_missing_definitions(
+                limit=args.fill_limit,
+                dry_run=args.fill_dry_run,
+            )
+            print(
+                f"[OK] Looked up {summary.looked_up} terms | "
+                f"Updated {summary.updated} | Inserted {summary.inserted} | "
+                f"Skipped {summary.skipped}"
+            )
+
         # Removed experimental ingestion system - moved to abandoned/experimental_ingestion/
         # Use current harvesting system instead: gutenberg_harvester.py, wiktionary_harvester.py, etc.
 

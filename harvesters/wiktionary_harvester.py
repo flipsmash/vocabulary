@@ -13,10 +13,15 @@ from dataclasses import dataclass
 from datetime import datetime, date
 from urllib.parse import quote, unquote
 import logging
-from ..core.config import get_db_config
-from ..core.english_word_validator import validate_english_word
-from ..core.vocabulary_deduplicator import filter_duplicate_candidates, get_existing_terms
-from ..core.comprehensive_definition_lookup import enhance_candidate_with_definitions
+import sys
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
+from core.secure_config import get_db_config
+from core.english_word_validator import validate_english_word
+from core.vocabulary_deduplicator import filter_duplicate_candidates, get_existing_terms
+from core.comprehensive_definition_lookup import enhance_candidate_with_definitions
 import asyncio
 
 # Setup logging

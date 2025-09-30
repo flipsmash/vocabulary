@@ -24,7 +24,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
 
 # JWT token bearer
 security = HTTPBearer()
@@ -55,10 +55,14 @@ class UserManager:
     
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """Verify a password against its hash"""
+        # Truncate password to 72 bytes for bcrypt compatibility
+        plain_password = plain_password[:72]
         return pwd_context.verify(plain_password, hashed_password)
     
     def get_password_hash(self, password: str) -> str:
         """Hash a password"""
+        # Truncate password to 72 bytes for bcrypt compatibility
+        password = password[:72]
         return pwd_context.hash(password)
     
     def get_user_by_username(self, username: str) -> Optional[User]:

@@ -8,12 +8,13 @@ This package contains CUDA-accelerated pronunciation processing:
 - Performance optimization utilities
 """
 
-from .modern_pronunciation_system import ModernPronunciationSystem
+from .modern_pronunciation_system import ModernPhoneticProcessor, ModernPronunciationSimilaritySystem
 from .cuda_similarity_calculator import CUDASimilarityCalculator
 from .pronunciation_generator import PronunciationGenerator
 
 __all__ = [
-    'ModernPronunciationSystem',
-    'CUDASimilarityCalculator',
+    'ModernPhoneticProcessor',
+    'ModernPronunciationSimilaritySystem',
+    'CUDASimilarityCalculator', 
     'PronunciationGenerator'
 ]
