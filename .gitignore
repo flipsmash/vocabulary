@@ -57,9 +57,13 @@ debug_*.py
 # Temporary
 nul
 cookies.txt
-*.logbackupsvocab_backup_mysqldump_.sql
+*.log
+
+# Large files and backups
+backupsvocab_backup_mysqldump_.sql
+*backup*.sql
+*dump*.sql
 *.tar.gz
 *.zip
 pronunciation_files/
 backups/
-*.sql
