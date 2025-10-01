@@ -49,7 +49,8 @@ class PronunciationLibraryBuilder:
         self.session.headers.update({'User-Agent': USER_AGENT})
         self.stats = {
             'total': 0,
-            'downloaded': 0,
+            'merriam_webster': 0,
+            'free_dictionary': 0,
             'synthesized': 0,
             'already_local': 0,
             'failed': 0
@@ -70,7 +71,65 @@ class PronunciationLibraryBuilder:
             filename = filename.replace(char, '_')
         return filename
 
-    def download_from_url(self, url: str, word_id: int, term: str) -> Optional[Path]:
+    def get_merriam_webster_audio_url(self, term: str) -> Optional[str]:
+        """
+        Fetch pronunciation URL from Merriam-Webster API
+        Uses their collegiate dictionary API (free for non-commercial use)
+        """
+        try:
+            # Merriam-Webster API endpoint (requires API key for production, but can scrape page)
+            # For now, we'll construct the expected URL pattern based on their convention
+            # Format: https://media.merriam-webster.com/soundc11/{first_letter}/{filename}.wav
+
+            # Their filename convention is complex, so let's try the Free Dictionary API first
+            # and only use existing M-W URLs from database
+            return None
+
+        except Exception as e:
+            logger.debug(f"Could not get M-W URL for {term}: {e}")
+            return None
+
+    def get_free_dictionary_audio_url(self, term: str) -> Optional[str]:
+        """
+        Fetch pronunciation URL from Free Dictionary API
+        Returns URL if available, None otherwise
+        """
+        try:
+            url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{term.lower()}"
+
+            # Respectful delay
+            time.sleep(RATE_LIMIT_DELAY)
+
+            response = self.session.get(url, timeout=10)
+
+            if response.status_code == 200:
+                data = response.json()
+                if isinstance(data, list) and len(data) > 0:
+                    entry = data[0]
+
+                    # Check phonetics for audio
+                    if 'phonetics' in entry:
+                        for phonetic in entry['phonetics']:
+                            if 'audio' in phonetic and phonetic['audio']:
+                                audio_url = phonetic['audio']
+                                # Prefer US pronunciation, then UK, then any
+                                if '-us.mp3' in audio_url or '-uk.mp3' in audio_url:
+                                    logger.info(f"Found Free Dictionary audio for {term}: {audio_url}")
+                                    return audio_url
+
+                        # Return first available audio if no US/UK found
+                        for phonetic in entry['phonetics']:
+                            if 'audio' in phonetic and phonetic['audio']:
+                                logger.info(f"Found Free Dictionary audio for {term}: {phonetic['audio']}")
+                                return phonetic['audio']
+
+            return None
+
+        except Exception as e:
+            logger.debug(f"Free Dictionary API failed for {term}: {e}")
+            return None
+
+    def download_from_url(self, url: str, word_id: int, term: str, source: str = 'unknown') -> Optional[Path]:
         """Download pronunciation file from URL with rate limiting"""
         try:
             # Check if already exists locally
@@ -83,7 +142,7 @@ class PronunciationLibraryBuilder:
                 return local_path
 
             # Respectful delay
-            logger.info(f"Downloading: {term} from Merriam-Webster (waiting {RATE_LIMIT_DELAY}s...)")
+            logger.info(f"Downloading: {term} from {source} (waiting {RATE_LIMIT_DELAY}s...)")
             time.sleep(RATE_LIMIT_DELAY)
 
             # Download
@@ -179,18 +238,24 @@ class PronunciationLibraryBuilder:
         except Exception as e:
             logger.error(f"Database update failed for word_id {word_id}: {e}")
 
-    def process_words_with_urls(self, limit: Optional[int] = None):
-        """Process words that have Merriam-Webster URLs"""
+    def process_all_words(self, limit: Optional[int] = None):
+        """
+        Process ALL words with intelligent source selection:
+        1. Check if local file exists (skip)
+        2. Try Merriam-Webster URL from database
+        3. Try Free Dictionary API
+        4. Synthesize with gTTS
+        """
         logger.info("=" * 60)
-        logger.info("PHASE 1: Downloading from Merriam-Webster")
+        logger.info("COMPREHENSIVE PRONUNCIATION LIBRARY BUILD")
         logger.info("=" * 60)
 
         conn = self.get_db_connection()
         with conn.cursor() as cursor:
+            # Get ALL words, regardless of wav_url status
             sql = """
             SELECT id, term, wav_url
             FROM defined
-            WHERE wav_url LIKE 'http%'
             ORDER BY id
             """
             if limit:
@@ -200,133 +265,126 @@ class PronunciationLibraryBuilder:
             words = cursor.fetchall()
         conn.close()
 
-        logger.info(f"Found {len(words)} words with Merriam-Webster URLs")
+        logger.info(f"Processing {len(words)} total words")
+        logger.info(f"Strategy: Merriam-Webster → Free Dictionary → gTTS Synthesis")
+        logger.info("")
 
-        for word_id, term, url in tqdm(words, desc="Downloading"):
+        for word_id, term, existing_wav_url in tqdm(words, desc="Processing"):
             # Check if already local
             sanitized_term = self.sanitize_filename(term)
             local_path = PRONUNCIATION_DIR / f"{word_id}_{sanitized_term}.wav"
+            mp3_path = PRONUNCIATION_DIR / f"{word_id}_{sanitized_term}.mp3"
 
-            if local_path.exists() and local_path.stat().st_size > 1000:
+            if (local_path.exists() and local_path.stat().st_size > 1000) or \
+               (mp3_path.exists() and mp3_path.stat().st_size > 1000):
                 self.stats['already_local'] += 1
-                self.update_database(word_id, local_path)
+                existing_file = local_path if local_path.exists() else mp3_path
+                self.update_database(word_id, existing_file)
                 continue
 
-            # Download
-            result_path = self.download_from_url(url, word_id, term)
+            result_path = None
 
-            if result_path:
-                self.stats['downloaded'] += 1
-                self.update_database(word_id, result_path)
-            else:
-                self.stats['failed'] += 1
+            # Strategy 1: Try Merriam-Webster (if URL exists in database)
+            if existing_wav_url and existing_wav_url.startswith('http'):
+                logger.debug(f"Trying Merriam-Webster for {term}")
+                result_path = self.download_from_url(existing_wav_url, word_id, term, source='Merriam-Webster')
+                if result_path:
+                    self.stats['merriam_webster'] += 1
+                    self.update_database(word_id, result_path)
+                    continue
 
-        logger.info(f"\nPhase 1 Complete: {self.stats['downloaded']} downloaded, "
-                   f"{self.stats['already_local']} already local, "
-                   f"{self.stats['failed']} failed")
+            # Strategy 2: Try Free Dictionary API
+            logger.debug(f"Trying Free Dictionary API for {term}")
+            free_dict_url = self.get_free_dictionary_audio_url(term)
+            if free_dict_url:
+                result_path = self.download_from_url(free_dict_url, word_id, term, source='Free Dictionary')
+                if result_path:
+                    self.stats['free_dictionary'] += 1
+                    self.update_database(word_id, result_path)
+                    continue
 
-    def process_words_without_urls(self, limit: Optional[int] = None):
-        """Process words without URLs - synthesize pronunciations"""
-        logger.info("=" * 60)
-        logger.info("PHASE 2: Synthesizing missing pronunciations")
-        logger.info("=" * 60)
-
-        conn = self.get_db_connection()
-        with conn.cursor() as cursor:
-            sql = """
-            SELECT id, term
-            FROM defined
-            WHERE (wav_url IS NULL OR wav_url = '')
-            ORDER BY id
-            """
-            if limit:
-                sql += f" LIMIT {limit}"
-
-            cursor.execute(sql)
-            words = cursor.fetchall()
-        conn.close()
-
-        logger.info(f"Found {len(words)} words needing synthesis")
-
-        for word_id, term in tqdm(words, desc="Synthesizing"):
+            # Strategy 3: Synthesize with gTTS
+            logger.debug(f"Synthesizing {term} with gTTS")
             result_path = self.synthesize_with_gtts(word_id, term)
-
             if result_path:
                 self.stats['synthesized'] += 1
                 self.update_database(word_id, result_path)
             else:
                 self.stats['failed'] += 1
 
-        logger.info(f"\nPhase 2 Complete: {self.stats['synthesized']} synthesized, "
-                   f"{self.stats['failed']} failed")
+        self.print_phase_stats()
+
+    def print_phase_stats(self):
+        """Print statistics after processing"""
+        logger.info("\n" + "=" * 60)
+        logger.info("PROCESSING COMPLETE")
+        logger.info("=" * 60)
+        logger.info(f"Already local:       {self.stats['already_local']:6,}")
+        logger.info(f"Merriam-Webster:     {self.stats['merriam_webster']:6,}")
+        logger.info(f"Free Dictionary:     {self.stats['free_dictionary']:6,}")
+        logger.info(f"gTTS Synthesized:    {self.stats['synthesized']:6,}")
+        logger.info(f"Failed:              {self.stats['failed']:6,}")
+        logger.info(f"Total processed:     {sum(self.stats.values()):6,}")
 
     def print_final_stats(self):
         """Print final statistics"""
+        logger.info("\n" + "=" * 60)
+        logger.info("FINAL LIBRARY STATISTICS")
         logger.info("=" * 60)
-        logger.info("FINAL STATISTICS")
-        logger.info("=" * 60)
-        logger.info(f"Already local:    {self.stats['already_local']:,}")
-        logger.info(f"Downloaded:       {self.stats['downloaded']:,}")
-        logger.info(f"Synthesized:      {self.stats['synthesized']:,}")
-        logger.info(f"Failed:           {self.stats['failed']:,}")
-        logger.info(f"Total processed:  {sum(self.stats.values()):,}")
 
         # Count final files
         wav_files = list(PRONUNCIATION_DIR.glob('*.wav'))
         mp3_files = list(PRONUNCIATION_DIR.glob('*.mp3'))
-        logger.info(f"\nTotal .wav files: {len(wav_files):,}")
-        logger.info(f"Total .mp3 files: {len(mp3_files):,}")
-        logger.info(f"Total audio files: {len(wav_files) + len(mp3_files):,}")
+
+        logger.info(f"\nAudio Files by Format:")
+        logger.info(f"  WAV files:  {len(wav_files):6,}")
+        logger.info(f"  MP3 files:  {len(mp3_files):6,}")
+        logger.info(f"  Total:      {len(wav_files) + len(mp3_files):6,}")
+
+        logger.info(f"\nSources Breakdown:")
+        logger.info(f"  Merriam-Webster:  {self.stats['merriam_webster']:6,}")
+        logger.info(f"  Free Dictionary:  {self.stats['free_dictionary']:6,}")
+        logger.info(f"  gTTS Synthesis:   {self.stats['synthesized']:6,}")
+        logger.info(f"  Already local:    {self.stats['already_local']:6,}")
+        logger.info(f"  Failed:           {self.stats['failed']:6,}")
 
 
 def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Build comprehensive pronunciation library with respectful scraping"
+        description="Build comprehensive pronunciation library with multi-source fallback"
     )
     parser.add_argument(
-        '--download-limit',
+        '--limit',
         type=int,
-        help='Limit number of downloads (for testing)'
-    )
-    parser.add_argument(
-        '--synthesis-limit',
-        type=int,
-        help='Limit number of syntheses (for testing)'
-    )
-    parser.add_argument(
-        '--skip-download',
-        action='store_true',
-        help='Skip download phase (synthesis only)'
-    )
-    parser.add_argument(
-        '--skip-synthesis',
-        action='store_true',
-        help='Skip synthesis phase (download only)'
+        help='Limit number of words to process (for testing)'
     )
 
     args = parser.parse_args()
 
     builder = PronunciationLibraryBuilder()
 
-    logger.info("Starting Pronunciation Library Builder")
+    logger.info("=" * 60)
+    logger.info("PRONUNCIATION LIBRARY BUILDER")
+    logger.info("=" * 60)
     logger.info(f"Rate limit: {RATE_LIMIT_DELAY} seconds between requests")
     logger.info(f"Output directory: {PRONUNCIATION_DIR.absolute()}")
+    logger.info(f"\nSource Priority:")
+    logger.info(f"  1. Local file (skip if exists)")
+    logger.info(f"  2. Merriam-Webster (from database URLs)")
+    logger.info(f"  3. Free Dictionary API")
+    logger.info(f"  4. gTTS Synthesis")
+    logger.info("")
 
-    # Phase 1: Download from Merriam-Webster
-    if not args.skip_download:
-        builder.process_words_with_urls(limit=args.download_limit)
-
-    # Phase 2: Synthesize missing
-    if not args.skip_synthesis:
-        builder.process_words_without_urls(limit=args.synthesis_limit)
+    # Process all words with intelligent fallback
+    builder.process_all_words(limit=args.limit)
 
     # Final stats
     builder.print_final_stats()
 
     logger.info("\n✓ Pronunciation library build complete!")
-    logger.info("Next step: Update web app to serve these files")
+    logger.info("Next step: Test pronunciation playback in web app")
 
 
 if __name__ == '__main__':

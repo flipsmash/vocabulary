@@ -60,3 +60,4 @@ cookies.txt
 *.logbackupsvocab_backup_mysqldump_.sql
 *.tar.gz
 *.zip
+pronunciation_files/
