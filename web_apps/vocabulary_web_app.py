@@ -62,6 +62,7 @@ class Word:
     arpabet_transcription: Optional[str] = None
     syllable_count: Optional[int] = None
     stress_pattern: Optional[str] = None
+    obsolete_or_archaic: Optional[bool] = None
 
 class VocabularyDatabase:
     def __init__(self):
@@ -82,7 +83,8 @@ class VocabularyDatabase:
             d.id, d.term, d.definition, d.part_of_speech, d.frequency,
             wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
             wd.primary_domain, d.wav_url,
-            wp.ipa_transcription, wp.arpabet_transcription, wp.syllable_count, wp.stress_pattern
+            wp.ipa_transcription, wp.arpabet_transcription, wp.syllable_count, wp.stress_pattern,
+            d.obsolete_or_archaic
         FROM defined d
         LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
         LEFT JOIN word_domains wd ON d.id = wd.word_id
@@ -134,6 +136,7 @@ class VocabularyDatabase:
                 arpabet_transcription=row[11],
                 syllable_count=row[12],
                 stress_pattern=row[13],
+                obsolete_or_archaic=row[14],
             )
             for row in rows
         ]
@@ -144,7 +147,8 @@ class VocabularyDatabase:
             d.id, d.term, d.definition, d.part_of_speech,
             wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
             wd.primary_domain, d.wav_url,
-            wp.ipa_transcription, wp.arpabet_transcription, wp.syllable_count, wp.stress_pattern
+            wp.ipa_transcription, wp.arpabet_transcription, wp.syllable_count, wp.stress_pattern,
+            d.obsolete_or_archaic
         FROM defined d
         LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
         LEFT JOIN word_domains wd ON d.id = wd.word_id
@@ -173,6 +177,7 @@ class VocabularyDatabase:
             arpabet_transcription=result[10],
             syllable_count=result[11],
             stress_pattern=result[12],
+            obsolete_or_archaic=result[13],
         )
 
     def get_similar_words(self, word_id: int, limit: int = 10) -> List[tuple]:
@@ -237,6 +242,7 @@ class VocabularyDatabase:
             arpabet_transcription=result[10],
             syllable_count=result[11],
             stress_pattern=result[12],
+            obsolete_or_archaic=result[13],
         )
 
     def get_domains(self) -> List[str]:
@@ -407,6 +413,7 @@ async def browse(request: Request,
             arpabet_transcription=row[10],
             syllable_count=row[11],
             stress_pattern=row[12],
+            obsolete_or_archaic=row[13],
         )
         for row in results
     ]
