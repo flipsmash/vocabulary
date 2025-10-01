@@ -286,25 +286,39 @@ class PronunciationLibraryBuilder:
 
             # Strategy 1: Try Merriam-Webster (if URL exists in database)
             if existing_wav_url and existing_wav_url.startswith('http'):
-                logger.debug(f"Trying Merriam-Webster for {term}")
                 result_path = self.download_from_url(existing_wav_url, word_id, term, source='Merriam-Webster')
                 if result_path:
                     self.stats['merriam_webster'] += 1
                     self.update_database(word_id, result_path)
                     continue
+                else:
+                    # M-W download failed, try Free Dictionary as fallback
+                    logger.info(f"M-W failed for {term}, trying Free Dictionary API...")
+                    free_dict_url = self.get_free_dictionary_audio_url(term)
+                    if free_dict_url:
+                        result_path = self.download_from_url(free_dict_url, word_id, term, source='Free Dictionary')
+                        if result_path:
+                            self.stats['free_dictionary'] += 1
+                            self.update_database(word_id, result_path)
+                            continue
 
-            # Strategy 2: Try Free Dictionary API
-            logger.debug(f"Trying Free Dictionary API for {term}")
-            free_dict_url = self.get_free_dictionary_audio_url(term)
-            if free_dict_url:
-                result_path = self.download_from_url(free_dict_url, word_id, term, source='Free Dictionary')
-                if result_path:
-                    self.stats['free_dictionary'] += 1
-                    self.update_database(word_id, result_path)
-                    continue
+            # Strategy 2: Try Free Dictionary API (for words without M-W URL)
+            if not existing_wav_url or existing_wav_url == '' or existing_wav_url.startswith('/pronunciation/'):
+                logger.info(f"Checking Free Dictionary API for {term}...")
+                free_dict_url = self.get_free_dictionary_audio_url(term)
+                if free_dict_url:
+                    result_path = self.download_from_url(free_dict_url, word_id, term, source='Free Dictionary')
+                    if result_path:
+                        self.stats['free_dictionary'] += 1
+                        self.update_database(word_id, result_path)
+                        continue
+                    else:
+                        logger.info(f"Free Dictionary download failed for {term}")
+                else:
+                    logger.info(f"No Free Dictionary audio found for {term}")
 
             # Strategy 3: Synthesize with gTTS
-            logger.debug(f"Synthesizing {term} with gTTS")
+            logger.info(f"Synthesizing {term} with gTTS (last resort)")
             result_path = self.synthesize_with_gtts(word_id, term)
             if result_path:
                 self.stats['synthesized'] += 1
