@@ -4,7 +4,6 @@ Definition Similarity Calculator using Sentence Transformers
 Similar architecture to pronunciation similarity but for semantic meaning
 """
 
-import mysql.connector
 import numpy as np
 import json
 import logging
@@ -12,6 +11,8 @@ from typing import List, Tuple, Optional
 from dataclasses import dataclass
 from tqdm import tqdm
 import time
+
+from core.database_manager import db_manager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -48,9 +49,9 @@ class DefinitionSimilarityScore:
 
 class DefinitionSimilarityCalculator:
     """Calculate semantic similarity between word definitions"""
-    
-    def __init__(self, db_config, model_name="all-MiniLM-L6-v2"):
-        self.db_config = db_config
+
+    def __init__(self, db_config=None, model_name="all-MiniLM-L6-v2"):
+        # db_config kept for backward compatibility; connections now use shared pool
         self.model_name = model_name
         
         if not SENTENCE_TRANSFORMERS_AVAILABLE:
@@ -59,74 +60,83 @@ class DefinitionSimilarityCalculator:
         logger.info(f"Loading SentenceTransformer model: {model_name}")
         self.model = SentenceTransformer(model_name)
         logger.info("Model loaded successfully")
-        
+
         # GPU detection
         if CUDA_AVAILABLE:
             logger.info("CUDA available for accelerated similarity calculations")
         else:
             logger.info("Using CPU for similarity calculations")
-    
-    def get_connection(self):
-        """Get database connection"""
-        return mysql.connector.connect(**self.db_config)
-    
+
+    def _cursor(self, autocommit: bool = False):
+        return db_manager.get_cursor(autocommit=autocommit)
+
     def create_definition_tables(self):
         """Create tables for definition embeddings and similarities"""
         
         create_embeddings_table = """
         CREATE TABLE IF NOT EXISTS definition_embeddings (
-            word_id INT PRIMARY KEY,
+            word_id INTEGER PRIMARY KEY,
             word VARCHAR(255) NOT NULL,
             definition_text TEXT NOT NULL,
             embedding_json TEXT,
             embedding_model VARCHAR(100),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (word_id) REFERENCES defined(id) ON DELETE CASCADE,
-            INDEX idx_model (embedding_model)
+            FOREIGN KEY (word_id) REFERENCES defined(id) ON DELETE CASCADE
         )
         """
-        
+
         create_similarity_table = """
         CREATE TABLE IF NOT EXISTS definition_similarity (
-            word1_id INT,
-            word2_id INT,
-            cosine_similarity DECIMAL(6,5),
+            word1_id INTEGER,
+            word2_id INTEGER,
+            cosine_similarity NUMERIC(6,5),
             embedding_model VARCHAR(100),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (word1_id, word2_id, embedding_model),
-            INDEX idx_cosine_similarity (cosine_similarity DESC),
-            INDEX idx_word1_similarity (word1_id, cosine_similarity DESC),
-            INDEX idx_word2_similarity (word2_id, cosine_similarity DESC),
             CONSTRAINT chk_def_word_order CHECK (word1_id < word2_id),
             FOREIGN KEY (word1_id) REFERENCES defined(id) ON DELETE CASCADE,
             FOREIGN KEY (word2_id) REFERENCES defined(id) ON DELETE CASCADE
         )
         """
-        
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
+
+        with self._cursor(autocommit=True) as cursor:
             cursor.execute(create_embeddings_table)
             cursor.execute(create_similarity_table)
-            conn.commit()
-            logger.info("Created definition similarity tables")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_definition_embeddings_model "
+                "ON definition_embeddings (embedding_model)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_definition_similarity_cosine "
+                "ON definition_similarity (cosine_similarity DESC)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_definition_similarity_word1 "
+                "ON definition_similarity (word1_id, cosine_similarity DESC)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_definition_similarity_word2 "
+                "ON definition_similarity (word2_id, cosine_similarity DESC)"
+            )
+        logger.info("Created definition similarity tables")
     
     def get_definitions(self, limit: Optional[int] = None) -> List[DefinitionData]:
         """Get word definitions from database"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            query = """
-            SELECT id, term, definition 
-            FROM defined 
-            WHERE definition IS NOT NULL 
-            AND definition != '' 
-            AND LENGTH(TRIM(definition)) > 10
-            ORDER BY id
-            """
-            if limit:
-                query += f" LIMIT {limit}"
-            
-            cursor.execute(query)
+        query = (
+            "SELECT id, term, definition "
+            "FROM defined "
+            "WHERE definition IS NOT NULL "
+            "AND TRIM(definition) <> '' "
+            "AND LENGTH(TRIM(definition)) > 10 "
+            "ORDER BY id "
+        )
+        params = []
+        if limit:
+            query += "LIMIT %s"
+            params.append(limit)
+
+        with self._cursor() as cursor:
+            cursor.execute(query, params)
             results = cursor.fetchall()
             
             definitions = []
@@ -164,62 +174,64 @@ class DefinitionSimilarityCalculator:
         """Store embeddings in database"""
         logger.info(f"Storing {len(definitions)} embeddings in database")
         
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            insert_query = """
-            INSERT INTO definition_embeddings 
+        insert_query = """
+            INSERT INTO definition_embeddings
             (word_id, word, definition_text, embedding_json, embedding_model)
             VALUES (%s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE
-                definition_text = VALUES(definition_text),
-                embedding_json = VALUES(embedding_json),
-                embedding_model = VALUES(embedding_model)
-            """
-            
-            data = []
-            for def_data in definitions:
-                if def_data.embedding is not None:
-                    embedding_json = json.dumps(def_data.embedding.tolist())
-                    data.append((
-                        def_data.word_id,
-                        def_data.word,
-                        def_data.definition,
-                        embedding_json,
-                        self.model_name
-                    ))
-            
+            ON CONFLICT (word_id)
+            DO UPDATE SET
+                word = EXCLUDED.word,
+                definition_text = EXCLUDED.definition_text,
+                embedding_json = EXCLUDED.embedding_json,
+                embedding_model = EXCLUDED.embedding_model,
+                created_at = CURRENT_TIMESTAMP
+        """
+
+        data = []
+        for def_data in definitions:
+            if def_data.embedding is not None:
+                embedding_json = json.dumps(def_data.embedding.tolist())
+                data.append((
+                    def_data.word_id,
+                    def_data.word,
+                    def_data.definition,
+                    embedding_json,
+                    self.model_name,
+                ))
+
+        if not data:
+            logger.info("No embeddings to store")
+            return
+
+        with self._cursor(autocommit=True) as cursor:
             cursor.executemany(insert_query, data)
-            conn.commit()
-            logger.info(f"Stored {len(data)} embeddings")
+        logger.info(f"Stored {len(data)} embeddings")
     
     def load_embeddings(self) -> List[DefinitionData]:
         """Load embeddings from database"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-            SELECT word_id, word, definition_text, embedding_json
-            FROM definition_embeddings
-            WHERE embedding_model = %s
-            ORDER BY word_id
-            """, (self.model_name,))
-            
+        query = (
+            "SELECT word_id, word, definition_text, embedding_json "
+            "FROM definition_embeddings "
+            "WHERE embedding_model = %s "
+            "ORDER BY word_id"
+        )
+        with self._cursor() as cursor:
+            cursor.execute(query, (self.model_name,))
             results = cursor.fetchall()
-            definitions = []
-            
-            for word_id, word, definition, embedding_json in results:
-                embedding = np.array(json.loads(embedding_json))
-                definitions.append(DefinitionData(
-                    word_id=word_id,
-                    word=word,
-                    definition=definition,
-                    embedding=embedding
-                ))
-            
-            logger.info(f"Loaded {len(definitions)} embeddings")
-            return definitions
-    
+
+        definitions: List[DefinitionData] = []
+        for word_id, word, definition, embedding_json in results:
+            embedding = np.array(json.loads(embedding_json))
+            definitions.append(DefinitionData(
+                word_id=word_id,
+                word=word,
+                definition=definition,
+                embedding=embedding,
+            ))
+
+        logger.info(f"Loaded {len(definitions)} embeddings")
+        return definitions
+
     def calculate_cosine_similarity_matrix(self, embeddings1: np.ndarray, embeddings2: np.ndarray) -> np.ndarray:
         """Calculate cosine similarity matrix between two sets of embeddings"""
         if CUDA_AVAILABLE:
@@ -320,23 +332,22 @@ class DefinitionSimilarityCalculator:
         """Store similarity scores in database"""
         logger.info(f"Storing {len(similarities)} similarity scores")
         
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            
-            insert_query = """
-            INSERT INTO definition_similarity 
+        insert_query = """
+            INSERT INTO definition_similarity
             (word1_id, word2_id, cosine_similarity, embedding_model)
             VALUES (%s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE
-                cosine_similarity = VALUES(cosine_similarity)
-            """
-            
-            data = [(s.word1_id, s.word2_id, s.cosine_similarity, s.model_name) 
-                   for s in similarities]
-            
+            ON CONFLICT (word1_id, word2_id, embedding_model)
+            DO UPDATE SET
+                cosine_similarity = EXCLUDED.cosine_similarity,
+                created_at = CURRENT_TIMESTAMP
+        """
+
+        data = [(s.word1_id, s.word2_id, s.cosine_similarity, s.model_name)
+                for s in similarities]
+
+        with self._cursor(autocommit=True) as cursor:
             cursor.executemany(insert_query, data)
-            conn.commit()
-            logger.info("Similarities stored successfully")
+        logger.info("Similarities stored successfully")
 
 def main():
     """Main function for testing"""
@@ -371,14 +382,12 @@ def main():
         similarities.sort(key=lambda x: x.cosine_similarity, reverse=True)
         
         for i, sim in enumerate(similarities[:10]):
-            # Get word names for display
-            with calculator.get_connection() as conn:
-                cursor = conn.cursor()
+            with db_manager.get_cursor() as cursor:
                 cursor.execute("SELECT term FROM defined WHERE id = %s", (sim.word1_id,))
                 word1 = cursor.fetchone()[0]
                 cursor.execute("SELECT term FROM defined WHERE id = %s", (sim.word2_id,))
                 word2 = cursor.fetchone()[0]
-            
+
             print(f"{i+1:2d}. {word1:15} <-> {word2:15} (similarity: {sim.cosine_similarity:.3f})")
 
 if __name__ == "__main__":

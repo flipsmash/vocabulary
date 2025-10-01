@@ -29,14 +29,14 @@ Browse Vocabulary{% if letters %} - {{ letters|upper }}*{% endif %} ({{ total_wo
             <nav aria-label="Letter navigation">
                 <ol class="breadcrumb">
                     <li class="breadcrumb-item">
-                        <a href="/browse{% if domain %}?domain={{ domain }}{% endif %}{% if part_of_speech %}{% if domain %}&{% else %}?{% endif %}part_of_speech={{ part_of_speech }}{% endif %}">Start</a>
+                        <a href="/browse{% if domain %}?domain={{ domain|urlencode }}{% endif %}{% if part_of_speech %}{% if domain %}&{% else %}?{% endif %}part_of_speech={{ part_of_speech|urlencode }}{% endif %}">Start</a>
                     </li>
                     {% for path_item in letter_path %}
                     <li class="breadcrumb-item {% if loop.last %}active{% endif %}">
                         {% if loop.last %}
                         {{ path_item.letter|upper }}
                         {% else %}
-                        <a href="/browse?letters={{ path_item.letters }}{% if domain %}&domain={{ domain }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech }}{% endif %}">{{ path_item.letter|upper }}</a>
+                        <a href="/browse?letters={{ path_item.letters|urlencode }}{% if domain %}&domain={{ domain|urlencode }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech|urlencode }}{% endif %}">{{ path_item.letter|upper }}</a>
                         {% endif %}
                     </li>
                     {% endfor %}
@@ -73,7 +73,7 @@ Browse Vocabulary{% if letters %} - {{ letters|upper }}*{% endif %} ({{ total_wo
                             <label class="form-label">&nbsp;</label>
                             <div>
                                 <button type="submit" class="btn btn-primary">Apply Filters</button>
-                                <a href="/browse{% if letters %}?letters={{ letters }}{% endif %}" class="btn btn-outline-secondary">Clear Filters</a>
+                                <a href="/browse{% if letters %}?letters={{ letters|urlencode }}{% endif %}" class="btn btn-outline-secondary">Clear Filters</a>
                             </div>
                         </div>
                     </form>
@@ -94,7 +94,7 @@ Browse Vocabulary{% if letters %} - {{ letters|upper }}*{% endif %} ({{ total_wo
                     
                     <div class="letter-navigation">
                         {% for letter in available_letters %}
-                        <a href="/browse?letters={% if letters %}{{ letters }}{% endif %}{{ letter }}{% if domain %}&domain={{ domain }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech }}{% endif %}" 
+                        <a href="/browse?letters={{ ((letters or '') ~ letter)|urlencode }}{% if domain %}&domain={{ domain|urlencode }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech|urlencode }}{% endif %}" 
                            class="letter-link">{{ letter|upper }}</a>{% if not loop.last %} | {% endif %}
                         {% endfor %}
                     </div>
@@ -183,7 +183,7 @@ Browse Vocabulary{% if letters %} - {{ letters|upper }}*{% endif %} ({{ total_wo
                     <!-- Previous page -->
                     {% if has_prev %}
                     <li class="page-item">
-                        <a class="page-link" href="/browse?{% if letters %}letters={{ letters }}&{% endif %}page={{ prev_page }}{% if domain %}&domain={{ domain }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech }}{% endif %}&per_page={{ per_page }}" aria-label="Previous">
+                        <a class="page-link" href="/browse?{% if letters %}letters={{ letters|urlencode }}&{% endif %}page={{ prev_page }}{% if domain %}&domain={{ domain|urlencode }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech|urlencode }}{% endif %}&per_page={{ per_page }}" aria-label="Previous">
                             <span aria-hidden="true">&laquo;</span>
                         </a>
                     </li>
@@ -198,7 +198,7 @@ Browse Vocabulary{% if letters %} - {{ letters|upper }}*{% endif %} ({{ total_wo
                     <!-- First page -->
                     {% if page_numbers[0] > 1 %}
                     <li class="page-item">
-                        <a class="page-link" href="/browse?{% if letters %}letters={{ letters }}&{% endif %}page=1{% if domain %}&domain={{ domain }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech }}{% endif %}&per_page={{ per_page }}">1</a>
+                        <a class="page-link" href="/browse?{% if letters %}letters={{ letters|urlencode }}&{% endif %}page=1{% if domain %}&domain={{ domain|urlencode }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech|urlencode }}{% endif %}&per_page={{ per_page }}">1</a>
                     </li>
                     {% if page_numbers[0] > 2 %}
                     <li class="page-item disabled">
@@ -213,7 +213,7 @@ Browse Vocabulary{% if letters %} - {{ letters|upper }}*{% endif %} ({{ total_wo
                         {% if page_num == current_page %}
                         <span class="page-link">{{ page_num }}</span>
                         {% else %}
-                        <a class="page-link" href="/browse?{% if letters %}letters={{ letters }}&{% endif %}page={{ page_num }}{% if domain %}&domain={{ domain }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech }}{% endif %}&per_page={{ per_page }}">{{ page_num }}</a>
+                        <a class="page-link" href="/browse?{% if letters %}letters={{ letters|urlencode }}&{% endif %}page={{ page_num }}{% if domain %}&domain={{ domain|urlencode }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech|urlencode }}{% endif %}&per_page={{ per_page }}">{{ page_num }}</a>
                         {% endif %}
                     </li>
                     {% endfor %}
@@ -226,14 +226,14 @@ Browse Vocabulary{% if letters %} - {{ letters|upper }}*{% endif %} ({{ total_wo
                     </li>
                     {% endif %}
                     <li class="page-item">
-                        <a class="page-link" href="/browse?{% if letters %}letters={{ letters }}&{% endif %}page={{ total_pages }}{% if domain %}&domain={{ domain }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech }}{% endif %}&per_page={{ per_page }}">{{ total_pages }}</a>
+                        <a class="page-link" href="/browse?{% if letters %}letters={{ letters|urlencode }}&{% endif %}page={{ total_pages }}{% if domain %}&domain={{ domain|urlencode }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech|urlencode }}{% endif %}&per_page={{ per_page }}">{{ total_pages }}</a>
                     </li>
                     {% endif %}
 
                     <!-- Next page -->
                     {% if has_next %}
                     <li class="page-item">
-                        <a class="page-link" href="/browse?{% if letters %}letters={{ letters }}&{% endif %}page={{ next_page }}{% if domain %}&domain={{ domain }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech }}{% endif %}&per_page={{ per_page }}" aria-label="Next">
+                        <a class="page-link" href="/browse?{% if letters %}letters={{ letters|urlencode }}&{% endif %}page={{ next_page }}{% if domain %}&domain={{ domain|urlencode }}{% endif %}{% if part_of_speech %}&part_of_speech={{ part_of_speech|urlencode }}{% endif %}&per_page={{ per_page }}" aria-label="Next">
                             <span aria-hidden="true">&raquo;</span>
                         </a>
                     </li>

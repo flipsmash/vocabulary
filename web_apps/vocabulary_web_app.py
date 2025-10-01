@@ -8,8 +8,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, Form, Depends, statu
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from typing import Optional, List
-import mysql.connector
+from typing import Optional, List, Any
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -31,6 +30,7 @@ from core.analytics import analytics
 import re
 from core.comprehensive_definition_lookup import ComprehensiveDefinitionLookup
 import asyncio
+from psycopg import errors as pg_errors
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -64,20 +64,18 @@ class VocabularyDatabase:
     def __init__(self):
         self.config = get_db_config()
 
-    def get_connection(self):
-        # Legacy method - prefer using db_manager directly
-        return mysql.connector.connect(**self.config)
-    
-    def search_words(self, query: Optional[str] = None, domain: Optional[str] = None, 
-                    part_of_speech: Optional[str] = None, min_frequency: Optional[int] = None,
-                    max_frequency: Optional[int] = None, limit: int = 50, offset: int = 0) -> List[Word]:
-        """Search words with various filters"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        # Build dynamic query
+    def search_words(
+        self,
+        query: Optional[str] = None,
+        domain: Optional[str] = None,
+        part_of_speech: Optional[str] = None,
+        min_frequency: Optional[int] = None,
+        max_frequency: Optional[int] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[Word]:
         sql = """
-        SELECT 
+        SELECT
             d.id, d.term, d.definition, d.part_of_speech, d.frequency,
             wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
             wd.primary_domain, d.wav_url,
@@ -88,55 +86,58 @@ class VocabularyDatabase:
         LEFT JOIN word_phonetics wp ON d.id = wp.word_id
         WHERE 1=1
         """
-        params = []
-        
+        params: List[Any] = []
+
         if query:
-            sql += " AND d.term LIKE %s"
+            sql += " AND d.term ILIKE %s"
             params.append(f"%{query}%")
-        
+
         if domain:
             sql += " AND wd.primary_domain = %s"
             params.append(domain)
-        
+
         if part_of_speech:
             sql += " AND d.part_of_speech = %s"
             params.append(part_of_speech)
-        
-        if min_frequency:
+
+        if min_frequency is not None:
             sql += " AND wfi.frequency_rank >= %s"
             params.append(min_frequency)
-        
-        if max_frequency:
+
+        if max_frequency is not None:
             sql += " AND wfi.frequency_rank <= %s"
             params.append(max_frequency)
-        
+
         sql += " ORDER BY LOWER(d.term) ASC LIMIT %s OFFSET %s"
         params.extend([limit, offset])
-        
-        cursor.execute(sql, params)
-        results = cursor.fetchall()
-        
-        words = []
-        for row in results:
-            words.append(Word(
-                id=row[0], term=row[1], definition=row[2], part_of_speech=row[3], frequency=row[4],
-                frequency_rank=row[5], independent_frequency=row[6], rarity_percentile=row[7],
-                primary_domain=row[8], wav_url=row[9],
-                ipa_transcription=row[10], arpabet_transcription=row[11], 
-                syllable_count=row[12], stress_pattern=row[13]
-            ))
-        
-        cursor.close()
-        conn.close()
-        return words
-    
+
+        with db_manager.get_cursor() as cursor:
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+
+        return [
+            Word(
+                id=row[0],
+                term=row[1],
+                definition=row[2],
+                part_of_speech=row[3],
+                frequency=row[4],
+                frequency_rank=row[5],
+                independent_frequency=row[6],
+                rarity_percentile=row[7],
+                primary_domain=row[8],
+                wav_url=row[9],
+                ipa_transcription=row[10],
+                arpabet_transcription=row[11],
+                syllable_count=row[12],
+                stress_pattern=row[13],
+            )
+            for row in rows
+        ]
+
     def get_word_by_id(self, word_id: int) -> Optional[Word]:
-        """Get detailed word information by ID"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
         sql = """
-        SELECT 
+        SELECT
             d.id, d.term, d.definition, d.part_of_speech,
             wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
             wd.primary_domain, d.wav_url,
@@ -147,135 +148,122 @@ class VocabularyDatabase:
         LEFT JOIN word_phonetics wp ON d.id = wp.word_id
         WHERE d.id = %s
         """
-        
-        cursor.execute(sql, (word_id,))
-        result = cursor.fetchone()
-        
+
+        with db_manager.get_cursor() as cursor:
+            cursor.execute(sql, (word_id,))
+            result = cursor.fetchone()
+
         if not result:
-            cursor.close()
-            conn.close()
             return None
-        
-        word = Word(
-            id=result[0], term=result[1], definition=result[2], part_of_speech=result[3],
-            frequency_rank=result[4], independent_frequency=result[5], rarity_percentile=result[6],
-            primary_domain=result[7], wav_url=result[8],
-            ipa_transcription=result[9], arpabet_transcription=result[10], 
-            syllable_count=result[11], stress_pattern=result[12]
+
+        return Word(
+            id=result[0],
+            term=result[1],
+            definition=result[2],
+            part_of_speech=result[3],
+            frequency_rank=result[4],
+            independent_frequency=result[5],
+            rarity_percentile=result[6],
+            primary_domain=result[7],
+            wav_url=result[8],
+            ipa_transcription=result[9],
+            arpabet_transcription=result[10],
+            syllable_count=result[11],
+            stress_pattern=result[12],
         )
-        
-        cursor.close()
-        conn.close()
-        return word
-    
+
     def get_similar_words(self, word_id: int, limit: int = 10) -> List[tuple]:
-        """Get words similar to the given word based on definition similarity"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            sql = """
-            SELECT d.id, d.term, ds.cosine_similarity
-            FROM definition_similarity ds
-            JOIN defined d ON (
-                CASE 
-                    WHEN ds.word1_id = %s THEN ds.word2_id
-                    ELSE ds.word1_id
-                END = d.id
-            )
-            WHERE (ds.word1_id = %s OR ds.word2_id = %s)
-            ORDER BY ds.cosine_similarity DESC
-            LIMIT %s
-            """
-            cursor.execute(sql, (word_id, word_id, word_id, limit))
-            results = cursor.fetchall()
-        except Exception as e:
-            logger.warning(f"Could not fetch similar words: {e}")
-            results = []
-        
-        cursor.close()
-        conn.close()
-        return results
-    
-    def get_random_word(self) -> Optional[Word]:
-        """Get a random word for exploration"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        # Get total count
-        cursor.execute("SELECT COUNT(*) FROM defined")
-        total_count = cursor.fetchone()[0]
-        
-        # Get random word
-        random_offset = random.randint(0, total_count - 1)
-        
         sql = """
-        SELECT 
-            d.id, d.term, d.definition, d.part_of_speech,
-            wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
-            wd.primary_domain, d.wav_url,
-            wp.ipa_transcription, wp.arpabet_transcription, wp.syllable_count, wp.stress_pattern
-        FROM defined d
-        LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-        LEFT JOIN word_domains wd ON d.id = wd.word_id
-        LEFT JOIN word_phonetics wp ON d.id = wp.word_id
-        LIMIT 1 OFFSET %s
-        """
-        
-        cursor.execute(sql, (random_offset,))
-        result = cursor.fetchone()
-        
-        word = Word(
-            id=result[0], term=result[1], definition=result[2], part_of_speech=result[3],
-            frequency_rank=result[4], independent_frequency=result[5], rarity_percentile=result[6],
-            primary_domain=result[7], wav_url=result[8],
-            ipa_transcription=result[9], arpabet_transcription=result[10], 
-            syllable_count=result[11], stress_pattern=result[12]
+        SELECT d.id, d.term, ds.cosine_similarity
+        FROM definition_similarity ds
+        JOIN defined d ON (
+            CASE WHEN ds.word1_id = %s THEN ds.word2_id ELSE ds.word1_id END = d.id
         )
-        
-        cursor.close()
-        conn.close()
-        return word
-    
-    def get_domains(self) -> List[str]:
-        """Get list of all domains for filtering"""
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            sql = """
-            SELECT DISTINCT primary_domain FROM word_domains WHERE primary_domain IS NOT NULL
-            ORDER BY 1
-            """
-            
-            cursor.execute(sql)
-            results = cursor.fetchall()
-            domains = [row[0] for row in results if row[0]]
-            
-            cursor.close()
-            conn.close()
-            return domains
-        except mysql.connector.errors.ProgrammingError as e:
-            if "doesn't exist" in str(e):
-                logger.warning("word_domains table doesn't exist, returning empty domains list")
+        WHERE (ds.word1_id = %s OR ds.word2_id = %s)
+        ORDER BY ds.cosine_similarity DESC
+        LIMIT %s
+        """
+
+        with db_manager.get_cursor() as cursor:
+            try:
+                cursor.execute(sql, (word_id, word_id, word_id, limit))
+                return cursor.fetchall()
+            except Exception as exc:
+                logger.warning(f"Could not fetch similar words: {exc}")
                 return []
-            raise
-        except Exception as e:
-            logger.error(f"Error getting domains: {e}")
+
+    def get_random_word(self) -> Optional[Word]:
+        with db_manager.get_cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM defined")
+            total_count = cursor.fetchone()[0]
+            if not total_count:
+                return None
+
+            random_offset = random.randint(0, max(total_count - 1, 0))
+
+            sql = """
+            SELECT
+                d.id, d.term, d.definition, d.part_of_speech,
+                wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
+                wd.primary_domain, d.wav_url,
+                wp.ipa_transcription, wp.arpabet_transcription, wp.syllable_count, wp.stress_pattern
+            FROM defined d
+            LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
+            LEFT JOIN word_domains wd ON d.id = wd.word_id
+            LEFT JOIN word_phonetics wp ON d.id = wp.word_id
+            LIMIT 1 OFFSET %s
+            """
+
+            cursor.execute(sql, (random_offset,))
+            result = cursor.fetchone()
+
+        if not result:
+            return None
+
+        return Word(
+            id=result[0],
+            term=result[1],
+            definition=result[2],
+            part_of_speech=result[3],
+            frequency_rank=result[4],
+            independent_frequency=result[5],
+            rarity_percentile=result[6],
+            primary_domain=result[7],
+            wav_url=result[8],
+            ipa_transcription=result[9],
+            arpabet_transcription=result[10],
+            syllable_count=result[11],
+            stress_pattern=result[12],
+        )
+
+    def get_domains(self) -> List[str]:
+        sql = """
+        SELECT DISTINCT primary_domain
+        FROM word_domains
+        WHERE primary_domain IS NOT NULL
+        ORDER BY 1
+        """
+
+        try:
+            with db_manager.get_cursor() as cursor:
+                cursor.execute(sql)
+                results = cursor.fetchall()
+            return [row[0] for row in results if row[0]]
+        except pg_errors.UndefinedTable:
+            logger.warning("word_domains table doesn't exist, returning empty list")
             return []
-    
+        except Exception as exc:
+            logger.error(f"Error getting domains: {exc}")
+            return []
+
     def get_parts_of_speech(self) -> List[str]:
-        """Get list of all parts of speech for filtering"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT DISTINCT part_of_speech FROM defined WHERE part_of_speech IS NOT NULL ORDER BY part_of_speech")
-        results = cursor.fetchall()
-        parts = [row[0] for row in results if row[0]]
-        
-        cursor.close()
-        conn.close()
-        return parts
+        with db_manager.get_cursor() as cursor:
+            cursor.execute(
+                "SELECT DISTINCT part_of_speech FROM defined "
+                "WHERE part_of_speech IS NOT NULL ORDER BY part_of_speech"
+            )
+            results = cursor.fetchall()
+        return [row[0] for row in results if row[0]]
 
 # Initialize database
 db = VocabularyDatabase()
@@ -305,9 +293,6 @@ async def browse(request: Request,
                 per_page: int = Query(50)):
     """Browse words hierarchically by letters with pagination"""
     current_user = await get_optional_current_user(request)
-    
-    conn = db.get_connection()
-    cursor = conn.cursor()
     
     # Build base query with filters
     base_query = """
@@ -346,23 +331,23 @@ async def browse(request: Request,
         search_param = f"%{search.lower()}%"
         params.extend([search_param, search_param])
     
-    # Get total count
     count_query = f"SELECT COUNT(*) FROM ({base_query}) as filtered"
-    cursor.execute(count_query, params)
-    total_words = cursor.fetchone()[0]
-    
-    # Get available next letters for navigation
-    available_letters = []
+    letter_query = None
+    letter_params: list[Any] = []
+
+    with db_manager.get_cursor() as cursor:
+        cursor.execute(count_query, params)
+        total_words = cursor.fetchone()[0]
+
+    available_letters: list[str] = []
     if total_words > 0:
         if not letters:
-            # Show first letters
             letter_query = """
             SELECT DISTINCT LOWER(LEFT(d.term, 1)) as first_letter
             FROM defined d
             LEFT JOIN word_domains wd ON d.id = wd.word_id
             WHERE 1=1
             """
-            letter_params = []
             if domain:
                 letter_query += " AND wd.primary_domain = %s"
                 letter_params.append(domain)
@@ -370,17 +355,15 @@ async def browse(request: Request,
                 letter_query += " AND d.part_of_speech = %s"
                 letter_params.append(part_of_speech)
             letter_query += " ORDER BY first_letter"
-            
         else:
-            # Show next possible letters
             next_pos = len(letters) + 1
-            letter_query = f"""
-            SELECT DISTINCT LOWER(LEFT(d.term, {next_pos})) as next_letters
-            FROM defined d
-            LEFT JOIN word_domains wd ON d.id = wd.word_id
-            WHERE LOWER(d.term) LIKE %s AND LENGTH(d.term) >= {next_pos}
-            """
-            letter_params = [f"{letters.lower()}%"]
+            letter_query = (
+                "SELECT DISTINCT LOWER(LEFT(d.term, %s)) as next_letters "
+                "FROM defined d "
+                "LEFT JOIN word_domains wd ON d.id = wd.word_id "
+                "WHERE LOWER(d.term) LIKE %s AND LENGTH(d.term) >= %s"
+            )
+            letter_params = [next_pos, f"{letters.lower()}%", next_pos]
             if domain:
                 letter_query += " AND wd.primary_domain = %s"
                 letter_params.append(domain)
@@ -388,54 +371,42 @@ async def browse(request: Request,
                 letter_query += " AND d.part_of_speech = %s"
                 letter_params.append(part_of_speech)
             letter_query += " ORDER BY next_letters"
-        
-        cursor.execute(letter_query, letter_params)
+
+        with db_manager.get_cursor() as cursor:
+            cursor.execute(letter_query, letter_params)
+            raw_letters = [row[0] for row in cursor.fetchall()]
+
         if not letters:
-            available_letters = [row[0] for row in cursor.fetchall()]
+            available_letters = raw_letters
         else:
-            next_letters = [row[0] for row in cursor.fetchall()]
-            # Extract just the next character
-            available_letters = list(set([nl[len(letters)] for nl in next_letters if len(nl) > len(letters)]))
-            available_letters.sort()
-    
-    # Get words for current page
+            available_letters = sorted({val[len(letters)] for val in raw_letters if len(val) > len(letters)})
+
     offset = (page - 1) * per_page
     words_query = f"{base_query} ORDER BY LOWER(d.term) ASC LIMIT %s OFFSET %s"
     words_params = params + [per_page, offset]
-    
-    cursor.execute(words_query, words_params)
-    results = cursor.fetchall()
-    
-    words = []
-    for row in results:
-        from dataclasses import dataclass
-        
-        @dataclass
-        class Word:
-            id: int
-            term: str
-            definition: str
-            part_of_speech: Optional[str] = None
-            frequency_rank: Optional[int] = None
-            independent_frequency: Optional[float] = None
-            rarity_percentile: Optional[float] = None
-            primary_domain: Optional[str] = None
-            wav_url: Optional[str] = None
-            ipa_transcription: Optional[str] = None
-            arpabet_transcription: Optional[str] = None
-            syllable_count: Optional[int] = None
-            stress_pattern: Optional[str] = None
-        
-        words.append(Word(
-            id=row[0], term=row[1], definition=row[2], part_of_speech=row[3],
-            frequency_rank=row[4], independent_frequency=row[5], rarity_percentile=row[6],
-            primary_domain=row[7], wav_url=row[8],
-            ipa_transcription=row[9], arpabet_transcription=row[10], 
-            syllable_count=row[11], stress_pattern=row[12]
-        ))
-    
-    cursor.close()
-    conn.close()
+
+    with db_manager.get_cursor() as cursor:
+        cursor.execute(words_query, words_params)
+        results = cursor.fetchall()
+
+    words = [
+        Word(
+            id=row[0],
+            term=row[1],
+            definition=row[2],
+            part_of_speech=row[3],
+            frequency_rank=row[4],
+            independent_frequency=row[5],
+            rarity_percentile=row[6],
+            primary_domain=row[7],
+            wav_url=row[8],
+            ipa_transcription=row[9],
+            arpabet_transcription=row[10],
+            syllable_count=row[11],
+            stress_pattern=row[12],
+        )
+        for row in results
+    ]
     
     # Generate letter path breadcrumb
     letter_path = []
@@ -800,44 +771,47 @@ async def user_analytics(request: Request, current_user: User = Depends(get_curr
 async def admin_dashboard(request: Request):
     """Admin dashboard"""
     current_user = await get_current_admin_user(request)
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    
+
     try:
-        # Get user statistics
-        cursor.execute("SELECT COUNT(*) FROM users")
-        total_users = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(*) FROM users WHERE is_active = TRUE")
-        active_users = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")
-        admin_users = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(*) FROM defined")
-        total_words = cursor.fetchone()[0]
-        
-        # Get recent users
-        cursor.execute(
-            "SELECT id, username, email, full_name, role, is_active, created_at, last_login_at "
-            "FROM users ORDER BY created_at DESC LIMIT 10"
-        )
-        user_results = cursor.fetchall()
-        recent_users = []
-        for row in user_results:
-            recent_users.append(User(
-                id=row[0], username=row[1], email=row[2], full_name=row[3],
-                role=row[4], is_active=row[5], created_at=row[6], last_login_at=row[7]
-            ))
-        
+        with db_manager.get_cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM users")
+            total_users = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM users WHERE is_active = TRUE")
+            active_users = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")
+            admin_users = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM defined")
+            total_words = cursor.fetchone()[0]
+
+            cursor.execute(
+                "SELECT id, username, email, full_name, role, is_active, created_at, last_login_at "
+                "FROM users ORDER BY created_at DESC LIMIT 10"
+            )
+            recent_users = [
+                User(
+                    id=row[0],
+                    username=row[1],
+                    email=row[2],
+                    full_name=row[3],
+                    role=row[4],
+                    is_active=row[5],
+                    created_at=row[6],
+                    last_login_at=row[7],
+                )
+                for row in cursor.fetchall()
+            ]
+
         stats = {
             "total_users": total_users,
             "active_users": active_users,
             "admin_users": admin_users,
             "total_words": total_words,
-            "database_name": db.config["database"]
+            "database_name": db.config.get("dbname") or db.config.get("database", ""),
         }
-        
+
         return templates.TemplateResponse("admin_dashboard.html", {
             "request": request,
             "current_user": current_user,
@@ -845,9 +819,11 @@ async def admin_dashboard(request: Request):
             "recent_users": recent_users,
             "current_time": datetime.now()
         })
-    finally:
-        cursor.close()
-        conn.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error loading admin dashboard: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load admin dashboard")
 
 # Pronunciation endpoint
 @app.get("/pronunciation/{word}")
@@ -1367,208 +1343,180 @@ class Flashcard:
     study_count: int = 0
     success_rate: float = 0.0
 
+
 class FlashcardDatabase:
     def __init__(self):
         self.config = get_db_config()
-    
-    def get_connection(self):
-        return mysql.connector.connect(**self.config)
-    
+
+    def _cursor(self, autocommit: bool = False, dictionary: bool = False):
+        return db_manager.get_cursor(autocommit=autocommit, dictionary=dictionary)
+
     def create_flashcard_tables(self):
-        """Create flashcard tables if they don't exist"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            # Flashcard decks table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS flashcard_decks (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    description TEXT,
-                    user_id INT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    INDEX idx_user_decks (user_id),
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-                )
-            """)
-            
-            # Flashcard deck items table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS flashcard_deck_items (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    deck_id INT NOT NULL,
-                    word_id INT NOT NULL,
-                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE KEY unique_deck_word (deck_id, word_id),
-                    FOREIGN KEY (deck_id) REFERENCES flashcard_decks(id) ON DELETE CASCADE,
-                    FOREIGN KEY (word_id) REFERENCES defined(id) ON DELETE CASCADE
-                )
-            """)
-            
-            # User flashcard progress table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS user_flashcard_progress (
-                    user_id INT NOT NULL,
-                    word_id INT NOT NULL,
-                    mastery_level ENUM('learning', 'reviewing', 'mastered') DEFAULT 'learning',
-                    study_count INT DEFAULT 0,
-                    correct_count INT DEFAULT 0,
-                    last_studied TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    next_review TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    interval_days INT DEFAULT 1,
-                    ease_factor FLOAT DEFAULT 2.5,
-                    PRIMARY KEY (user_id, word_id),
-                    INDEX idx_next_review (user_id, next_review),
-                    INDEX idx_mastery (user_id, mastery_level),
-                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-                    FOREIGN KEY (word_id) REFERENCES defined(id) ON DELETE CASCADE
-                )
-            """)
-            
-            conn.commit()
-            logger.info("Flashcard tables created successfully")
-            
-        except Exception as e:
-            conn.rollback()
-            logger.error(f"Error creating flashcard tables: {e}")
-            raise
-        finally:
-            cursor.close()
-            conn.close()
+        """Create flashcard tables if they don't exist (Postgres syntax)."""
+        ddl_decks = """
+        CREATE TABLE IF NOT EXISTS flashcard_decks (
+            id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            description TEXT,
+            user_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+        """
+
+        ddl_deck_items = """
+        CREATE TABLE IF NOT EXISTS flashcard_deck_items (
+            id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            deck_id INTEGER NOT NULL,
+            word_id INTEGER NOT NULL,
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (deck_id, word_id),
+            FOREIGN KEY (deck_id) REFERENCES flashcard_decks(id) ON DELETE CASCADE,
+            FOREIGN KEY (word_id) REFERENCES defined(id) ON DELETE CASCADE
+        )
+        """
+
+        ddl_progress = """
+        CREATE TABLE IF NOT EXISTS user_flashcard_progress (
+            user_id INTEGER NOT NULL,
+            word_id INTEGER NOT NULL,
+            mastery_level TEXT DEFAULT 'learning',
+            study_count INTEGER DEFAULT 0,
+            correct_count INTEGER DEFAULT 0,
+            last_studied TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            next_review TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            interval_days INTEGER DEFAULT 1,
+            ease_factor DOUBLE PRECISION DEFAULT 2.5,
+            PRIMARY KEY (user_id, word_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (word_id) REFERENCES defined(id) ON DELETE CASCADE
+        )
+        """
+
+        with self._cursor(autocommit=True) as cursor:
+            cursor.execute(ddl_decks)
+            cursor.execute(ddl_deck_items)
+            cursor.execute(ddl_progress)
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_flashcard_decks_user ON flashcard_decks (user_id)"
+            )
+            cursor.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_flashcard_deck_items_unique ON flashcard_deck_items (deck_id, word_id)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_flashcard_next_review ON user_flashcard_progress (user_id, next_review)"
+            )
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_flashcard_mastery ON user_flashcard_progress (user_id, mastery_level)"
+            )
+
+        logger.info("Flashcard tables ensured in database")
 
     def get_user_decks(self, user_id: int) -> List[FlashcardDeck]:
-        """Get all flashcard decks for a user"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute("""
+        with self._cursor() as cursor:
+            cursor.execute(
+                """
                 SELECT fd.id, fd.name, fd.description, fd.user_id, fd.created_at,
                        COUNT(fdi.word_id) as word_count,
-                       COALESCE(AVG(CASE 
+                       COALESCE(AVG(CASE
                            WHEN ufp.mastery_level = 'mastered' THEN 100
                            WHEN ufp.mastery_level = 'reviewing' THEN 60
                            ELSE 20
                        END), 0) as progress
                 FROM flashcard_decks fd
                 LEFT JOIN flashcard_deck_items fdi ON fd.id = fdi.deck_id
-                LEFT JOIN user_flashcard_progress ufp ON fdi.word_id = ufp.word_id AND ufp.user_id = %s
+                LEFT JOIN user_flashcard_progress ufp
+                    ON fdi.word_id = ufp.word_id AND ufp.user_id = %s
                 WHERE fd.user_id = %s
                 GROUP BY fd.id, fd.name, fd.description, fd.user_id, fd.created_at
                 ORDER BY fd.created_at DESC
-            """, (user_id, user_id))
-            
+                """,
+                (user_id, user_id),
+            )
             decks = []
             for row in cursor.fetchall():
-                decks.append(FlashcardDeck(
-                    id=row[0],
-                    name=row[1],
-                    description=row[2],
-                    user_id=row[3],
-                    created_at=row[4].isoformat() if row[4] else "",
-                    word_count=row[5],
-                    study_progress=float(row[6])
-                ))
-            
+                decks.append(
+                    FlashcardDeck(
+                        id=row[0],
+                        name=row[1],
+                        description=row[2],
+                        user_id=row[3],
+                        created_at=row[4].isoformat() if row[4] else "",
+                        word_count=row[5],
+                        study_progress=float(row[6]),
+                    )
+                )
             return decks
-            
-        finally:
-            cursor.close()
-            conn.close()
 
     def create_deck(self, user_id: int, name: str, description: str = "") -> int:
-        """Create a new flashcard deck"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute("""
+        with self._cursor() as cursor:
+            cursor.execute(
+                """
                 INSERT INTO flashcard_decks (name, description, user_id)
                 VALUES (%s, %s, %s)
-            """, (name, description, user_id))
-            
-            deck_id = cursor.lastrowid
-            conn.commit()
+                RETURNING id
+                """,
+                (name, description, user_id),
+            )
+            deck_id = cursor.fetchone()[0]
             return deck_id
-            
-        finally:
-            cursor.close()
-            conn.close()
 
     def get_user_deck(self, deck_id: int, user_id: int) -> Optional[FlashcardDeck]:
-        """Get a specific deck for a user"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute("""
+        with self._cursor() as cursor:
+            cursor.execute(
+                """
                 SELECT d.id, d.name, d.description, d.user_id, d.created_at,
                        COUNT(fdi.id) as word_count
                 FROM flashcard_decks d
                 LEFT JOIN flashcard_deck_items fdi ON d.id = fdi.deck_id
                 WHERE d.id = %s AND d.user_id = %s
                 GROUP BY d.id, d.name, d.description, d.user_id, d.created_at
-            """, (deck_id, user_id))
-            
+                """,
+                (deck_id, user_id),
+            )
             result = cursor.fetchone()
-            if result:
-                return FlashcardDeck(
-                    id=result[0],
-                    name=result[1], 
-                    description=result[2],
-                    user_id=result[3],
-                    word_count=result[5],
-                    created_at=result[4]
-                )
-            return None
-            
-        finally:
-            cursor.close()
-            conn.close()
+            if not result:
+                return None
+            return FlashcardDeck(
+                id=result[0],
+                name=result[1],
+                description=result[2],
+                user_id=result[3],
+                created_at=result[4].isoformat() if result[4] else "",
+                word_count=result[5],
+            )
 
-    def delete_deck(self, deck_id: int):
-        """Delete a flashcard deck and all its cards"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            # Delete all cards in the deck first
-            cursor.execute("DELETE FROM flashcard_deck_items WHERE deck_id = %s", (deck_id,))
-            
-            # Delete the deck
-            cursor.execute("DELETE FROM flashcard_decks WHERE id = %s", (deck_id,))
-            
-            conn.commit()
-            
-        finally:
-            cursor.close()
-            conn.close()
+    def delete_deck(self, deck_id: int, user_id: int) -> bool:
+        with self._cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM flashcard_decks WHERE id = %s AND user_id = %s",
+                (deck_id, user_id),
+            )
+            return cursor.rowcount > 0
 
     def add_word_to_deck(self, deck_id: int, word_id: int):
-        """Add a word to a flashcard deck"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute("""
-                INSERT IGNORE INTO flashcard_deck_items (deck_id, word_id)
+        with self._cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO flashcard_deck_items (deck_id, word_id)
                 VALUES (%s, %s)
-            """, (deck_id, word_id))
-            conn.commit()
-            
-        finally:
-            cursor.close()
-            conn.close()
+                ON CONFLICT (deck_id, word_id) DO NOTHING
+                """,
+                (deck_id, word_id),
+            )
 
-    def get_deck_cards(self, deck_id: int, user_id: int, limit: int = 20) -> List[Flashcard]:
-        """Get flashcards for a deck with user progress"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute("""
+    def remove_word_from_deck(self, deck_id: int, word_id: int):
+        with self._cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM flashcard_deck_items WHERE deck_id = %s AND word_id = %s",
+                (deck_id, word_id),
+            )
+
+    def get_deck_cards(self, deck_id: int, user_id: int, limit: int = 200) -> List[Flashcard]:
+        with self._cursor() as cursor:
+            cursor.execute(
+                """
                 SELECT fdi.word_id, fd.id as deck_id,
                        d.id, d.term, d.definition, d.part_of_speech, d.frequency,
                        wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
@@ -1583,10 +1531,11 @@ class FlashcardDatabase:
                 LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
                 LEFT JOIN word_domains wd ON d.id = wd.word_id
                 LEFT JOIN word_phonetics wp ON d.id = wp.word_id
-                LEFT JOIN user_flashcard_progress ufp ON d.id = ufp.word_id AND ufp.user_id = %s
+                LEFT JOIN user_flashcard_progress ufp
+                    ON d.id = ufp.word_id AND ufp.user_id = %s
                 WHERE fdi.deck_id = %s AND fd.user_id = %s
                 ORDER BY 
-                    CASE ufp.mastery_level 
+                    CASE COALESCE(ufp.mastery_level, 'learning')
                         WHEN 'learning' THEN 1 
                         WHEN 'reviewing' THEN 2 
                         WHEN 'mastered' THEN 3 
@@ -1594,76 +1543,77 @@ class FlashcardDatabase:
                     END,
                     COALESCE(ufp.next_review, NOW())
                 LIMIT %s
-            """, (user_id, deck_id, user_id, limit))
-            
+                """,
+                (user_id, deck_id, user_id, limit),
+            )
             cards = []
             for row in cursor.fetchall():
                 word = Word(
-                    id=row[2], term=row[3], definition=row[4], part_of_speech=row[5], 
-                    frequency=row[6], frequency_rank=row[7], independent_frequency=row[8],
-                    rarity_percentile=row[9], primary_domain=row[10], wav_url=row[11],
-                    ipa_transcription=row[12], arpabet_transcription=row[13], 
-                    syllable_count=row[14], stress_pattern=row[15]
+                    id=row[2],
+                    term=row[3],
+                    definition=row[4],
+                    part_of_speech=row[5],
+                    frequency=row[6],
+                    frequency_rank=row[7],
+                    independent_frequency=row[8],
+                    rarity_percentile=row[9],
+                    primary_domain=row[10],
+                    wav_url=row[11],
+                    ipa_transcription=row[12],
+                    arpabet_transcription=row[13],
+                    syllable_count=row[14],
+                    stress_pattern=row[15],
                 )
-                
-                cards.append(Flashcard(
-                    id=row[0], word_id=row[0], deck_id=row[1], word=word,
-                    mastery_level=row[16], 
-                    last_studied=row[17].isoformat() if row[17] else None,
-                    study_count=row[18] or 0,
-                    success_rate=float(row[19] or 0.0)
-                ))
-            
+                cards.append(
+                    Flashcard(
+                        id=row[0],
+                        word_id=row[0],
+                        deck_id=row[1],
+                        word=word,
+                        mastery_level=row[16],
+                        last_studied=row[17].isoformat() if row[17] else None,
+                        study_count=row[18] or 0,
+                        success_rate=float(row[19] or 0.0),
+                    )
+                )
             return cards
-            
-        finally:
-            cursor.close()
-            conn.close()
 
     def update_card_progress(self, user_id: int, word_id: int, is_correct: bool):
-        """Update flashcard progress after study session"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            # Insert or update progress
-            cursor.execute("""
-                INSERT INTO user_flashcard_progress 
-                (user_id, word_id, study_count, correct_count, last_studied, next_review)
-                VALUES (%s, %s, 1, %s, NOW(), DATE_ADD(NOW(), INTERVAL 1 DAY))
-                ON DUPLICATE KEY UPDATE
-                study_count = study_count + 1,
-                correct_count = correct_count + %s,
-                last_studied = NOW(),
-                mastery_level = CASE
-                    WHEN correct_count + %s >= study_count + 1 * 0.8 AND study_count + 1 >= 3 THEN 'reviewing'
-                    WHEN correct_count + %s >= study_count + 1 * 0.9 AND study_count + 1 >= 5 THEN 'mastered'
-                    ELSE mastery_level
-                END,
-                next_review = CASE
-                    WHEN %s = 1 THEN DATE_ADD(NOW(), INTERVAL LEAST(interval_days * 2, 30) DAY)
-                    ELSE DATE_ADD(NOW(), INTERVAL 1 DAY)
-                END,
-                interval_days = CASE
-                    WHEN %s = 1 THEN LEAST(interval_days * 2, 30)
-                    ELSE GREATEST(interval_days / 2, 1)
-                END
-            """, (user_id, word_id, 1 if is_correct else 0, 1 if is_correct else 0, 
-                  1 if is_correct else 0, 1 if is_correct else 0, 1 if is_correct else 0, 1 if is_correct else 0))
-            
-            conn.commit()
-            
-        finally:
-            cursor.close()
-            conn.close()
+        correct_increment = 1 if is_correct else 0
+        with self._cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO user_flashcard_progress (
+                    user_id, word_id, study_count, correct_count, last_studied, next_review, mastery_level, interval_days
+                )
+                VALUES (%s, %s, 1, %s, NOW(), NOW() + INTERVAL '1 day', 'learning', 1)
+                ON CONFLICT (user_id, word_id) DO UPDATE SET
+                    study_count = user_flashcard_progress.study_count + 1,
+                    correct_count = user_flashcard_progress.correct_count + EXCLUDED.correct_count,
+                    last_studied = NOW(),
+                    mastery_level = CASE
+                        WHEN (user_flashcard_progress.correct_count + EXCLUDED.correct_count) >= (user_flashcard_progress.study_count + 1) * 0.9
+                             AND user_flashcard_progress.study_count + 1 >= 5 THEN 'mastered'
+                        WHEN (user_flashcard_progress.correct_count + EXCLUDED.correct_count) >= (user_flashcard_progress.study_count + 1) * 0.8
+                             AND user_flashcard_progress.study_count + 1 >= 3 THEN 'reviewing'
+                        ELSE user_flashcard_progress.mastery_level
+                    END,
+                    next_review = CASE
+                        WHEN EXCLUDED.correct_count > 0 THEN NOW() + INTERVAL '1 day' * LEAST(user_flashcard_progress.interval_days * 2, 30)
+                        ELSE NOW() + INTERVAL '1 day'
+                    END,
+                    interval_days = CASE
+                        WHEN EXCLUDED.correct_count > 0 THEN LEAST(user_flashcard_progress.interval_days * 2, 30)
+                        ELSE GREATEST(user_flashcard_progress.interval_days / 2, 1)
+                    END
+                """,
+                (user_id, word_id, correct_increment),
+            )
 
     def get_random_cards(self, user_id: int, limit: int = 20) -> List[Flashcard]:
-        """Get random words for flashcard study"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute("""
+        with self._cursor() as cursor:
+            cursor.execute(
+                """
                 SELECT d.id, 0 as deck_id,
                        d.id, d.term, d.definition, d.part_of_speech, d.frequency,
                        wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
@@ -1677,36 +1627,44 @@ class FlashcardDatabase:
                 LEFT JOIN word_domains wd ON d.id = wd.word_id
                 LEFT JOIN word_phonetics wp ON d.id = wp.word_id
                 LEFT JOIN user_flashcard_progress ufp ON d.id = ufp.word_id AND ufp.user_id = %s
-                WHERE d.definition IS NOT NULL AND d.definition != ''
-                ORDER BY RAND()
+                WHERE d.definition IS NOT NULL AND d.definition <> ''
+                ORDER BY RANDOM()
                 LIMIT %s
-            """, (user_id, limit))
-            
+                """,
+                (user_id, limit),
+            )
             cards = []
             for row in cursor.fetchall():
                 word = Word(
-                    id=row[2], term=row[3], definition=row[4], part_of_speech=row[5], 
-                    frequency=row[6], frequency_rank=row[7], independent_frequency=row[8],
-                    rarity_percentile=row[9], primary_domain=row[10], wav_url=row[11],
-                    ipa_transcription=row[12], arpabet_transcription=row[13], 
-                    syllable_count=row[14], stress_pattern=row[15]
+                    id=row[2],
+                    term=row[3],
+                    definition=row[4],
+                    part_of_speech=row[5],
+                    frequency=row[6],
+                    frequency_rank=row[7],
+                    independent_frequency=row[8],
+                    rarity_percentile=row[9],
+                    primary_domain=row[10],
+                    wav_url=row[11],
+                    ipa_transcription=row[12],
+                    arpabet_transcription=row[13],
+                    syllable_count=row[14],
+                    stress_pattern=row[15],
                 )
-                
-                cards.append(Flashcard(
-                    id=row[0], word_id=row[0], deck_id=row[1], word=word,
-                    mastery_level=row[16], 
-                    last_studied=row[17].isoformat() if row[17] else None,
-                    study_count=row[18] or 0,
-                    success_rate=float(row[19] or 0.0)
-                ))
-            
+                cards.append(
+                    Flashcard(
+                        id=row[0],
+                        word_id=row[0],
+                        deck_id=row[1],
+                        word=word,
+                        mastery_level=row[16],
+                        last_studied=row[17].isoformat() if row[17] else None,
+                        study_count=row[18] or 0,
+                        success_rate=float(row[19] or 0.0),
+                    )
+                )
             return cards
-            
-        finally:
-            cursor.close()
-            conn.close()
 
-# Initialize flashcard database
 flashcard_db = FlashcardDatabase()
 
 # ==========================================
@@ -1910,21 +1868,17 @@ async def get_word_definition(word_id: int):
 async def guest_random_flashcards(request: Request, limit: int = 20):
     """Guest access to random flashcards for testing"""
     try:
-        # Use existing database connection
-        conn = db.get_connection()
-        cursor = conn.cursor()
-
-        # Get random words from defined table (simplified)
-        cursor.execute("""
-            SELECT id, term, definition, part_of_speech, frequency
-            FROM defined
-            ORDER BY RAND()
-            LIMIT %s
-        """, (limit,))
-
-        results = cursor.fetchall()
-        cursor.close()
-        conn.close()
+        with db_manager.get_cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, term, definition, part_of_speech, frequency
+                FROM defined
+                ORDER BY RANDOM()
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            results = cursor.fetchall()
         
         # Convert to flashcard-like format
         serialized_cards = []
@@ -2033,58 +1987,48 @@ async def admin_list_candidates(request: Request,
                           current_user: User = Depends(get_current_admin_user)):
     """List candidate words for review"""
     try:
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        
-        # Count total candidates
-        count_query = "SELECT COUNT(*) FROM candidate_words WHERE review_status = %s"
-        cursor.execute(count_query, (status,))
-        total_count = cursor.fetchone()[0]
-        
-        # Calculate pagination
-        total_pages = (total_count + per_page - 1) // per_page
-        offset = (page - 1) * per_page
-        
-        # Get candidates for current page
-        cursor.execute("""
-            SELECT id, term, source_type, part_of_speech, utility_score,
-                   rarity_indicators, context_snippet, raw_definition,
-                   etymology_preview, date_discovered, review_status,
-                   DATEDIFF(CURRENT_DATE, date_discovered) as days_pending
-            FROM candidate_words
-            WHERE review_status = %s
-            ORDER BY utility_score DESC, date_discovered ASC
-            LIMIT %s OFFSET %s
-        """, (status, per_page, offset))
-        
-        candidates = []
-        for row in cursor.fetchall():
-            candidates.append({
-                'id': row[0],
-                'term': row[1],
-                'source_type': row[2],
-                'part_of_speech': row[3],
-                'utility_score': float(row[4]) if row[4] else 0,
-                'rarity_indicators': row[5],
-                'context_snippet': row[6],
-                'raw_definition': row[7],
-                'etymology_preview': row[8],
-                'date_discovered': row[9],
-                'review_status': row[10],
-                'days_pending': row[11]
-            })
-        
-        # Get review statistics
-        cursor.execute("""
-            SELECT review_status, COUNT(*) as count
-            FROM candidate_words
-            GROUP BY review_status
-        """)
-        stats = {row[0]: row[1] for row in cursor.fetchall()}
-        
-        cursor.close()
-        conn.close()
-        
+        with db_manager.get_cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM candidate_words WHERE review_status = %s", (status,))
+            total_count = cursor.fetchone()[0]
+
+            total_pages = (total_count + per_page - 1) // per_page
+            offset = (page - 1) * per_page
+
+            cursor.execute("""
+                SELECT id, term, source_type, part_of_speech, utility_score,
+                       rarity_indicators, context_snippet, raw_definition,
+                       etymology_preview, date_discovered, review_status,
+                       EXTRACT(DAY FROM (CURRENT_DATE - date_discovered)) AS days_pending
+                FROM candidate_words
+                WHERE review_status = %s
+                ORDER BY utility_score DESC, date_discovered ASC
+                LIMIT %s OFFSET %s
+                """, (status, per_page, offset))
+            candidates = [
+                {
+                    'id': row[0],
+                    'term': row[1],
+                    'source_type': row[2],
+                    'part_of_speech': row[3],
+                    'utility_score': float(row[4]) if row[4] else 0.0,
+                    'rarity_indicators': row[5],
+                    'context_snippet': row[6],
+                    'raw_definition': row[7],
+                    'etymology_preview': row[8],
+                    'date_discovered': row[9],
+                    'review_status': row[10],
+                    'days_pending': int(row[11] or 0),
+                }
+                for row in cursor.fetchall()
+            ]
+
+            cursor.execute("""
+                SELECT review_status, COUNT(*)
+                FROM candidate_words
+                GROUP BY review_status
+                """)
+            status_counts = {row[0]: row[1] for row in cursor.fetchall()}
+
         return templates.TemplateResponse("candidates.html", {
             "request": request,
             "current_user": current_user,
@@ -2094,65 +2038,44 @@ async def admin_list_candidates(request: Request,
             "per_page": per_page,
             "total_count": total_count,
             "total_pages": total_pages,
-            "stats": stats
+            "stats": status_counts,
         })
-        
     except Exception as e:
         logger.error(f"Error loading candidates: {e}")
         raise HTTPException(status_code=500, detail="Failed to load candidates")
+
 
 @app.get("/admin/candidates/{candidate_id}", response_class=HTMLResponse)
 async def admin_view_candidate(request: Request, candidate_id: int,
                         current_user: User = Depends(get_current_admin_user)):
     """View detailed candidate information"""
     try:
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT id, term, source_type, source_reference, part_of_speech, 
-                   utility_score, rarity_indicators, context_snippet, raw_definition,
-                   etymology_preview, date_discovered, review_status, rejection_reason,
-                   notes, created_at, updated_at
-            FROM candidate_words
-            WHERE id = %s
-        """, (candidate_id,))
-        
-        row = cursor.fetchone()
+        with db_manager.get_cursor(dictionary=True) as cursor:
+            cursor.execute("""
+                SELECT id, term, source_type, source_reference, part_of_speech, 
+                       utility_score, rarity_indicators, context_snippet, raw_definition,
+                       etymology_preview, date_discovered, review_status, rejection_reason,
+                       notes, created_at, updated_at
+                FROM candidate_words
+                WHERE id = %s
+            """, (candidate_id,))
+            row = cursor.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Candidate not found")
-        
-        candidate = {
-            'id': row[0],
-            'term': row[1],
-            'source_type': row[2],
-            'source_reference': row[3],
-            'part_of_speech': row[4],
-            'utility_score': float(row[5]) if row[5] else 0,
-            'rarity_indicators': row[6],
-            'context_snippet': row[7],
-            'raw_definition': row[8],
-            'etymology_preview': row[9],
-            'date_discovered': row[10],
-            'review_status': row[11],
-            'rejection_reason': row[12],
-            'notes': row[13],
-            'created_at': row[14],
-            'updated_at': row[15]
-        }
-        
-        cursor.close()
-        conn.close()
-        
+
+        candidate = dict(row)
+
         return templates.TemplateResponse("candidate_detail.html", {
             "request": request,
             "current_user": current_user,
-            "candidate": candidate
+            "candidate": candidate,
         })
-        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error loading candidate: {e}")
         raise HTTPException(status_code=500, detail="Failed to load candidate")
+
 
 @app.post("/admin/candidates/{candidate_id}/review")
 async def admin_review_candidate(candidate_id: int,
@@ -2161,245 +2084,29 @@ async def admin_review_candidate(candidate_id: int,
                           notes: str = Form(None),
                           current_user: User = Depends(get_current_admin_user)):
     """Review a candidate (approve, reject, or needs_info)"""
+    valid_actions = {"approved", "rejected", "needs_info"}
+    if action not in valid_actions:
+        raise HTTPException(status_code=400, detail="Invalid action")
+
     try:
-        if action not in ['approved', 'rejected', 'needs_info']:
-            raise HTTPException(status_code=400, detail="Invalid action")
-        
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            UPDATE candidate_words 
-            SET review_status = %s, rejection_reason = %s, notes = %s,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = %s
-        """, (action, reason, notes, candidate_id))
-        
-        conn.commit()
-        cursor.close()
-        conn.close()
-        
+        with db_manager.get_cursor(autocommit=True) as cursor:
+            cursor.execute("""
+                UPDATE candidate_words
+                SET review_status = %s, rejection_reason = %s, notes = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (action, reason, notes, candidate_id))
+            if cursor.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Candidate not found")
+
         return RedirectResponse(url="/candidates", status_code=303)
-        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error reviewing candidate: {e}")
         raise HTTPException(status_code=500, detail="Failed to review candidate")
 
-# ==========================================
-# ADMIN DEFINITION EDITOR ENDPOINTS
-# ==========================================
 
-@dataclass
-class DefinitionEntry:
-    id: int
-    term: Optional[str]
-    part_of_speech: Optional[str]
-    definition: Optional[str]
-    bad: Optional[int]
-    has_circular_definition: Optional[int]
-    needs_manual_circularity_review: Optional[int]
-
-class DefinitionDatabase:
-    def __init__(self):
-        self.config = get_db_config()
-    
-    def get_connection(self):
-        return mysql.connector.connect(**self.config)
-    
-    def get_definitions_filtered(self, search: Optional[str] = None, part_of_speech: Optional[str] = None,
-                               flag_filter: Optional[str] = None, filter_circular: Optional[str] = None,
-                               filter_bad: Optional[str] = None, filter_review: Optional[str] = None,
-                               limit: int = 50, offset: int = 0):
-        """Get definitions with filtering and pagination"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            # Build dynamic query
-            where_conditions = []
-            params = []
-            
-            if search:
-                where_conditions.append("(LOWER(term) LIKE %s OR LOWER(definition) LIKE %s)")
-                search_term = f"%{search.lower()}%"
-                params.extend([search_term, search_term])
-            
-            if part_of_speech:
-                where_conditions.append("part_of_speech = %s")
-                params.append(part_of_speech)
-            
-            # Handle individual checkbox filters
-            flag_conditions = []
-            if filter_circular == "1":
-                flag_conditions.append("has_circular_definition = 1")
-            if filter_bad == "1":
-                flag_conditions.append("bad = 1")
-            if filter_review == "1":
-                flag_conditions.append("needs_manual_circularity_review = 1")
-            
-            if flag_conditions:
-                # OR the flag conditions together
-                where_conditions.append(f"({' OR '.join(flag_conditions)})")
-            
-            # Keep backward compatibility with flag_filter
-            elif flag_filter:
-                if flag_filter == "circular":
-                    where_conditions.append("has_circular_definition = 1")
-                elif flag_filter == "manual_review":
-                    where_conditions.append("needs_manual_circularity_review = 1")
-                elif flag_filter == "bad":
-                    where_conditions.append("bad = 1")
-                elif flag_filter == "flagged":
-                    where_conditions.append("(bad = 1 OR has_circular_definition = 1 OR needs_manual_circularity_review = 1)")
-            
-            where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
-            
-            # Get total count
-            count_query = f"SELECT COUNT(*) FROM defined WHERE {where_clause}"
-            cursor.execute(count_query, params)
-            total_count = cursor.fetchone()[0]
-            
-            # Get filtered data
-            query = f"""
-                SELECT id, term, part_of_speech, definition, bad, has_circular_definition, needs_manual_circularity_review
-                FROM defined
-                WHERE {where_clause}
-                ORDER BY id ASC
-                LIMIT %s OFFSET %s
-            """
-            cursor.execute(query, params + [limit, offset])
-            
-            definitions = []
-            for row in cursor.fetchall():
-                definitions.append(DefinitionEntry(
-                    id=row[0],
-                    term=row[1],
-                    part_of_speech=row[2],
-                    definition=row[3],
-                    bad=row[4],
-                    has_circular_definition=row[5],
-                    needs_manual_circularity_review=row[6]
-                ))
-            
-            # Get flag statistics
-            stats_query = f"""
-                SELECT 
-                    SUM(CASE WHEN has_circular_definition = 1 THEN 1 ELSE 0 END) as circular_count,
-                    SUM(CASE WHEN needs_manual_circularity_review = 1 THEN 1 ELSE 0 END) as review_count,
-                    SUM(CASE WHEN bad = 1 THEN 1 ELSE 0 END) as bad_count
-                FROM defined WHERE {where_clause}
-            """
-            cursor.execute(stats_query, params)
-            stats = cursor.fetchone()
-            
-            return {
-                'definitions': definitions,
-                'total_count': total_count,
-                'circular_count': stats[0] or 0,
-                'manual_review_count': stats[1] or 0,
-                'bad_count': stats[2] or 0
-            }
-            
-        finally:
-            cursor.close()
-            conn.close()
-    
-    def update_definition(self, definition_id: int, **kwargs):
-        """Update a single definition"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            # Build dynamic update query
-            updates = []
-            values = []
-            
-            for field in ['term', 'part_of_speech', 'definition', 'bad', 'has_circular_definition', 'needs_manual_circularity_review']:
-                if field in kwargs:
-                    updates.append(f"{field} = %s")
-                    values.append(kwargs[field])
-            
-            if not updates:
-                return False
-            
-            values.append(definition_id)
-            
-            query = f"UPDATE defined SET {', '.join(updates)} WHERE id = %s"
-            cursor.execute(query, values)
-            conn.commit()
-            
-            return cursor.rowcount > 0
-            
-        finally:
-            cursor.close()
-            conn.close()
-    
-    def bulk_update_definitions(self, changes: List[dict]):
-        """Bulk update multiple definitions"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            for change in changes:
-                definition_id = change['id']
-                updates = []
-                values = []
-                
-                for field in ['term', 'part_of_speech', 'definition', 'bad', 'has_circular_definition', 'needs_manual_circularity_review']:
-                    if field in change:
-                        updates.append(f"{field} = %s")
-                        values.append(change[field])
-                
-                if updates:
-                    values.append(definition_id)
-                    query = f"UPDATE defined SET {', '.join(updates)} WHERE id = %s"
-                    cursor.execute(query, values)
-            
-            conn.commit()
-            return True
-            
-        except Exception as e:
-            conn.rollback()
-            raise e
-        finally:
-            cursor.close()
-            conn.close()
-    
-    def delete_definition(self, definition_id: int):
-        """Delete a single definition"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            cursor.execute("DELETE FROM defined WHERE id = %s", (definition_id,))
-            conn.commit()
-            return cursor.rowcount > 0
-            
-        finally:
-            cursor.close()
-            conn.close()
-    
-    def bulk_delete_definitions(self, definition_ids: List[int]):
-        """Bulk delete multiple definitions"""
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            if not definition_ids:
-                return 0
-            
-            placeholders = ','.join(['%s'] * len(definition_ids))
-            query = f"DELETE FROM defined WHERE id IN ({placeholders})"
-            cursor.execute(query, definition_ids)
-            conn.commit()
-            return cursor.rowcount
-            
-        finally:
-            cursor.close()
-            conn.close()
-
-# Initialize definition database
-definition_db = DefinitionDatabase()
 
 @app.get("/admin/definitions", response_class=HTMLResponse)
 async def admin_definitions_editor(

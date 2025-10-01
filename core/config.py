@@ -8,16 +8,19 @@ import os
 from typing import Dict, Optional
 from pathlib import Path
 
+from .secure_config import get_database_config as secure_get_database_config
+
 class VocabularyConfig:
     """Centralized configuration for the vocabulary system"""
-    
+
     # Database Configuration
     DATABASE = {
-        'host': '10.0.0.160',
-        'port': 3306,
-        'database': 'vocab',
-        'user': 'brian',
-        'password': 'Fl1p5ma5h!'
+        'host': '10.0.0.99',
+        'port': 6543,
+        'database': 'postgres',
+        'user': 'postgres.your-tenant-id',
+        'password': 'your-super-secret-and-long-postgres-password',
+        'schema': 'vocab'
     }
     
     # File Paths
@@ -71,12 +74,20 @@ class VocabularyConfig:
     @classmethod
     def get_db_config(cls) -> Dict:
         """Get database configuration"""
-        return cls.DATABASE.copy()
-    
+        return secure_get_database_config().to_dict()
+
     @classmethod
     def get_db_url(cls) -> str:
         """Get database URL for connection strings"""
-        return f"mysql://{cls.DATABASE['user']}:{cls.DATABASE['password']}@{cls.DATABASE['host']}:{cls.DATABASE['port']}/{cls.DATABASE['database']}"
+        db_conf = secure_get_database_config()
+        schema_fragment = ''
+        if db_conf.schema:
+            schema_fragment = f"?options=-c%20search_path%3D{db_conf.schema}"
+        password = db_conf.password
+        return (
+            f"postgresql://{db_conf.user}:{password}@{db_conf.host}:{db_conf.port}/{db_conf.database}"
+            f"{schema_fragment}"
+        )
 
     # Ingestion helpers with env-var overrides ---------------------------------
     @classmethod
@@ -155,11 +166,11 @@ config = VocabularyConfig()
 # Legacy compatibility - functions that other modules expect
 def get_db_config():
     """Get database configuration (legacy compatibility)"""
-    return config.get_db_config()
+    return secure_get_database_config().to_dict()
 
 def get_database_config():
     """Get database configuration (legacy compatibility)"""
-    return config.get_db_config()
+    return secure_get_database_config()
 
 # Configuration validation
 def validate_config():

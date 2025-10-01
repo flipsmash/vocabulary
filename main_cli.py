@@ -94,41 +94,35 @@ def main():
         # Use current harvesting system instead: gutenberg_harvester.py, wiktionary_harvester.py, etc.
 
         elif args.find_semantic_distractors:
-            from core.config import get_db_config
-            import mysql.connector
-            
             word_id = args.find_semantic_distractors
             print(f"[INFO] Finding semantic distractors for word ID {word_id}")
-            
-            conn = mysql.connector.connect(**get_db_config())
-            cursor = conn.cursor()
-            
-            # Get word name
-            cursor.execute("SELECT term FROM defined WHERE id = %s", (word_id,))
-            result = cursor.fetchone()
-            if not result:
-                print("Word not found")
-                return 1
-            
-            word = result[0]
-            print(f"Target word: '{word}'")
-            
-            # Find semantic similarities
-            cursor.execute("""
-            SELECT d.term, ds.cosine_similarity, d.definition
-            FROM definition_similarity ds
-            JOIN defined d ON (
-                (ds.word1_id = %s AND ds.word2_id = d.id) OR
-                (ds.word2_id = %s AND ds.word1_id = d.id)
-            )
-            WHERE d.id != %s
-            ORDER BY ds.cosine_similarity DESC
-            LIMIT 5
-            """, (word_id, word_id, word_id))
-            
-            distractors = cursor.fetchall()
-            conn.close()
-            
+
+            with db_manager.get_cursor() as cursor:
+                cursor.execute("SELECT term FROM defined WHERE id = %s", (word_id,))
+                result = cursor.fetchone()
+                if not result:
+                    print("Word not found")
+                    return 1
+
+                word = result[0]
+                print(f"Target word: '{word}'")
+
+                cursor.execute(
+                    """
+                    SELECT d.term, ds.cosine_similarity, d.definition
+                    FROM definition_similarity ds
+                    JOIN defined d ON (
+                        (ds.word1_id = %s AND ds.word2_id = d.id) OR
+                        (ds.word2_id = %s AND ds.word1_id = d.id)
+                    )
+                    WHERE d.id != %s
+                    ORDER BY ds.cosine_similarity DESC
+                    LIMIT 5
+                    """,
+                    (word_id, word_id, word_id),
+                )
+                distractors = cursor.fetchall()
+
             if distractors:
                 print(f"\nSemantic distractors:")
                 for i, (d_word, similarity, definition) in enumerate(distractors, 1):
