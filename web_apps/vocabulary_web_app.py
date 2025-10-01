@@ -1573,6 +1573,7 @@ class FlashcardDatabase:
                     arpabet_transcription=row[13],
                     syllable_count=row[14],
                     stress_pattern=row[15],
+                    obsolete_or_archaic=row[16],
                 )
                 cards.append(
                     Flashcard(
@@ -1660,6 +1661,7 @@ class FlashcardDatabase:
                     arpabet_transcription=row[13],
                     syllable_count=row[14],
                     stress_pattern=row[15],
+                    obsolete_or_archaic=row[16],
                 )
                 cards.append(
                     Flashcard(
