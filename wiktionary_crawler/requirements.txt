@@ -1,0 +1,13 @@
+# Wiktionary Rare Word Crawler Dependencies
+
+# Core dependencies
+requests>=2.31.0       # HTTP requests for downloads
+psycopg>=3.1.0        # PostgreSQL database adapter
+psycopg-pool>=3.1.0   # Connection pooling
+
+# XML parsing (built-in, no install needed)
+# - xml.etree.ElementTree
+# - bz2
+
+# Already in parent project
+# - core.secure_config (database configuration)
