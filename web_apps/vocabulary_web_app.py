@@ -43,6 +43,9 @@ templates = Jinja2Templates(directory="templates")
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Mount pronunciation files (audio)
+app.mount("/pronunciation", StaticFiles(directory="pronunciation_files"), name="pronunciation")
+
 @dataclass
 class Word:
     id: int

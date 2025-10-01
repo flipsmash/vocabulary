@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Definition Editor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .definition-editor {
+            font-size: 0.9rem;
+        }
+        .definition-cell {
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .definition-textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        .filter-section {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .filter-section .form-check-label {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        .filter-section .badge {
+            font-size: 0.75rem;
+        }
+        .table-actions {
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 1000;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .edited-row {
+            background-color: #d1ecf1;
+        }
+        .circular-flag {
+            background-color: #f8d7da;
+        }
+        .manual-review-flag {
+            background-color: #fff3cd;
+        }
+        .bad-entry {
+            background-color: #f5c6cb;
+            opacity: 0.8;
+        }
+        .btn-xs {
+            padding: 0.1rem 0.3rem;
+            font-size: 0.7rem;
+        }
+        .loading {
+            display: none;
+        }
+        .definition-editor .table > :not(caption) > * > * {
+            padding: 0.25rem;
+        }
+        .select-all-checkbox {
+            transform: scale(1.2);
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-book"></i> Vocabulary Explorer
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/admin">
+                    <i class="bi bi-speedometer2"></i> Admin Dashboard
+                </a>
+                <a class="nav-link" href="/">
+                    <i class="bi bi-house"></i> Home
+                </a>
+                <a class="nav-link" href="/logout">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2><i class="bi bi-pencil-square"></i> Definition Editor</h2>
+                    <div>
+                        <button class="btn btn-primary" id="saveChanges" disabled>
+                            <i class="bi bi-check-circle"></i> Save Changes
+                        </button>
+                        <button class="btn btn-secondary" id="cancelChanges" disabled>
+                            <i class="bi bi-x-circle"></i> Cancel
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Filter Section -->
+                <div class="filter-section">
+                    <form id="filterForm" class="row g-3">
+                        <div class="col-md-2">
+                            <label for="searchTerm" class="form-label">Search Term</label>
+                            <input type="text" class="form-control" id="searchTerm" name="search" 
+                                   value="{{ search or '' }}" placeholder="Enter word or definition...">
+                        </div>
+                        <div class="col-md-2">
+                            <label for="partOfSpeech" class="form-label">Part of Speech</label>
+                            <select class="form-select" id="partOfSpeech" name="part_of_speech">
+                                <option value="">All</option>
+                                {% for pos in parts_of_speech %}
+                                <option value="{{ pos }}" {{ 'selected' if part_of_speech == pos else '' }}>{{ pos }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Filter by Flags</label>
+                            <div class="d-flex flex-column gap-1">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="filterCircular" name="filter_circular" value="1" {{ 'checked' if filter_circular else '' }}>
+                                    <label class="form-check-label" for="filterCircular">
+                                        <span class="badge bg-warning text-dark">Circular</span>
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="filterBad" name="filter_bad" value="1" {{ 'checked' if filter_bad else '' }}>
+                                    <label class="form-check-label" for="filterBad">
+                                        <span class="badge bg-danger">Bad</span>
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="filterReview" name="filter_review" value="1" {{ 'checked' if filter_review else '' }}>
+                                    <label class="form-check-label" for="filterReview">
+                                        <span class="badge bg-info text-dark">Review</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-1">
+                            <label for="perPage" class="form-label">Per Page</label>
+                            <select class="form-select" id="perPage" name="per_page">
+                                <option value="25" {{ 'selected' if per_page == 25 else '' }}>25</option>
+                                <option value="50" {{ 'selected' if per_page == 50 else '' }}>50</option>
+                                <option value="100" {{ 'selected' if per_page == 100 else '' }}>100</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">&nbsp;</label>
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-search"></i> Filter
+                                </button>
+                                <button type="button" class="btn btn-secondary" id="clearFilters">
+                                    <i class="bi bi-x"></i> Clear
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Statistics -->
+                <div class="row mb-3">
+                    <div class="col-12">
+                        <div class="alert alert-info">
+                            <strong>Results:</strong> {{ total_count }} entries found
+                            {% if circular_count > 0 %}
+                            | <span class="text-warning">{{ circular_count }} circular definitions</span>
+                            {% endif %}
+                            {% if manual_review_count > 0 %}
+                            | <span class="text-warning">{{ manual_review_count }} need manual review</span>
+                            {% endif %}
+                            {% if bad_count > 0 %}
+                            | <span class="text-danger">{{ bad_count }} marked as bad</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bulk Actions -->
+                <div class="table-actions">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input select-all-checkbox" type="checkbox" id="selectAll">
+                                <label class="form-check-label" for="selectAll">
+                                    Select All (<span id="selectedCount">0</span>)
+                                </label>
+                            </div>
+                            <div class="btn-group ms-3" role="group">
+                                <button type="button" class="btn btn-sm btn-outline-warning" id="bulkMarkCircular" disabled>
+                                    <i class="bi bi-arrow-repeat"></i> Mark Circular
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-info" id="bulkMarkReview" disabled>
+                                    <i class="bi bi-flag"></i> Mark Review
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" id="bulkMarkBad" disabled>
+                                    <i class="bi bi-x-octagon"></i> Mark Bad
+                                </button>
+                                <button type="button" class="btn btn-sm btn-danger" id="bulkDelete" disabled>
+                                    <i class="bi bi-trash"></i> Delete Selected
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-6 text-end">
+                            <div class="btn-group" role="group">
+                                <button type="button" class="btn btn-sm btn-success" id="bulkClearFlags" disabled>
+                                    <i class="bi bi-check-square"></i> Clear Flags
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="exportSelected" disabled>
+                                    <i class="bi bi-download"></i> Export
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Loading indicator -->
+                <div class="text-center py-4 loading" id="loadingIndicator">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Processing...</p>
+                </div>
+
+                <!-- Definition Table -->
+                <div class="table-responsive definition-editor">
+                    <table class="table table-sm table-hover" id="definitionsTable">
+                        <thead class="table-dark">
+                            <tr>
+                                <th width="30"><input type="checkbox" class="form-check-input" id="tableSelectAll"></th>
+                                <th width="50">ID</th>
+                                <th width="120">Term</th>
+                                <th width="80">Part of Speech</th>
+                                <th>Definition</th>
+                                <th width="60">Flags</th>
+                                <th width="100">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for definition in definitions %}
+                            <tr data-id="{{ definition.id }}" 
+                                class="{{ 'circular-flag' if definition.has_circular_definition else '' }}
+                                       {{ 'manual-review-flag' if definition.needs_manual_circularity_review else '' }}
+                                       {{ 'bad-entry' if definition.bad else '' }}">
+                                <td>
+                                    <input type="checkbox" class="form-check-input row-select" value="{{ definition.id }}">
+                                </td>
+                                <td>
+                                    <span class="id-display">{{ definition.id }}</span>
+                                </td>
+                                <td>
+                                    <input type="text" class="form-control form-control-sm term-edit" 
+                                           value="{{ definition.term or '' }}" data-original="{{ definition.term or '' }}">
+                                </td>
+                                <td>
+                                    <select class="form-select form-select-sm pos-edit" data-original="{{ definition.part_of_speech or '' }}">
+                                        <option value="">--</option>
+                                        {% for pos in parts_of_speech %}
+                                        <option value="{{ pos }}" {{ 'selected' if definition.part_of_speech == pos else '' }}>{{ pos }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td class="definition-cell">
+                                    <textarea class="form-control form-control-sm definition-edit definition-textarea" 
+                                            data-original="{{ definition.definition or '' }}">{{ definition.definition or '' }}</textarea>
+                                </td>
+                                <td>
+                                    <div class="d-flex flex-column gap-1">
+                                        <div class="form-check form-check-sm">
+                                            <input class="form-check-input bad-flag" type="checkbox" 
+                                                   {{ 'checked' if definition.bad else '' }}>
+                                            <label class="form-check-label" style="font-size: 0.7rem;">Bad</label>
+                                        </div>
+                                        <div class="form-check form-check-sm">
+                                            <input class="form-check-input circular-flag" type="checkbox" 
+                                                   {{ 'checked' if definition.has_circular_definition else '' }}>
+                                            <label class="form-check-label" style="font-size: 0.7rem;">Circular</label>
+                                        </div>
+                                        <div class="form-check form-check-sm">
+                                            <input class="form-check-input review-flag" type="checkbox" 
+                                                   {{ 'checked' if definition.needs_manual_circularity_review else '' }}>
+                                            <label class="form-check-label" style="font-size: 0.7rem;">Review</label>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="btn-group-vertical" role="group">
+                                        <button type="button" class="btn btn-xs btn-outline-success update-btn" title="Update">
+                                            <i class="bi bi-check-circle"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-xs btn-outline-danger delete-btn" title="Delete">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                {% if total_pages > 1 %}
+                <nav aria-label="Page navigation">
+                    <ul class="pagination justify-content-center">
+                        <li class="page-item {{ 'disabled' if current_page == 1 else '' }}">
+                            <a class="page-link" href="?{{ request.url.query.replace('page=' + current_page|string, 'page=' + (current_page-1)|string) if current_page > 1 else '#' }}">Previous</a>
+                        </li>
+                        {% for page_num in page_numbers %}
+                        <li class="page-item {{ 'active' if page_num == current_page else '' }}">
+                            <a class="page-link" href="?{{ request.url.query.replace('page=' + current_page|string, 'page=' + page_num|string) }}">{{ page_num }}</a>
+                        </li>
+                        {% endfor %}
+                        <li class="page-item {{ 'disabled' if current_page == total_pages else '' }}">
+                            <a class="page-link" href="?{{ request.url.query.replace('page=' + current_page|string, 'page=' + (current_page+1)|string) if current_page < total_pages else '#' }}">Next</a>
+                        </li>
+                    </ul>
+                </nav>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="modal fade" id="deleteModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Confirm Deletion</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete this definition?</p>
+                    <div class="alert alert-warning">
+                        <strong>Term:</strong> <span id="deleteTermName"></span><br>
+                        <strong>Definition:</strong> <span id="deleteDefinitionText"></span>
+                    </div>
+                    <p class="text-danger"><strong>This action cannot be undone.</strong></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirmDelete">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Delete Confirmation Modal -->
+    <div class="modal fade" id="bulkDeleteModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Confirm Bulk Deletion</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Are you sure you want to delete <strong><span id="bulkDeleteCount"></span></strong> selected definitions?</p>
+                    <p class="text-danger"><strong>This action cannot be undone.</strong></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirmBulkDelete">Delete All</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            let pendingChanges = new Set();
+            let deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+            let bulkDeleteModal = new bootstrap.Modal(document.getElementById('bulkDeleteModal'));
+
+            // Row selection functionality
+            const selectAll = document.getElementById('selectAll');
+            const tableSelectAll = document.getElementById('tableSelectAll');
+            const rowSelects = document.querySelectorAll('.row-select');
+            const selectedCount = document.getElementById('selectedCount');
+            const bulkButtons = document.querySelectorAll('#bulkMarkCircular, #bulkMarkReview, #bulkMarkBad, #bulkDelete, #bulkClearFlags, #exportSelected');
+
+            function updateSelection() {
+                const selected = document.querySelectorAll('.row-select:checked');
+                selectedCount.textContent = selected.length;
+                
+                const hasSelection = selected.length > 0;
+                bulkButtons.forEach(btn => btn.disabled = !hasSelection);
+                
+                selectAll.indeterminate = selected.length > 0 && selected.length < rowSelects.length;
+                selectAll.checked = selected.length === rowSelects.length;
+                tableSelectAll.indeterminate = selectAll.indeterminate;
+                tableSelectAll.checked = selectAll.checked;
+            }
+
+            selectAll.addEventListener('change', function() {
+                rowSelects.forEach(cb => cb.checked = this.checked);
+                updateSelection();
+            });
+
+            tableSelectAll.addEventListener('change', function() {
+                selectAll.checked = this.checked;
+                selectAll.dispatchEvent(new Event('change'));
+            });
+
+            rowSelects.forEach(cb => {
+                cb.addEventListener('change', updateSelection);
+            });
+
+            // Track changes on input fields
+            document.querySelectorAll('.term-edit, .definition-edit').forEach(input => {
+                input.addEventListener('input', function() {
+                    const row = this.closest('tr');
+                    checkRowChanges(row);
+                });
+            });
+
+            document.querySelectorAll('.pos-edit').forEach(select => {
+                select.addEventListener('change', function() {
+                    const row = this.closest('tr');
+                    checkRowChanges(row);
+                });
+            });
+
+            function checkRowChanges(row) {
+                const termEdit = row.querySelector('.term-edit');
+                const posEdit = row.querySelector('.pos-edit');
+                const definitionEdit = row.querySelector('.definition-edit');
+                
+                const hasChanges = 
+                    termEdit.value !== termEdit.dataset.original ||
+                    posEdit.value !== posEdit.dataset.original ||
+                    definitionEdit.value !== definitionEdit.dataset.original;
+                
+                if (hasChanges) {
+                    row.classList.add('edited-row');
+                } else {
+                    row.classList.remove('edited-row');
+                }
+            }
+
+            // Update functionality
+            document.querySelectorAll('.update-btn').forEach(btn => {
+                btn.addEventListener('click', async function() {
+                    const row = this.closest('tr');
+                    await updateRow(row);
+                });
+            });
+
+            async function updateRow(row) {
+                const id = row.dataset.id;
+                const termEdit = row.querySelector('.term-edit').value;
+                const posEdit = row.querySelector('.pos-edit').value;
+                const definitionEdit = row.querySelector('.definition-edit').value;
+                const badFlag = row.querySelector('.bad-flag').checked;
+                const circularFlag = row.querySelector('.circular-flag').checked;
+                const reviewFlag = row.querySelector('.review-flag').checked;
+
+                const loadingIndicator = document.getElementById('loadingIndicator');
+                loadingIndicator.style.display = 'block';
+
+                try {
+                    const response = await fetch('/admin/definitions/bulk-update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ 
+                            changes: [{
+                                id: parseInt(id),
+                                term: termEdit,
+                                part_of_speech: posEdit,
+                                definition: definitionEdit,
+                                bad: badFlag ? 1 : 0,
+                                has_circular_definition: circularFlag ? 1 : 0,
+                                needs_manual_circularity_review: reviewFlag ? 1 : 0
+                            }]
+                        })
+                    });
+
+                    if (response.ok) {
+                        // Update original values
+                        row.querySelector('.term-edit').dataset.original = termEdit;
+                        row.querySelector('.pos-edit').dataset.original = posEdit;
+                        row.querySelector('.definition-edit').dataset.original = definitionEdit;
+                        
+                        row.classList.remove('edited-row');
+                        showAlert('Definition updated successfully!', 'success');
+                    } else {
+                        const error = await response.json();
+                        showAlert('Error updating definition: ' + error.detail, 'danger');
+                    }
+                } catch (error) {
+                    showAlert('Error updating definition: ' + error.message, 'danger');
+                } finally {
+                    loadingIndicator.style.display = 'none';
+                }
+            }
+
+            // Flag change handlers
+            document.querySelectorAll('.bad-flag, .circular-flag, .review-flag').forEach(flag => {
+                flag.addEventListener('change', function() {
+                    const row = this.closest('tr');
+                    const id = row.dataset.id;
+                    row.classList.add('edited-row');
+                    pendingChanges.add(id);
+                    updateSaveButtonState();
+                    updateRowAppearance(row);
+                });
+            });
+
+            function updateRowAppearance(row) {
+                const badFlag = row.querySelector('.bad-flag').checked;
+                const circularFlag = row.querySelector('.circular-flag').checked;
+                const reviewFlag = row.querySelector('.review-flag').checked;
+
+                row.classList.toggle('bad-entry', badFlag);
+                row.classList.toggle('circular-flag', circularFlag && !badFlag);
+                row.classList.toggle('manual-review-flag', reviewFlag && !badFlag && !circularFlag);
+            }
+
+            function updateSaveButtonState() {
+                const saveBtn = document.getElementById('saveChanges');
+                const cancelBtn = document.getElementById('cancelChanges');
+                const hasChanges = pendingChanges.size > 0;
+                
+                saveBtn.disabled = !hasChanges;
+                cancelBtn.disabled = !hasChanges;
+            }
+
+            // Save changes
+            document.getElementById('saveChanges').addEventListener('click', function() {
+                if (pendingChanges.size === 0) return;
+
+                const changes = [];
+                pendingChanges.forEach(id => {
+                    const row = document.querySelector(`tr[data-id="${id}"]`);
+                    changes.push({
+                        id: parseInt(id),
+                        term: row.querySelector('.term-edit').value,
+                        part_of_speech: row.querySelector('.pos-edit').value,
+                        definition: row.querySelector('.definition-edit').value,
+                        bad: row.querySelector('.bad-flag').checked ? 1 : 0,
+                        has_circular_definition: row.querySelector('.circular-flag').checked ? 1 : 0,
+                        needs_manual_circularity_review: row.querySelector('.review-flag').checked ? 1 : 0
+                    });
+                });
+
+                saveChangesToServer(changes);
+            });
+
+            // Cancel changes
+            document.getElementById('cancelChanges').addEventListener('click', function() {
+                location.reload();
+            });
+
+            async function saveChangesToServer(changes) {
+                const loadingIndicator = document.getElementById('loadingIndicator');
+                loadingIndicator.style.display = 'block';
+
+                try {
+                    const response = await fetch('/admin/definitions/bulk-update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ changes })
+                    });
+
+                    if (response.ok) {
+                        pendingChanges.clear();
+                        updateSaveButtonState();
+                        document.querySelectorAll('.edited-row').forEach(row => {
+                            row.classList.remove('edited-row');
+                        });
+                        showAlert('Changes saved successfully!', 'success');
+                    } else {
+                        const error = await response.json();
+                        showAlert('Error saving changes: ' + error.detail, 'danger');
+                    }
+                } catch (error) {
+                    showAlert('Error saving changes: ' + error.message, 'danger');
+                } finally {
+                    loadingIndicator.style.display = 'none';
+                }
+            }
+
+            // Delete functionality
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const row = this.closest('tr');
+                    const id = row.dataset.id;
+                    const term = row.querySelector('.term-edit').value;
+                    const definition = row.querySelector('.definition-edit').value;
+                    
+                    document.getElementById('deleteTermName').textContent = term;
+                    document.getElementById('deleteDefinitionText').textContent = definition;
+                    document.getElementById('confirmDelete').dataset.id = id;
+                    deleteModal.show();
+                });
+            });
+
+            document.getElementById('confirmDelete').addEventListener('click', async function() {
+                const id = this.dataset.id;
+                await deleteDefinition(id);
+                deleteModal.hide();
+            });
+
+            // Bulk operations
+            document.getElementById('bulkDelete').addEventListener('click', function() {
+                const selected = document.querySelectorAll('.row-select:checked');
+                document.getElementById('bulkDeleteCount').textContent = selected.length;
+                bulkDeleteModal.show();
+            });
+
+            document.getElementById('confirmBulkDelete').addEventListener('click', async function() {
+                const selected = Array.from(document.querySelectorAll('.row-select:checked'))
+                    .map(cb => cb.value);
+                await bulkDeleteDefinitions(selected);
+                bulkDeleteModal.hide();
+            });
+
+            document.getElementById('bulkMarkCircular').addEventListener('click', () => {
+                bulkUpdateFlag('circular', true);
+            });
+
+            document.getElementById('bulkMarkReview').addEventListener('click', () => {
+                bulkUpdateFlag('review', true);
+            });
+
+            document.getElementById('bulkMarkBad').addEventListener('click', () => {
+                bulkUpdateFlag('bad', true);
+            });
+
+            document.getElementById('bulkClearFlags').addEventListener('click', () => {
+                bulkClearAllFlags();
+            });
+
+            function bulkUpdateFlag(flagType, value) {
+                const selected = document.querySelectorAll('.row-select:checked');
+                selected.forEach(cb => {
+                    const row = cb.closest('tr');
+                    const flagClass = flagType === 'circular' ? '.circular-flag' : 
+                                     flagType === 'review' ? '.review-flag' : '.bad-flag';
+                    const flag = row.querySelector(flagClass);
+                    flag.checked = value;
+                    flag.dispatchEvent(new Event('change'));
+                });
+            }
+
+            function bulkClearAllFlags() {
+                const selected = document.querySelectorAll('.row-select:checked');
+                selected.forEach(cb => {
+                    const row = cb.closest('tr');
+                    row.querySelector('.bad-flag').checked = false;
+                    row.querySelector('.circular-flag').checked = false;
+                    row.querySelector('.review-flag').checked = false;
+                    row.querySelector('.bad-flag').dispatchEvent(new Event('change'));
+                });
+            }
+
+            async function deleteDefinition(id) {
+                try {
+                    const response = await fetch(`/admin/definitions/${id}`, {
+                        method: 'DELETE'
+                    });
+
+                    if (response.ok) {
+                        document.querySelector(`tr[data-id="${id}"]`).remove();
+                        showAlert('Definition deleted successfully!', 'success');
+                    } else {
+                        const error = await response.json();
+                        showAlert('Error deleting definition: ' + error.detail, 'danger');
+                    }
+                } catch (error) {
+                    showAlert('Error deleting definition: ' + error.message, 'danger');
+                }
+            }
+
+            async function bulkDeleteDefinitions(ids) {
+                try {
+                    const response = await fetch('/admin/definitions/bulk-delete', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ ids })
+                    });
+
+                    if (response.ok) {
+                        ids.forEach(id => {
+                            document.querySelector(`tr[data-id="${id}"]`).remove();
+                        });
+                        updateSelection();
+                        showAlert(`${ids.length} definitions deleted successfully!`, 'success');
+                    } else {
+                        const error = await response.json();
+                        showAlert('Error deleting definitions: ' + error.detail, 'danger');
+                    }
+                } catch (error) {
+                    showAlert('Error deleting definitions: ' + error.message, 'danger');
+                }
+            }
+
+            // Clear filters
+            document.getElementById('clearFilters').addEventListener('click', function() {
+                window.location.href = '/admin/definitions';
+            });
+
+            function showAlert(message, type) {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+                alertDiv.innerHTML = `
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.querySelector('.container-fluid').insertBefore(alertDiv, document.querySelector('.container-fluid').firstChild);
+                
+                setTimeout(() => {
+                    if (alertDiv.parentNode) {
+                        alertDiv.remove();
+                    }
+                }, 5000);
+            }
+
+            // Initialize
+            updateSelection();
+        });
+    </script>
+</body>
+</html>

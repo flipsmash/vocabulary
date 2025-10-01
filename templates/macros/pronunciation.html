@@ -1,0 +1,94 @@
+{# Pronunciation Audio Player Macro #}
+{# Usage: {{ pronunciation_button(word) }} or {{ pronunciation_button(word, size='small') }} #}
+
+{% macro pronunciation_button(word, size='normal', show_ipa=False) %}
+    {% if word.wav_url %}
+        <span class="pronunciation-container d-inline-flex align-items-center gap-2">
+            <button
+                type="button"
+                class="pronunciation-btn {% if size == 'small' %}btn-sm{% endif %}"
+                onclick="playPronunciation(this, '{{ word.wav_url }}')"
+                title="Play pronunciation"
+                aria-label="Play pronunciation for {{ word.term }}"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                </svg>
+                <span class="pronunciation-text">Listen</span>
+            </button>
+            {% if show_ipa and word.ipa_transcription %}
+                <span class="text-muted small font-monospace">/{{ word.ipa_transcription }}/</span>
+            {% endif %}
+        </span>
+    {% endif %}
+{% endmacro %}
+
+{# Inline pronunciation icon (minimal version) #}
+{% macro pronunciation_icon(word) %}
+    {% if word.wav_url %}
+        <a
+            href="javascript:void(0)"
+            onclick="playPronunciation(this, '{{ word.wav_url }}')"
+            class="pronunciation-icon text-primary ms-1"
+            title="Play pronunciation"
+            aria-label="Play pronunciation for {{ word.term }}"
+        >
+            🔊
+        </a>
+    {% endif %}
+{% endmacro %}
+
+{# JavaScript for audio playback (include once in page) #}
+{% macro pronunciation_script() %}
+<script>
+let currentAudio = null;
+
+function playPronunciation(button, audioUrl) {
+    // Stop any currently playing audio
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+    }
+
+    // Create new audio element
+    const audio = new Audio(audioUrl);
+    currentAudio = audio;
+
+    // Add playing class
+    button.classList.add('playing');
+
+    // Remove playing class when done
+    audio.addEventListener('ended', () => {
+        button.classList.remove('playing');
+    });
+
+    // Handle errors
+    audio.addEventListener('error', (e) => {
+        console.error('Audio playback error:', e);
+        button.classList.remove('playing');
+        alert('Audio file not available for this word.');
+    });
+
+    // Play the audio
+    audio.play().catch(error => {
+        console.error('Error playing audio:', error);
+        button.classList.remove('playing');
+    });
+}
+
+// Preload audio on hover for better UX
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.pronunciation-btn, .pronunciation-icon').forEach(btn => {
+        btn.addEventListener('mouseenter', function() {
+            const audioUrl = this.getAttribute('onclick').match(/'([^']+)'/)[1];
+            if (audioUrl) {
+                // Preload audio
+                const audio = new Audio();
+                audio.preload = 'auto';
+                audio.src = audioUrl;
+            }
+        }, { once: true });
+    });
+});
+</script>
+{% endmacro %}
