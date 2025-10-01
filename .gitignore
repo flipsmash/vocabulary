@@ -61,3 +61,5 @@ cookies.txt
 *.tar.gz
 *.zip
 pronunciation_files/
+backups/
+*.sql
