@@ -12,6 +12,7 @@ import bz2
 import json
 import logging
 import requests
+import math
 from pathlib import Path
 from typing import Optional, Set, Dict, List, Tuple
 from datetime import datetime
@@ -51,9 +52,10 @@ class CrawlerConfig:
     # Database connection
     db_config: Dict
 
-    # Rarity threshold (0-1 scale, higher = rarer)
-    # Default 0.6 captures genuinely rare, interesting words
-    final_rarity_threshold: float = 0.6
+    # Wordfreq threshold (log10 scale)
+    # Words with wordfreq < threshold OR missing from wordfreq are considered rare
+    # Default -1.25: captures genuinely rare words
+    wordfreq_threshold: float = -1.25
 
     # Stoplist size (most common words to exclude)
     stoplist_size: int = 20000
@@ -92,11 +94,75 @@ class CrawlerConfig:
 # LOGGING SETUP
 # ============================================================================
 
+# Force unbuffered output for real-time feedback
+import sys
+sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', buffering=1)
+sys.stderr = os.fdopen(sys.stderr.fileno(), 'w', buffering=1)
+
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    stream=sys.stdout,
+    force=True
 )
 logger = logging.getLogger(__name__)
+
+# Ensure logger flushes immediately
+for handler in logging.root.handlers:
+    handler.flush = lambda: sys.stdout.flush()
+
+
+# ============================================================================
+# FREQUENCY LOOKUP
+# ============================================================================
+
+class FrequencyLookup:
+    """Look up word frequencies from various sources"""
+
+    def __init__(self):
+        self.wordfreq_available = self._check_wordfreq()
+
+    def _check_wordfreq(self) -> bool:
+        """Check if wordfreq library is available"""
+        try:
+            import wordfreq
+            return True
+        except ImportError:
+            logger.warning("wordfreq library not available - installing...")
+            try:
+                import subprocess
+                subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'wordfreq'],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return True
+            except:
+                logger.error("Failed to install wordfreq - python_wordfreq will be -999 for all words")
+                return False
+
+    def get_python_wordfreq(self, word: str) -> float:
+        """Get wordfreq score (log10 scale)"""
+        if not self.wordfreq_available:
+            return -999.0
+
+        try:
+            from wordfreq import word_frequency
+            freq = word_frequency(word.lower(), 'en', wordlist='large')
+
+            if freq > 0:
+                # Convert to log scale: log10(freq * 1_000_000)
+                return math.log10(freq * 1_000_000)
+            else:
+                return -999.0
+        except Exception as e:
+            logger.debug(f"Error getting wordfreq for '{word}': {e}")
+            return -999.0
+
+    def get_frequencies(self, word: str) -> Dict[str, float]:
+        """Get all available frequencies for a word"""
+        return {
+            'python_wordfreq': self.get_python_wordfreq(word),
+            'ngram_freq': -999.0,  # Not available from Wiktionary alone
+            'commoncrawl_freq': -999.0  # Not available from Wiktionary alone
+        }
 
 
 # ============================================================================
@@ -116,11 +182,18 @@ class StoplistManager:
         self.stoplist: Set[str] = set()
 
     def load_or_download(self) -> Set[str]:
-        """Load stoplist from disk or download if missing"""
+        """Load stoplist from disk or download if missing/wrong size"""
         if self.config.stoplist_path.exists():
             logger.info(f"Loading stoplist from {self.config.stoplist_path}")
             with open(self.config.stoplist_path, 'r', encoding='utf-8') as f:
                 self.stoplist = {line.strip().lower() for line in f if line.strip()}
+
+            # Check if size matches config
+            if len(self.stoplist) < self.config.stoplist_size:
+                logger.info(f"Stoplist has {len(self.stoplist):,} words, but config requests {self.config.stoplist_size:,}")
+                logger.info("Re-downloading to meet configured size...")
+                return self.download_stoplist()
+
             logger.info(f"Loaded {len(self.stoplist):,} stoplist words")
             return self.stoplist
 
@@ -232,8 +305,8 @@ class WiktionaryEntry:
 class WiktionaryParser:
     """Parse Wiktionary XML dump and wiki markup"""
 
-    # XML namespace
-    NS = {'mw': 'http://www.mediawiki.org/xml/export-0.10/'}
+    # XML namespace (updated to 0.11 for latest dumps)
+    NS = {'mw': 'http://www.mediawiki.org/xml/export-0.11/'}
 
     # POS section headers in Wiktionary
     POS_HEADERS = {
@@ -346,8 +419,8 @@ class WiktionaryParser:
         if '==English==' not in text:
             return entries
 
-        # Extract English section
-        english_match = re.search(r'==English==(.+?)(?:^==\w|$)', text, re.MULTILINE | re.DOTALL)
+        # Extract English section (everything between ==English== and next ==Language==)
+        english_match = re.search(r'==English==(.*?)(?:\n==\w|\Z)', text, re.DOTALL)
         if not english_match:
             return entries
 
@@ -389,21 +462,47 @@ class WiktionaryParser:
         return entries
 
     def parse_dump(self, dump_path: Path, callback, checkpoint_callback=None):
-        """Parse XML dump file and yield entries"""
+        """Parse XML dump file using fast streaming approach"""
         logger.info(f"Parsing Wiktionary dump: {dump_path}")
+        logger.info("Starting streaming XML parser...")
+        sys.stdout.flush()
 
-        # Open bz2 file
-        with bz2.open(dump_path, 'rt', encoding='utf-8') as f:
-            context = ET.iterparse(f, events=('end',))
+        page_count = 0
+        first_page = True
 
-            page_count = 0
-            for event, elem in context:
-                if elem.tag == '{http://www.mediawiki.org/xml/export-0.10/}page':
+        # Use streaming approach: decompress and parse in chunks
+        # This is much faster than ET.iterparse on compressed files
+        try:
+            import lxml.etree as etree
+            use_lxml = True
+            logger.info("Using lxml for faster parsing...")
+        except ImportError:
+            use_lxml = False
+            logger.info("lxml not available, using standard library (slower)...")
+
+        sys.stdout.flush()
+
+        with bz2.open(dump_path, 'rb') as f:
+            if use_lxml:
+                # lxml is much faster for streaming
+                context = etree.iterparse(f, events=('end',), tag='{http://www.mediawiki.org/xml/export-0.11/}page')
+
+                for event, elem in context:
                     page_count += 1
 
+                    if first_page:
+                        logger.info(f"✓ First page reached! Processing pages...")
+                        sys.stdout.flush()
+                        first_page = False
+
                     # Extract title and text
-                    title_elem = elem.find('mw:title', self.NS)
-                    text_elem = elem.find('.//mw:text', self.NS)
+                    title_elem = elem.find('{http://www.mediawiki.org/xml/export-0.11/}title')
+                    revision_elem = elem.find('{http://www.mediawiki.org/xml/export-0.11/}revision')
+
+                    if revision_elem is not None:
+                        text_elem = revision_elem.find('{http://www.mediawiki.org/xml/export-0.11/}text')
+                    else:
+                        text_elem = None
 
                     if title_elem is not None and text_elem is not None:
                         title = title_elem.text
@@ -416,14 +515,61 @@ class WiktionaryParser:
 
                     # Clear element to free memory
                     elem.clear()
+                    # Clear ancestors to prevent memory buildup
+                    while elem.getprevious() is not None:
+                        del elem.getparent()[0]
 
                     # Checkpoint callback
                     if checkpoint_callback and page_count % 10000 == 0:
                         checkpoint_callback(page_count)
 
                     # Progress logging
-                    if page_count % 50000 == 0:
+                    if page_count % 1000 == 0:
                         logger.info(f"Processed {page_count:,} pages...")
+                        sys.stdout.flush()
+
+            else:
+                # Fallback to standard library (slower but works)
+                context = ET.iterparse(f, events=('end',))
+
+                for event, elem in context:
+                    if elem.tag == '{http://www.mediawiki.org/xml/export-0.11/}page':
+                        page_count += 1
+
+                        if first_page:
+                            logger.info(f"✓ First page reached! Processing pages...")
+                            sys.stdout.flush()
+                            first_page = False
+
+                        # Extract title and text using namespace
+                        title_elem = elem.find('{http://www.mediawiki.org/xml/export-0.11/}title')
+                        revision_elem = elem.find('{http://www.mediawiki.org/xml/export-0.11/}revision')
+
+                        if revision_elem is not None:
+                            text_elem = revision_elem.find('{http://www.mediawiki.org/xml/export-0.11/}text')
+                        else:
+                            text_elem = None
+
+                        if title_elem is not None and text_elem is not None:
+                            title = title_elem.text
+                            text = text_elem.text
+
+                            if title and text:
+                                entries = self.parse_page(title, text)
+                                for entry in entries:
+                                    callback(entry)
+
+                        # Clear element to free memory
+                        elem.clear()
+
+                        # Checkpoint callback
+                        if checkpoint_callback and page_count % 10000 == 0:
+                            checkpoint_callback(page_count)
+
+                        # Progress logging
+                        if page_count % 1000 == 0:
+                            logger.info(f"Processed {page_count:,} pages...")
+                            sys.stdout.flush()
 
 
 # ============================================================================
@@ -468,32 +614,11 @@ class CandidateDatabase:
         finally:
             conn.close()
 
-    def get_rarity_scores(self, terms: List[str]) -> Dict[str, float]:
-        """Batch query rarity scores from word_rarity_metrics"""
-        if not terms:
-            return {}
-
-        conn = self.get_connection()
-        try:
-            with conn.cursor(row_factory=dict_row) as cursor:
-                # Use ANY() for efficient batch query
-                cursor.execute(
-                    """
-                    SELECT LOWER(term) as term, final_rarity
-                    FROM word_rarity_metrics
-                    WHERE LOWER(term) = ANY(%s)
-                    """,
-                    (terms,)
-                )
-                return {row['term']: row['final_rarity'] for row in cursor.fetchall()}
-        finally:
-            conn.close()
-
-    def add_to_batch(self, entry: WiktionaryEntry, final_rarity: float, source_dump_date: str):
-        """Add candidate to batch"""
+    def add_to_batch(self, entry: WiktionaryEntry, wordfreq_score: float, source_dump_date: str):
+        """Add candidate to batch with wordfreq score as zipf_score"""
         self.batch.append({
             'term': entry.term,
-            'final_rarity': final_rarity,
+            'zipf_score': wordfreq_score,  # Store wordfreq score
             'definition': entry.definitions[0] if entry.definitions else '',
             'part_of_speech': entry.part_of_speech,
             'etymology': entry.etymology,
@@ -509,27 +634,39 @@ class CandidateDatabase:
         conn = self.get_connection()
         try:
             with conn.cursor() as cursor:
-                # Use execute_batch for efficiency
+                # Disable automatic prepared statements to avoid name conflicts
+                # Insert records one at a time (still reasonably fast for 500 record batches)
                 insert_sql = """
                 INSERT INTO vocabulary_candidates
-                    (term, final_rarity, definition, part_of_speech, etymology,
+                    (term, zipf_score, definition, part_of_speech, etymology,
                      obsolete_or_archaic, source_dump_date)
-                VALUES (%(term)s, %(final_rarity)s, %(definition)s, %(part_of_speech)s,
-                        %(etymology)s, %(obsolete_or_archaic)s, %(source_dump_date)s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (term) DO NOTHING
                 """
 
-                from psycopg import sql
                 for record in self.batch:
                     try:
-                        cursor.execute(insert_sql, record)
+                        cursor.execute(
+                            insert_sql,
+                            (record['term'], record['zipf_score'], record['definition'],
+                             record['part_of_speech'], record['etymology'],
+                             record['obsolete_or_archaic'], record['source_dump_date']),
+                            prepare=False  # Disable prepared statements
+                        )
                     except Exception as e:
-                        logger.warning(f"Failed to insert {record['term']}: {e}")
+                        logger.debug(f"Failed to insert {record['term']}: {e}")
+                        continue
 
                 conn.commit()
+
                 inserted = len(self.batch)
                 self.batch.clear()
                 return inserted
+        except Exception as e:
+            logger.error(f"Failed to flush batch: {e}")
+            conn.rollback()
+            self.batch.clear()
+            return 0
         finally:
             conn.close()
 
@@ -587,14 +724,14 @@ class WiktionaryRareWordCrawler:
         self.parser = WiktionaryParser(config)
         self.database = CandidateDatabase(config)
         self.checkpoint_manager = CheckpointManager(config)
+        self.frequency_lookup = FrequencyLookup()
 
         self.stats = {
             'pages_processed': 0,
             'entries_extracted': 0,
             'in_stoplist': 0,
             'already_exists': 0,
-            'no_rarity_score': 0,
-            'above_threshold': 0,
+            'too_common': 0,
             'candidates_added': 0
         }
 
@@ -606,7 +743,7 @@ class WiktionaryRareWordCrawler:
         logger.info("=" * 70)
         logger.info("WIKTIONARY RARE WORD CRAWLER")
         logger.info("=" * 70)
-        logger.info(f"Final rarity threshold: {self.config.final_rarity_threshold}")
+        logger.info(f"Wordfreq threshold: {self.config.wordfreq_threshold} (words below this are rare)")
         logger.info(f"Stoplist size: {self.config.stoplist_size:,}")
         logger.info(f"Allowed POS: {', '.join(sorted(self.config.allowed_pos))}")
         logger.info("")
@@ -690,31 +827,28 @@ class WiktionaryRareWordCrawler:
         self.print_summary()
 
     def process_pending_batch(self):
-        """Process pending entries batch"""
+        """
+        Process pending entries batch using simplified wordfreq approach:
+        1. Look up wordfreq for each word
+        2. If wordfreq < threshold OR missing, add to vocabulary_candidates
+        """
         if not self.pending_entries:
             return
 
-        # Get rarity scores for all terms in batch
-        terms = [entry.term for entry in self.pending_entries]
-        rarity_scores = self.database.get_rarity_scores(terms)
-
-        # Filter and add candidates
+        # Process each entry
         for entry in self.pending_entries:
-            if entry.term not in rarity_scores:
-                self.stats['no_rarity_score'] += 1
+            # Get wordfreq score
+            wordfreq_score = self.frequency_lookup.get_python_wordfreq(entry.term)
+
+            # Check if rare enough (below threshold or missing)
+            if wordfreq_score > self.config.wordfreq_threshold and wordfreq_score != -999.0:
+                self.stats['too_common'] += 1
                 continue
 
-            final_rarity = rarity_scores[entry.term]
+            # Add to vocabulary_candidates batch
+            self.database.add_to_batch(entry, wordfreq_score, self.source_dump_date)
 
-            # Check threshold
-            if final_rarity < self.config.final_rarity_threshold:
-                self.stats['above_threshold'] += 1
-                continue
-
-            # Add to database batch
-            self.database.add_to_batch(entry, final_rarity, self.source_dump_date)
-
-        # Flush database batch if large enough
+        # Flush candidates to database if batch is large enough
         if len(self.database.batch) >= self.config.batch_size:
             inserted = self.database.flush_batch()
             self.stats['candidates_added'] += inserted
@@ -728,8 +862,8 @@ class WiktionaryRareWordCrawler:
                    f"Added {self.stats['candidates_added']:,} candidates | "
                    f"Filtered: stoplist={self.stats['in_stoplist']:,}, "
                    f"exists={self.stats['already_exists']:,}, "
-                   f"no_rarity={self.stats['no_rarity_score']:,}, "
-                   f"common={self.stats['above_threshold']:,}")
+                   f"too_common={self.stats['too_common']:,}")
+        sys.stdout.flush()  # Force immediate output
 
     def print_summary(self):
         """Print final summary statistics"""
@@ -743,14 +877,13 @@ class WiktionaryRareWordCrawler:
         logger.info("Filtering Results:")
         logger.info(f"  In stoplist:         {self.stats['in_stoplist']:>10,}")
         logger.info(f"  Already exists:      {self.stats['already_exists']:>10,}")
-        logger.info(f"  No rarity score:     {self.stats['no_rarity_score']:>10,}")
-        logger.info(f"  Too common:          {self.stats['above_threshold']:>10,}")
+        logger.info(f"  Too common:          {self.stats['too_common']:>10,}")
         logger.info("")
         logger.info(f"Candidates added:      {self.stats['candidates_added']:>10,}")
         logger.info("=" * 70)
         logger.info("")
         logger.info("Review candidates in vocabulary_candidates table:")
-        logger.info("  SELECT * FROM vocabulary_candidates ORDER BY final_rarity DESC LIMIT 20;")
+        logger.info("  SELECT * FROM vocabulary_candidates ORDER BY zipf_score ASC LIMIT 20;")
 
 
 # ============================================================================
@@ -767,8 +900,8 @@ def main():
     parser.add_argument(
         '--threshold',
         type=float,
-        default=0.6,
-        help='Final rarity threshold (0-1, higher=rarer, default: 0.6)'
+        default=-1.25,
+        help='Wordfreq threshold (log10 scale, words below this are rare, default: -1.25)'
     )
     parser.add_argument(
         '--stoplist-size',
@@ -796,7 +929,7 @@ def main():
     # Create configuration
     config = CrawlerConfig(
         db_config=db_config,
-        final_rarity_threshold=args.threshold,
+        wordfreq_threshold=args.threshold,
         stoplist_size=args.stoplist_size,
         batch_size=args.batch_size
     )

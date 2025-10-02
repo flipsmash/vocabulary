@@ -64,6 +64,126 @@ class Word:
     stress_pattern: Optional[str] = None
     obsolete_or_archaic: Optional[bool] = None
 
+
+class WordQueryBuilder:
+    """
+    Helper class for building consistent word queries with all joins.
+    Eliminates repetition and ensures all queries have the same column order.
+    """
+
+    # Standard SELECT columns - define once, use everywhere
+    WORD_COLUMNS = """d.id, d.term, d.definition, d.part_of_speech,
+        wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
+        wd.primary_domain, d.wav_url,
+        wp.ipa_transcription, wp.arpabet_transcription, wp.syllable_count,
+        wp.stress_pattern, d.obsolete_or_archaic"""
+
+    # Standard JOINs - define once, use everywhere
+    WORD_JOINS = """FROM defined d
+        LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
+        LEFT JOIN word_domains wd ON d.id = wd.word_id
+        LEFT JOIN word_phonetics wp ON d.id = wp.word_id"""
+
+    @staticmethod
+    def base_query(where_clause: str = "WHERE 1=1") -> str:
+        """
+        Get standard word query with all joins.
+
+        Args:
+            where_clause: Optional WHERE clause (default: "WHERE 1=1")
+
+        Returns:
+            Complete SELECT query ready for additional conditions
+
+        Example:
+            query = WordQueryBuilder.base_query("WHERE d.id = %s")
+        """
+        return f"SELECT {WordQueryBuilder.WORD_COLUMNS} {WordQueryBuilder.WORD_JOINS} {where_clause}"
+
+    @staticmethod
+    def tuple_to_word(result: tuple) -> Word:
+        """
+        Convert database result tuple to Word object.
+        Ensures consistent mapping across all queries.
+
+        Args:
+            result: Tuple from database query (14 columns)
+
+        Returns:
+            Word object with all fields populated
+
+        Example:
+            cursor.execute(query, params)
+            word = WordQueryBuilder.tuple_to_word(cursor.fetchone())
+        """
+        if not result:
+            return None
+
+        return Word(
+            id=result[0],
+            term=result[1],
+            definition=result[2],
+            part_of_speech=result[3],
+            frequency_rank=result[4],
+            independent_frequency=result[5],
+            rarity_percentile=result[6],
+            primary_domain=result[7],
+            wav_url=result[8],
+            ipa_transcription=result[9],
+            arpabet_transcription=result[10],
+            syllable_count=result[11],
+            stress_pattern=result[12],
+            obsolete_or_archaic=result[13],
+        )
+
+    @staticmethod
+    def build_filters(
+        letters: Optional[str] = None,
+        domain: Optional[str] = None,
+        part_of_speech: Optional[str] = None,
+        search: Optional[str] = None,
+    ) -> tuple[str, list]:
+        """
+        Build WHERE clause filters dynamically.
+
+        Args:
+            letters: Filter by starting letters
+            domain: Filter by word domain
+            part_of_speech: Filter by part of speech
+            search: Search term/definition
+
+        Returns:
+            Tuple of (where_conditions, params_list)
+
+        Example:
+            conditions, params = WordQueryBuilder.build_filters(letters='ab', domain='science')
+            query = WordQueryBuilder.base_query() + conditions
+            cursor.execute(query, params)
+        """
+        conditions = []
+        params = []
+
+        if letters:
+            conditions.append("LOWER(d.term) LIKE %s")
+            params.append(f"{letters.lower()}%")
+
+        if domain:
+            conditions.append("wd.primary_domain = %s")
+            params.append(domain)
+
+        if part_of_speech:
+            conditions.append("d.part_of_speech = %s")
+            params.append(part_of_speech)
+
+        if search:
+            conditions.append("(LOWER(d.term) LIKE %s OR LOWER(d.definition) LIKE %s)")
+            search_param = f"%{search.lower()}%"
+            params.extend([search_param, search_param])
+
+        where_clause = " AND " + " AND ".join(conditions) if conditions else ""
+        return where_clause, params
+
+
 class VocabularyDatabase:
     def __init__(self):
         self.config = get_db_config()
@@ -78,21 +198,12 @@ class VocabularyDatabase:
         limit: int = 50,
         offset: int = 0,
     ) -> List[Word]:
-        sql = """
-        SELECT
-            d.id, d.term, d.definition, d.part_of_speech, d.frequency,
-            wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
-            wd.primary_domain, d.wav_url,
-            wp.ipa_transcription, wp.arpabet_transcription, wp.syllable_count, wp.stress_pattern,
-            d.obsolete_or_archaic
-        FROM defined d
-        LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-        LEFT JOIN word_domains wd ON d.id = wd.word_id
-        LEFT JOIN word_phonetics wp ON d.id = wp.word_id
-        WHERE 1=1
-        """
+        """Search words with optional filters"""
+        # Use helper for base query
+        sql = WordQueryBuilder.base_query()
         params: List[Any] = []
 
+        # Add search filters
         if query:
             sql += " AND d.term ILIKE %s"
             params.append(f"%{query}%")
@@ -120,65 +231,18 @@ class VocabularyDatabase:
             cursor.execute(sql, params)
             rows = cursor.fetchall()
 
-        return [
-            Word(
-                id=row[0],
-                term=row[1],
-                definition=row[2],
-                part_of_speech=row[3],
-                frequency=row[4],
-                frequency_rank=row[5],
-                independent_frequency=row[6],
-                rarity_percentile=row[7],
-                primary_domain=row[8],
-                wav_url=row[9],
-                ipa_transcription=row[10],
-                arpabet_transcription=row[11],
-                syllable_count=row[12],
-                stress_pattern=row[13],
-                obsolete_or_archaic=row[14],
-            )
-            for row in rows
-        ]
+        # Convert using helper
+        return [WordQueryBuilder.tuple_to_word(row) for row in rows]
 
     def get_word_by_id(self, word_id: int) -> Optional[Word]:
-        sql = """
-        SELECT
-            d.id, d.term, d.definition, d.part_of_speech,
-            wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
-            wd.primary_domain, d.wav_url,
-            wp.ipa_transcription, wp.arpabet_transcription, wp.syllable_count, wp.stress_pattern,
-            d.obsolete_or_archaic
-        FROM defined d
-        LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-        LEFT JOIN word_domains wd ON d.id = wd.word_id
-        LEFT JOIN word_phonetics wp ON d.id = wp.word_id
-        WHERE d.id = %s
-        """
+        """Get word by ID using standard query builder"""
+        query = WordQueryBuilder.base_query("WHERE d.id = %s")
 
         with db_manager.get_cursor() as cursor:
-            cursor.execute(sql, (word_id,))
+            cursor.execute(query, (word_id,))
             result = cursor.fetchone()
 
-        if not result:
-            return None
-
-        return Word(
-            id=result[0],
-            term=result[1],
-            definition=result[2],
-            part_of_speech=result[3],
-            frequency_rank=result[4],
-            independent_frequency=result[5],
-            rarity_percentile=result[6],
-            primary_domain=result[7],
-            wav_url=result[8],
-            ipa_transcription=result[9],
-            arpabet_transcription=result[10],
-            syllable_count=result[11],
-            stress_pattern=result[12],
-            obsolete_or_archaic=result[13],
-        )
+        return WordQueryBuilder.tuple_to_word(result)
 
     def get_similar_words(self, word_id: int, limit: int = 10) -> List[tuple]:
         sql = """
@@ -201,6 +265,7 @@ class VocabularyDatabase:
                 return []
 
     def get_random_word(self) -> Optional[Word]:
+        """Get random word using standard query builder"""
         with db_manager.get_cursor() as cursor:
             cursor.execute("SELECT COUNT(*) FROM defined")
             total_count = cursor.fetchone()[0]
@@ -208,42 +273,12 @@ class VocabularyDatabase:
                 return None
 
             random_offset = random.randint(0, max(total_count - 1, 0))
+            query = WordQueryBuilder.base_query() + " LIMIT 1 OFFSET %s"
 
-            sql = """
-            SELECT
-                d.id, d.term, d.definition, d.part_of_speech,
-                wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
-                wd.primary_domain, d.wav_url,
-                wp.ipa_transcription, wp.arpabet_transcription, wp.syllable_count, wp.stress_pattern
-            FROM defined d
-            LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-            LEFT JOIN word_domains wd ON d.id = wd.word_id
-            LEFT JOIN word_phonetics wp ON d.id = wp.word_id
-            LIMIT 1 OFFSET %s
-            """
-
-            cursor.execute(sql, (random_offset,))
+            cursor.execute(query, (random_offset,))
             result = cursor.fetchone()
 
-        if not result:
-            return None
-
-        return Word(
-            id=result[0],
-            term=result[1],
-            definition=result[2],
-            part_of_speech=result[3],
-            frequency_rank=result[4],
-            independent_frequency=result[5],
-            rarity_percentile=result[6],
-            primary_domain=result[7],
-            wav_url=result[8],
-            ipa_transcription=result[9],
-            arpabet_transcription=result[10],
-            syllable_count=result[11],
-            stress_pattern=result[12],
-            obsolete_or_archaic=result[13],
-        )
+        return WordQueryBuilder.tuple_to_word(result)
 
     def get_domains(self) -> List[str]:
         sql = """
@@ -303,42 +338,14 @@ async def browse(request: Request,
     """Browse words hierarchically by letters with pagination"""
     current_user = await get_optional_current_user(request)
     
-    # Build base query with filters
-    base_query = """
-    SELECT 
-        d.id, d.term, d.definition, d.part_of_speech,
-        wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
-        wd.primary_domain, d.wav_url,
-        wp.ipa_transcription, wp.arpabet_transcription, wp.syllable_count, wp.stress_pattern
-    FROM defined d
-    LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-    LEFT JOIN word_domains wd ON d.id = wd.word_id
-    LEFT JOIN word_phonetics wp ON d.id = wp.word_id
-    WHERE 1=1
-    """
-    
-    params = []
-    
-    # Add letter filtering
-    if letters:
-        base_query += " AND LOWER(d.term) LIKE %s"
-        params.append(f"{letters.lower()}%")
-    
-    # Add domain filtering
-    if domain:
-        base_query += " AND wd.primary_domain = %s"
-        params.append(domain)
-    
-    # Add part of speech filtering
-    if part_of_speech:
-        base_query += " AND d.part_of_speech = %s"
-        params.append(part_of_speech)
-    
-    # Add search filtering  
-    if search:
-        base_query += " AND (LOWER(d.term) LIKE %s OR LOWER(d.definition) LIKE %s)"
-        search_param = f"%{search.lower()}%"
-        params.extend([search_param, search_param])
+    # Build base query with filters using helper
+    filter_conditions, params = WordQueryBuilder.build_filters(
+        letters=letters,
+        domain=domain,
+        part_of_speech=part_of_speech,
+        search=search
+    )
+    base_query = WordQueryBuilder.base_query() + filter_conditions
     
     count_query = f"SELECT COUNT(*) FROM ({base_query}) as filtered"
     letter_query = None
@@ -398,25 +405,8 @@ async def browse(request: Request,
         cursor.execute(words_query, words_params)
         results = cursor.fetchall()
 
-    words = [
-        Word(
-            id=row[0],
-            term=row[1],
-            definition=row[2],
-            part_of_speech=row[3],
-            frequency_rank=row[4],
-            independent_frequency=row[5],
-            rarity_percentile=row[6],
-            primary_domain=row[7],
-            wav_url=row[8],
-            ipa_transcription=row[9],
-            arpabet_transcription=row[10],
-            syllable_count=row[11],
-            stress_pattern=row[12],
-            obsolete_or_archaic=row[13],
-        )
-        for row in results
-    ]
+    # Convert results to Word objects using helper
+    words = [WordQueryBuilder.tuple_to_word(row) for row in results]
     
     # Generate letter path breadcrumb
     letter_path = []

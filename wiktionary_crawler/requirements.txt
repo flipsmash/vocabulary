@@ -5,8 +5,14 @@ requests>=2.31.0       # HTTP requests for downloads
 psycopg>=3.1.0        # PostgreSQL database adapter
 psycopg-pool>=3.1.0   # Connection pooling
 
-# XML parsing (built-in, no install needed)
-# - xml.etree.ElementTree
+# XML parsing - lxml is much faster for large dumps
+lxml>=5.0.0           # Fast XML parsing (10-100x faster than stdlib)
+
+# Frequency data
+wordfreq>=3.0.0       # Python wordfreq library for word frequencies
+
+# Fallback XML parsing (built-in, no install needed)
+# - xml.etree.ElementTree (used if lxml unavailable)
 # - bz2
 
 # Already in parent project

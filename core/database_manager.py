@@ -114,7 +114,7 @@ class DatabaseManager:
             autocommit: Whether to enable autocommit mode
 
         Yields:
-            Database cursor
+            Database cursor wrapper that disables prepared statements
 
         Example:
             with db_manager.get_cursor(dictionary=True) as cursor:
@@ -126,8 +126,39 @@ class DatabaseManager:
             cursor_kwargs['row_factory'] = dict_row
 
         with self.get_connection(dictionary=dictionary, autocommit=autocommit) as conn:
-            with conn.cursor(**cursor_kwargs) as cursor:
-                yield cursor
+            with conn.cursor(**cursor_kwargs) as real_cursor:
+                # Wrap cursor to intercept execute() and disable prepared statements
+                yield CursorWrapper(real_cursor)
+
+
+class CursorWrapper:
+    """
+    Wrapper around psycopg cursor that disables prepared statements by default.
+    Prevents "prepared statement already exists" errors when reusing connections.
+    """
+
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def execute(self, query, params=None, **kwargs):
+        """Execute with prepare=False by default"""
+        kwargs.setdefault('prepare', False)
+        return self._cursor.execute(query, params, **kwargs)
+
+    def executemany(self, query, params_seq, **kwargs):
+        """Execute many with prepare=False by default"""
+        kwargs.setdefault('prepare', False)
+        return self._cursor.executemany(query, params_seq, **kwargs)
+
+    # Delegate all other methods/attributes to the real cursor
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return self._cursor.__exit__(*args)
 
     def execute_query(self, query: str, params: Optional[tuple] = None,
                      fetch: bool = True, dictionary: bool = False) -> Optional[Any]:
