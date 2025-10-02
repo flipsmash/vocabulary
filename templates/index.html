@@ -27,7 +27,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: var(--space-5);
+        margin-bottom: var(--space-3);
         font-size: var(--font-size-sm);
     }
 
@@ -40,13 +40,7 @@
     }
 
     .slider-label-icon {
-        font-size: var(--font-size-lg);
-        animation: pulse 2s ease-in-out infinite;
-    }
-
-    @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.6; }
+        font-size: var(--font-size-base);
     }
 
     .slider-value-display {
@@ -176,7 +170,7 @@
         text-align: center;
         font-size: var(--font-size-xs);
         color: var(--text-muted);
-        margin-top: var(--space-4);
+        margin-top: var(--space-6);
         font-style: italic;
     }
 
@@ -260,7 +254,7 @@
                             </div>
                             
                             <div class="row g-3 mt-2">
-                                <div class="col-md-6">
+                                <div class="col-md-12">
                                     <div class="frequency-slider-container">
                                         <div class="slider-labels">
                                             <span class="slider-label">
@@ -273,23 +267,20 @@
                                             </span>
                                         </div>
                                         <div class="slider-value-display">
-                                            <span class="value" id="min-value">1</span>
+                                            <span class="value" id="min-value">10</span>
                                             <span class="slider-separator">—</span>
-                                            <span class="value" id="max-value">25,000</span>
+                                            <span class="value" id="max-value">24,000</span>
                                         </div>
                                         <div id="frequency-slider"></div>
-                                        <div class="slider-help-text">
-                                            Drag the handles to filter by word frequency rank
-                                        </div>
                                     </div>
                                     <!-- Hidden inputs for form submission -->
                                     <input type="hidden" id="min_frequency" name="min_frequency" value="">
                                     <input type="hidden" id="max_frequency" name="max_frequency" value="">
                                 </div>
-                                <div class="col-md-6">
-                                    <label class="form-label small">&nbsp;</label>
-                                    <a href="/random" class="btn btn-outline-secondary w-100 d-block">🎲 Random Word</a>
-                                    <small class="text-muted">&nbsp;</small>
+                            </div>
+                            <div class="row g-3 mt-2">
+                                <div class="col-md-12">
+                                    <a href="/random" class="btn btn-outline-secondary btn-lg text-start">🎲 Random Word</a>
                                 </div>
                             </div>
                         </form>
@@ -557,15 +548,33 @@ document.addEventListener('DOMContentLoaded', function() {
     const minFrequencyInput = document.getElementById('min_frequency');
     const maxFrequencyInput = document.getElementById('max_frequency');
 
-    // Initialize noUiSlider
-    noUiSlider.create(slider, {
-        start: [1, 25000],
-        connect: true,
-        range: {
-            'min': 1,
-            'max': 25000
-        },
-        step: 1,
+    // Fetch stats to get dynamic max frequency
+    fetch('/api/stats')
+        .then(response => response.json())
+        .then(stats => {
+            const maxFreq = stats.max_frequency_rounded;
+
+            // Update initial display
+            maxValueDisplay.textContent = formatNumber(maxFreq);
+
+            // Initialize noUiSlider with dynamic max
+            initializeSlider(maxFreq);
+        })
+        .catch(error => {
+            console.error('Error fetching stats:', error);
+            // Fallback to 24000 if API fails
+            initializeSlider(24000);
+        });
+
+    function initializeSlider(maxFreq) {
+        noUiSlider.create(slider, {
+            start: [10, maxFreq],
+            connect: true,
+            range: {
+                'min': 10,
+                'max': maxFreq
+            },
+            step: 10,
         format: {
             to: function(value) {
                 return Math.round(value);
@@ -586,84 +595,85 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         ],
-        pips: {
-            mode: 'positions',
-            values: [0, 25, 50, 75, 100],
-            density: 4,
-            format: {
-                to: function(value) {
-                    if (value === 1) return '1';
-                    if (value === 25000) return '25K';
-                    return Math.round(value / 1000) + 'K';
+            pips: {
+                mode: 'positions',
+                values: [0, 25, 50, 75, 100],
+                density: 4,
+                format: {
+                    to: function(value) {
+                        if (value === 10) return '10';
+                        if (value === maxFreq) return Math.round(value / 1000) + 'K';
+                        return Math.round(value / 1000) + 'K';
+                    }
                 }
             }
-        }
-    });
+        });
 
-    // Format number with commas
+        // Update display values while dragging
+        slider.noUiSlider.on('update', function(values, handle) {
+            const minVal = Math.round(values[0]);
+            const maxVal = Math.round(values[1]);
+
+            minValueDisplay.textContent = formatNumber(minVal);
+            maxValueDisplay.textContent = formatNumber(maxVal);
+        });
+
+        // Update hidden inputs when user releases the slider (for search)
+        slider.noUiSlider.on('change', function(values, handle) {
+            const minVal = Math.round(values[0]);
+            const maxVal = Math.round(values[1]);
+
+            // Only set values if they're not at the full range (to avoid unnecessary filtering)
+            if (minVal > 10) {
+                minFrequencyInput.value = minVal;
+            } else {
+                minFrequencyInput.value = '';
+            }
+
+            if (maxVal < maxFreq) {
+                maxFrequencyInput.value = maxVal;
+            } else {
+                maxFrequencyInput.value = '';
+            }
+
+            // Trigger search if there's a query
+            const searchInput = document.getElementById('search-input');
+            if (searchInput && searchInput.value.length >= 2) {
+                performSearch();
+            }
+        });
+
+        // Add visual feedback when slider is being interacted with
+        slider.noUiSlider.on('start', function() {
+            slider.closest('.frequency-slider-container').style.borderColor = 'var(--color-primary)';
+            slider.closest('.frequency-slider-container').style.boxShadow = 'var(--shadow-md)';
+        });
+
+        slider.noUiSlider.on('end', function() {
+            slider.closest('.frequency-slider-container').style.borderColor = '';
+            slider.closest('.frequency-slider-container').style.boxShadow = '';
+        });
+
+        // Keyboard accessibility enhancement
+        const handles = slider.querySelectorAll('.noUi-handle');
+        handles.forEach((handle, index) => {
+            handle.setAttribute('tabindex', '0');
+            handle.setAttribute('role', 'slider');
+            handle.setAttribute('aria-label', index === 0 ? 'Minimum frequency rank' : 'Maximum frequency rank');
+            handle.setAttribute('aria-valuemin', '10');
+            handle.setAttribute('aria-valuemax', maxFreq.toString());
+
+            // Update aria-valuenow on slider update
+            slider.noUiSlider.on('update', function(values) {
+                handle.setAttribute('aria-valuenow', Math.round(values[index]));
+            });
+        });
+    }
+
+    // Format number with commas (moved outside for use before slider init)
     function formatNumber(num) {
         return num.toLocaleString();
     }
-
-    // Update display values while dragging
-    slider.noUiSlider.on('update', function(values, handle) {
-        const minVal = Math.round(values[0]);
-        const maxVal = Math.round(values[1]);
-
-        minValueDisplay.textContent = formatNumber(minVal);
-        maxValueDisplay.textContent = formatNumber(maxVal);
-    });
-
-    // Update hidden inputs when user releases the slider (for search)
-    slider.noUiSlider.on('change', function(values, handle) {
-        const minVal = Math.round(values[0]);
-        const maxVal = Math.round(values[1]);
-
-        // Only set values if they're not at the full range (to avoid unnecessary filtering)
-        if (minVal > 1) {
-            minFrequencyInput.value = minVal;
-        } else {
-            minFrequencyInput.value = '';
-        }
-
-        if (maxVal < 25000) {
-            maxFrequencyInput.value = maxVal;
-        } else {
-            maxFrequencyInput.value = '';
-        }
-
-        // Trigger search if there's a query
-        const searchInput = document.getElementById('search-input');
-        if (searchInput && searchInput.value.length >= 2) {
-            performSearch();
-        }
-    });
-
-    // Add visual feedback when slider is being interacted with
-    slider.noUiSlider.on('start', function() {
-        slider.closest('.frequency-slider-container').style.borderColor = 'var(--color-primary)';
-        slider.closest('.frequency-slider-container').style.boxShadow = 'var(--shadow-md)';
-    });
-
-    slider.noUiSlider.on('end', function() {
-        slider.closest('.frequency-slider-container').style.borderColor = '';
-        slider.closest('.frequency-slider-container').style.boxShadow = '';
-    });
-
-    // Keyboard accessibility enhancement
-    const handles = slider.querySelectorAll('.noUi-handle');
-    handles.forEach((handle, index) => {
-        handle.setAttribute('tabindex', '0');
-        handle.setAttribute('role', 'slider');
-        handle.setAttribute('aria-label', index === 0 ? 'Minimum frequency rank' : 'Maximum frequency rank');
-        handle.setAttribute('aria-valuemin', '1');
-        handle.setAttribute('aria-valuemax', '25000');
-
-        // Update aria-valuenow on slider update
-        slider.noUiSlider.on('update', function(values) {
-            handle.setAttribute('aria-valuenow', Math.round(values[index]));
-        });
-    });
 });
 </script>
 {% endblock %}

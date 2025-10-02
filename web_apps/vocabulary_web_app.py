@@ -580,6 +580,32 @@ async def get_random_word():
         raise HTTPException(status_code=404, detail="No words found")
     return {"word": word}
 
+@app.get("/api/stats")
+async def get_stats():
+    """Get database statistics"""
+    try:
+        with db_manager.get_cursor() as cursor:
+            # Get total word count
+            cursor.execute("SELECT COUNT(*) FROM defined")
+            total_words = cursor.fetchone()[0]
+
+            # Get max frequency rank
+            cursor.execute("SELECT MAX(frequency_rank) FROM word_frequencies_independent WHERE frequency_rank IS NOT NULL")
+            max_frequency_rank = cursor.fetchone()[0]
+
+            # Round max frequency rank up to nearest 1000
+            import math
+            max_frequency_rounded = math.ceil(max_frequency_rank / 1000) * 1000 if max_frequency_rank else 25000
+
+            return {
+                "total_words": total_words,
+                "max_frequency_rank": max_frequency_rank,
+                "max_frequency_rounded": max_frequency_rounded
+            }
+    except Exception as e:
+        logger.error(f"Error getting stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/word/{word_id}", response_class=HTMLResponse)
 async def word_detail(request: Request, word_id: int):
     """Detailed word page"""
