@@ -11,7 +11,8 @@
        ======================================== */
 
     .frequency-slider-container {
-        padding: var(--space-6) var(--space-4) var(--space-4);
+        padding: var(--space-3) var(--space-4) var(--space-5);
+        padding-bottom: 2.5rem;
         background: linear-gradient(135deg, var(--color-primary-50) 0%, var(--color-info-50) 100%);
         border-radius: var(--border-radius-lg);
         border: 1px solid var(--color-primary-100);
@@ -27,7 +28,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: var(--space-3);
+        margin-bottom: var(--space-2);
         font-size: var(--font-size-sm);
     }
 
@@ -67,6 +68,32 @@
     .slider-value-display .value:hover {
         transform: scale(1.05);
         box-shadow: var(--shadow-md);
+    }
+
+    .slider-value-display .value-input {
+        border: 1px solid var(--color-gray-200);
+        text-align: center;
+        font-weight: var(--font-weight-bold);
+        color: var(--color-primary-700);
+        font-size: var(--font-size-lg);
+        cursor: text;
+    }
+
+    .slider-value-display .value-input:focus {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 2px;
+        border-color: var(--color-primary);
+    }
+
+    /* Remove spinner arrows from number inputs */
+    .slider-value-display .value-input::-webkit-outer-spin-button,
+    .slider-value-display .value-input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+    .slider-value-display .value-input[type=number] {
+        -moz-appearance: textfield;
     }
 
     .slider-separator {
@@ -174,6 +201,77 @@
         font-style: italic;
     }
 
+    /* Push axis markers up from bottom and add horizontal spacing */
+    #frequency-slider {
+        margin-bottom: 1.5rem;
+        margin-left: 1rem;
+        margin-right: 1rem;
+    }
+
+    /* A-Z Letter Filter Styling - Compact Breadcrumb Style */
+    .letter-filter {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 0;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding: 0.5rem 1rem;
+        background: white;
+        border-radius: var(--border-radius-md);
+        border: 1px solid var(--color-gray-200);
+        font-size: 0.9rem;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+
+    .letter-filter-label {
+        font-size: 0.85rem;
+        color: var(--color-gray-600);
+        font-weight: 600;
+        margin-right: 0.75rem;
+        flex-shrink: 0;
+    }
+
+    .letter-btn {
+        background: none;
+        border: none;
+        padding: 0.25rem 0.4rem;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: var(--color-gray-600);
+        cursor: pointer;
+        transition: all var(--transition-fast);
+        text-decoration: none;
+        position: relative;
+    }
+
+    .letter-btn:hover {
+        color: var(--color-primary);
+        font-weight: 600;
+    }
+
+    .letter-btn.active {
+        color: var(--color-primary);
+        font-weight: 700;
+    }
+
+    .letter-btn.active::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0.4rem;
+        right: 0.4rem;
+        height: 2px;
+        background: var(--color-primary);
+    }
+
+    .letter-separator {
+        color: var(--color-gray-300);
+        margin: 0 0.1rem;
+        user-select: none;
+    }
+
     /* Responsive adjustments */
     @media (max-width: 768px) {
         .frequency-slider-container {
@@ -220,10 +318,10 @@
 <div class="search-section">
     <div class="container">
         <div class="row justify-content-center">
-            <div class="col-md-8">
+            <div class="col-md-10 col-lg-10 col-xl-9">
                 <h1 class="text-center mb-4">Explore Your Vocabulary</h1>
                 <p class="text-center mb-4">Search through 22,000+ words with definitions, frequency rankings, and domain classifications</p>
-                
+
                 <div class="card">
                     <div class="card-body">
                         <form id="search-form" method="GET" action="/search">
@@ -252,7 +350,69 @@
                                     <button type="submit" class="btn btn-primary w-100">Search</button>
                                 </div>
                             </div>
-                            
+
+                            <div class="row g-3 mt-2">
+                                <div class="col-md-12">
+                                    <!-- A-Z Letter Filter -->
+                                    <div class="letter-filter">
+                                        <span class="letter-filter-label">First Letter:</span>
+                                        <button type="button" class="letter-btn" data-letter="">All</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="a">A</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="b">B</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="c">C</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="d">D</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="e">E</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="f">F</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="g">G</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="h">H</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="i">I</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="j">J</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="k">K</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="l">L</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="m">M</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="n">N</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="o">O</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="p">P</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="q">Q</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="r">R</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="s">S</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="t">T</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="u">U</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="v">V</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="w">W</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="x">X</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="y">Y</button>
+                                        <span class="letter-separator">|</span>
+                                        <button type="button" class="letter-btn" data-letter="z">Z</button>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div class="row g-3 mt-2">
                                 <div class="col-md-12">
                                     <div class="frequency-slider-container">
@@ -267,9 +427,9 @@
                                             </span>
                                         </div>
                                         <div class="slider-value-display">
-                                            <span class="value" id="min-value">10</span>
+                                            <input type="number" class="value value-input" id="min-value" value="1" min="1">
                                             <span class="slider-separator">—</span>
-                                            <span class="value" id="max-value">24,000</span>
+                                            <input type="number" class="value value-input" id="max-value" value="24000" min="1">
                                         </div>
                                         <div id="frequency-slider"></div>
                                     </div>
@@ -278,9 +438,12 @@
                                     <input type="hidden" id="max_frequency" name="max_frequency" value="">
                                 </div>
                             </div>
-                            <div class="row g-3 mt-2">
+                            <div class="row g-3 mt-4">
                                 <div class="col-md-12">
-                                    <a href="/random" class="btn btn-outline-secondary btn-lg text-start">🎲 Random Word</a>
+                                    <a href="/random" class="btn btn-lg text-start w-100" style="font-size: 1.1rem; padding: 1rem 1.5rem; background-color: #e5e7eb; border-color: #d1d5db; color: #374151;">
+                                        <span style="font-size: 1.5rem; margin-right: 0.5rem;">🎲</span>
+                                        Random Word
+                                    </a>
                                 </div>
                             </div>
                         </form>
@@ -345,6 +508,7 @@ document.getElementById('search-input').addEventListener('input', function(e) {
 
 let currentPage = 0;
 let currentSearchParams = null;
+let currentLetter = '';
 
 function performSearch(page = 0) {
     currentPage = page;
@@ -355,6 +519,11 @@ function performSearch(page = 0) {
         if (value.trim()) {
             params.append(key, value);
         }
+    }
+
+    // If letter filter is active, override the query to search by first letter only
+    if (currentLetter) {
+        params.set('q', currentLetter);
     }
 
     const limit = 21;
@@ -368,6 +537,28 @@ function performSearch(page = 0) {
         .then(data => displayResults(data.words, data.total, limit, page))
         .catch(error => console.error('Error:', error));
 }
+
+// Letter filter functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const letterButtons = document.querySelectorAll('.letter-btn');
+
+    letterButtons.forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const letter = this.getAttribute('data-letter');
+
+            // Update active state
+            letterButtons.forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+
+            // Update current letter
+            currentLetter = letter;
+
+            // Trigger search
+            performSearch(0);
+        });
+    });
+});
 
 function displayResults(words, total, limit, page) {
     const resultsDiv = document.getElementById('search-results');
@@ -555,7 +746,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const maxFreq = stats.max_frequency_rounded;
 
             // Update initial display
-            maxValueDisplay.textContent = formatNumber(maxFreq);
+            maxValueDisplay.value = maxFreq;
+            maxValueDisplay.setAttribute('max', maxFreq);
+            minValueDisplay.setAttribute('max', maxFreq);
 
             // Initialize noUiSlider with dynamic max
             initializeSlider(maxFreq);
@@ -567,14 +760,30 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
     function initializeSlider(maxFreq) {
+        // Build range with custom steps: 1, 10, 20, 30, ..., maxFreq
+        const rangeConfig = {
+            'min': 1
+        };
+
+        // Calculate how many multiples of 10 fit before maxFreq
+        const maxTen = Math.floor(maxFreq / 10) * 10;
+        const numTens = maxTen / 10;
+
+        // Add all multiples of 10 as snap points
+        for (let i = 1; i <= numTens; i++) {
+            const value = i * 10;
+            // Distribute percentages evenly from 0 to 100
+            const percent = (value / maxFreq) * 100;
+            rangeConfig[`${percent.toFixed(2)}%`] = value;
+        }
+
+        rangeConfig['max'] = maxFreq;
+
         noUiSlider.create(slider, {
-            start: [10, maxFreq],
+            start: [1, maxFreq],
             connect: true,
-            range: {
-                'min': 10,
-                'max': maxFreq
-            },
-            step: 10,
+            snap: true,
+            range: rangeConfig,
         format: {
             to: function(value) {
                 return Math.round(value);
@@ -596,14 +805,15 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         ],
             pips: {
-                mode: 'positions',
-                values: [0, 25, 50, 75, 100],
+                mode: 'values',
+                values: [1, Math.round(maxFreq * 0.25), Math.round(maxFreq * 0.5), Math.round(maxFreq * 0.75), maxFreq],
                 density: 4,
                 format: {
                     to: function(value) {
-                        if (value === 10) return '10';
+                        if (value === 1) return '1';
                         if (value === maxFreq) return Math.round(value / 1000) + 'K';
-                        return Math.round(value / 1000) + 'K';
+                        if (value >= 1000) return Math.round(value / 1000) + 'K';
+                        return value;
                     }
                 }
             }
@@ -614,8 +824,74 @@ document.addEventListener('DOMContentLoaded', function() {
             const minVal = Math.round(values[0]);
             const maxVal = Math.round(values[1]);
 
-            minValueDisplay.textContent = formatNumber(minVal);
-            maxValueDisplay.textContent = formatNumber(maxVal);
+            minValueDisplay.value = minVal;
+            maxValueDisplay.value = maxVal;
+        });
+
+        // Handle manual input changes
+        function applyMinValue() {
+            let value = parseInt(minValueDisplay.value) || 1;
+            value = Math.max(1, Math.min(value, maxFreq));
+            slider.noUiSlider.set([value, null]);
+
+            // Manually trigger the change logic
+            const currentMax = Math.round(slider.noUiSlider.get()[1]);
+            updateFrequencyInputs(value, currentMax);
+
+            // Trigger search if there's a query
+            const searchInput = document.getElementById('search-input');
+            if (searchInput && searchInput.value.length >= 2) {
+                performSearch();
+            }
+        }
+
+        function applyMaxValue() {
+            let value = parseInt(maxValueDisplay.value) || maxFreq;
+            value = Math.max(1, Math.min(value, maxFreq));
+            slider.noUiSlider.set([null, value]);
+
+            // Manually trigger the change logic
+            const currentMin = Math.round(slider.noUiSlider.get()[0]);
+            updateFrequencyInputs(currentMin, value);
+
+            // Trigger search if there's a query
+            const searchInput = document.getElementById('search-input');
+            if (searchInput && searchInput.value.length >= 2) {
+                performSearch();
+            }
+        }
+
+        function updateFrequencyInputs(minVal, maxVal) {
+            // Update hidden inputs for form submission
+            if (minVal > 1) {
+                minFrequencyInput.value = minVal;
+            } else {
+                minFrequencyInput.value = '';
+            }
+
+            if (maxVal < maxFreq) {
+                maxFrequencyInput.value = maxVal;
+            } else {
+                maxFrequencyInput.value = '';
+            }
+        }
+
+        minValueDisplay.addEventListener('change', applyMinValue);
+
+        minValueDisplay.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                applyMinValue();
+                this.blur();
+            }
+        });
+
+        maxValueDisplay.addEventListener('change', applyMaxValue);
+
+        maxValueDisplay.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                applyMaxValue();
+                this.blur();
+            }
         });
 
         // Update hidden inputs when user releases the slider (for search)
@@ -624,7 +900,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const maxVal = Math.round(values[1]);
 
             // Only set values if they're not at the full range (to avoid unnecessary filtering)
-            if (minVal > 10) {
+            if (minVal > 1) {
                 minFrequencyInput.value = minVal;
             } else {
                 minFrequencyInput.value = '';
@@ -660,7 +936,7 @@ document.addEventListener('DOMContentLoaded', function() {
             handle.setAttribute('tabindex', '0');
             handle.setAttribute('role', 'slider');
             handle.setAttribute('aria-label', index === 0 ? 'Minimum frequency rank' : 'Maximum frequency rank');
-            handle.setAttribute('aria-valuemin', '10');
+            handle.setAttribute('aria-valuemin', '1');
             handle.setAttribute('aria-valuemax', maxFreq.toString());
 
             // Update aria-valuenow on slider update

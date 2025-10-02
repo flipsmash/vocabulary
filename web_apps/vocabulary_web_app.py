@@ -205,8 +205,14 @@ class VocabularyDatabase:
 
         # Add search filters
         if query:
-            sql += " AND d.term ILIKE %s"
-            params.append(f"%{query}%")
+            # Single letter search = starts with that letter
+            # Multi-character search = contains the query
+            if len(query) == 1:
+                sql += " AND d.term ILIKE %s"
+                params.append(f"{query}%")
+            else:
+                sql += " AND d.term ILIKE %s"
+                params.append(f"%{query}%")
 
         if domain:
             sql += " AND wd.primary_domain = %s"
@@ -245,8 +251,14 @@ class VocabularyDatabase:
 
         # Add search filters
         if query:
-            sql += " AND d.term ILIKE %s"
-            params.append(f"%{query}%")
+            # Single letter search = starts with that letter
+            # Multi-character search = contains the query
+            if len(query) == 1:
+                sql += " AND d.term ILIKE %s"
+                params.append(f"{query}%")
+            else:
+                sql += " AND d.term ILIKE %s"
+                params.append(f"%{query}%")
 
         if domain:
             sql += " AND wd.primary_domain = %s"
