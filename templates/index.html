@@ -114,27 +114,35 @@ document.getElementById('search-input').addEventListener('input', function(e) {
     }
 });
 
-function performSearch() {
+let currentPage = 0;
+let currentSearchParams = null;
+
+function performSearch(page = 0) {
+    currentPage = page;
     const formData = new FormData(document.getElementById('search-form'));
     const params = new URLSearchParams();
-    
+
     for (let [key, value] of formData.entries()) {
         if (value.trim()) {
             params.append(key, value);
         }
     }
-    
-    params.append('limit', '20');
-    
+
+    const limit = 20;
+    params.append('limit', limit);
+    params.append('offset', page * limit);
+
+    currentSearchParams = params;
+
     fetch(`/api/words?${params.toString()}`)
         .then(response => response.json())
-        .then(data => displayResults(data.words))
+        .then(data => displayResults(data.words, data.total, limit, page))
         .catch(error => console.error('Error:', error));
 }
 
-function displayResults(words) {
+function displayResults(words, total, limit, page) {
     const resultsDiv = document.getElementById('search-results');
-    
+
     if (words.length === 0) {
         resultsDiv.innerHTML = `
             <div class="alert alert-info">
@@ -145,10 +153,14 @@ function displayResults(words) {
         `;
         return;
     }
-    
+
+    const totalPages = Math.ceil(total / limit);
+    const startResult = (page * limit) + 1;
+    const endResult = Math.min((page + 1) * limit, total);
+
     const resultsHtml = `
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4>Found ${words.length} words</h4>
+            <h4>Found ${total.toLocaleString()} words (showing ${startResult}-${endResult})</h4>
         </div>
         <div class="row">
             ${words.map(word => `
@@ -175,10 +187,24 @@ function displayResults(words) {
                 </div>
             `).join('')}
         </div>
+        ${totalPages > 1 ? `
+        <nav aria-label="Search results pagination" class="mt-4">
+            <ul class="pagination justify-content-center">
+                <li class="page-item ${page === 0 ? 'disabled' : ''}">
+                    <a class="page-link" href="#" onclick="performSearch(${page - 1}); return false;">Previous</a>
+                </li>
+                ${generatePageNumbers(page, totalPages)}
+                <li class="page-item ${page === totalPages - 1 ? 'disabled' : ''}">
+                    <a class="page-link" href="#" onclick="performSearch(${page + 1}); return false;">Next</a>
+                </li>
+            </ul>
+            <p class="text-center text-muted">Page ${page + 1} of ${totalPages}</p>
+        </nav>
+        ` : ''}
     `;
-    
+
     resultsDiv.innerHTML = resultsHtml;
-    
+
     // Add event listeners for pronunciation buttons in search results
     document.querySelectorAll('.pronunciation-btn').forEach(btn => {
         btn.addEventListener('click', function(e) {
@@ -187,6 +213,53 @@ function displayResults(words) {
             playInlineAudio(this);
         });
     });
+}
+
+function generatePageNumbers(currentPage, totalPages) {
+    const maxPagesToShow = 7;
+    const pages = [];
+
+    if (totalPages <= maxPagesToShow) {
+        // Show all pages
+        for (let i = 0; i < totalPages; i++) {
+            pages.push(`<li class="page-item ${i === currentPage ? 'active' : ''}">
+                <a class="page-link" href="#" onclick="performSearch(${i}); return false;">${i + 1}</a>
+            </li>`);
+        }
+    } else {
+        // Show first page
+        pages.push(`<li class="page-item ${0 === currentPage ? 'active' : ''}">
+            <a class="page-link" href="#" onclick="performSearch(0); return false;">1</a>
+        </li>`);
+
+        // Determine range around current page
+        let startPage = Math.max(1, currentPage - 2);
+        let endPage = Math.min(totalPages - 2, currentPage + 2);
+
+        // Add ellipsis if needed
+        if (startPage > 1) {
+            pages.push('<li class="page-item disabled"><span class="page-link">...</span></li>');
+        }
+
+        // Add middle pages
+        for (let i = startPage; i <= endPage; i++) {
+            pages.push(`<li class="page-item ${i === currentPage ? 'active' : ''}">
+                <a class="page-link" href="#" onclick="performSearch(${i}); return false;">${i + 1}</a>
+            </li>`);
+        }
+
+        // Add ellipsis if needed
+        if (endPage < totalPages - 2) {
+            pages.push('<li class="page-item disabled"><span class="page-link">...</span></li>');
+        }
+
+        // Show last page
+        pages.push(`<li class="page-item ${totalPages - 1 === currentPage ? 'active' : ''}">
+            <a class="page-link" href="#" onclick="performSearch(${totalPages - 1}); return false;">${totalPages}</a>
+        </li>`);
+    }
+
+    return pages.join('');
 }
 
 function playInlineAudio(button) {

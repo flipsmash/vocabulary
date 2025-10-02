@@ -188,6 +188,46 @@ class VocabularyDatabase:
     def __init__(self):
         self.config = get_db_config()
 
+    def count_search_words(
+        self,
+        query: Optional[str] = None,
+        domain: Optional[str] = None,
+        part_of_speech: Optional[str] = None,
+        min_frequency: Optional[int] = None,
+        max_frequency: Optional[int] = None,
+    ) -> int:
+        """Count words matching search filters"""
+        sql = """SELECT COUNT(*) FROM defined d
+            LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
+            LEFT JOIN word_domains wd ON d.id = wd.word_id
+            WHERE 1=1"""
+        params: List[Any] = []
+
+        # Add search filters
+        if query:
+            sql += " AND d.term ILIKE %s"
+            params.append(f"%{query}%")
+
+        if domain:
+            sql += " AND wd.primary_domain = %s"
+            params.append(domain)
+
+        if part_of_speech:
+            sql += " AND d.part_of_speech = %s"
+            params.append(part_of_speech)
+
+        if min_frequency is not None:
+            sql += " AND wfi.frequency_rank >= %s"
+            params.append(min_frequency)
+
+        if max_frequency is not None:
+            sql += " AND wfi.frequency_rank <= %s"
+            params.append(max_frequency)
+
+        with db_manager.get_cursor() as cursor:
+            cursor.execute(sql, params)
+            return cursor.fetchone()[0]
+
     def search_words(
         self,
         query: Optional[str] = None,
@@ -509,8 +549,11 @@ async def search_words(
 ):
     """Search words with filters"""
     try:
+        # Get total count of matching words
+        total = db.count_search_words(q, domain, part_of_speech, min_frequency, max_frequency)
+        # Get the current page of words
         words = db.search_words(q, domain, part_of_speech, min_frequency, max_frequency, limit, offset)
-        return {"words": words, "total": len(words)}
+        return {"words": words, "total": total, "limit": limit, "offset": offset}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
