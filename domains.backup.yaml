@@ -1,0 +1,632 @@
+
+weights:
+  alpha: 1.0
+  beta: 1.0
+thresholds:
+  low: 0.45
+  tie_delta: 0.03
+embedding_model: "all-MiniLM-L6-v2"
+preprocessing:
+  lemmatize: false
+  strip_stopwords: false
+domains:
+  - name: "General / Cross-Domain"
+    description: "Fallback domain for terms without clear specialised signal, including shape/form descriptors."
+    seed_examples:
+      - generalist
+      - commonplace
+      - everyday word
+      - shaped like
+      - resembling
+      - in the form of
+    keywords:
+      - shaped
+      - resembling
+      - similar to
+      - form of
+      - shape of
+    negative_keywords: []
+    regexes:
+      # Match pure shape/form descriptors
+      - pattern: "\\b(shaped like|in the shape of|resembling a|similar to a|having the form of|having the shape)\\b"
+        weight: 1.0
+        description: "Shape/form descriptor phrases - usually general terms"
+      - pattern: "\\b\\w+iform\\b"
+        weight: 0.9
+        description: "Words ending in -iform (shape descriptors)"
+      - pattern: "^[^.]{0,50}\\b(shaped|form)\\b[^.]{0,50}\\.$"
+        weight: 0.8
+        description: "Short definitions that are just shape/form descriptions"
+    base_weight: 0.15
+  - name: "Language & Literature"
+    description: "Linguistics, literary devices, grammar, etymology, and philology."
+    seed_examples:
+      - phoneme
+      - alliteration
+      - grammar
+      - lexicon
+      - syntax
+      - morphology
+      - allegory
+      - rhetoric
+      - etymology
+      - sonnet
+    keywords:
+      - phoneme
+      - morpheme
+      - allophone
+      - anaphora
+      - zeugma
+      - etymology
+      - prosody
+      - lexicon
+      - syntax
+      - clause
+    negative_keywords:
+      - algorithm
+    regexes:
+      - pattern: "\\b(stanza|sonnet|meter|metre|verse)\\b"
+        weight: 0.35
+        description: "Poetic structure terms"
+    base_weight: 0.45
+  - name: "Arts & Culture"
+    description: "Visual and performing arts, cultural studies, and aesthetics."
+    seed_examples:
+      - chiaroscuro
+      - sonata
+      - iconography
+      - ballet
+      - folklore
+      - motif
+      - fresco
+      - dramaturgy
+      - opera
+      - sculpture
+    keywords:
+      - choreography
+      - sonata
+      - fresco
+      - canvas
+      - iconography
+      - motif
+      - curator
+      - gallery
+      - dramaturgy
+      - dance
+      - musical instrument
+      - stringed instrument
+      - wind instrument
+      - percussion
+    negative_keywords:
+      - statute
+      - theorem
+      - shaped like
+    regexes:
+      - pattern: "\\b(chiaroscuro|polyphony|trompe-l'oeil)\\b"
+        weight: 0.4
+        description: "Specialised art terminology"
+      - pattern: "\\b(musical instrument|stringed instrument|wind instrument|percussion instrument|keyboard instrument|brass instrument)\\b"
+        weight: 0.7
+        description: "Musical instruments"
+      - pattern: "\\b(type of dance|folk dance|ballroom dance|traditional dance)\\b"
+        weight: 0.6
+        description: "Dance forms"
+    base_weight: 0.45
+  - name: "Life Sciences"
+    description: "Biology, ecology, botany, zoology, and organismal sciences."
+    seed_examples:
+      - photosynthesis
+      - enzyme
+      - species
+      - genus
+      - mitosis
+      - chloroplast
+      - ecosystem
+      - biosphere
+      - allele
+      - taxonomy
+    keywords:
+      - enzyme
+      - species
+      - organism
+      - habitat
+      - cellular
+      - photosynthesis
+      - respiration
+      - genome
+      - taxonomy
+      - biodiversity
+    negative_keywords:
+      - algorithm
+      - statute
+      - shaped like
+      - resembling a
+    regexes:
+      - pattern: "\\b[A-Z][a-z]+\\s[a-z]+\\b"
+        weight: 0.45
+        description: "Latin binomial nomenclature"
+    base_weight: 0.5
+  - name: "Medicine & Health Sciences"
+    description: "Clinical practice, anatomy, pathology, and medical terminology."
+    seed_examples:
+      - pathology
+      - symptom
+      - diagnosis
+      - hemodynamics
+      - pharmacology
+      - neurology
+      - analgesic
+      - hematology
+      - epidemiology
+      - physiology
+    keywords:
+      - symptom
+      - diagnosis
+      - pathology
+      - clinical
+      - patient
+      - therapeutic
+      - syndrome
+      - anatomy
+      - pharmacology
+      - disease
+      - disorder
+      - condition
+      - medical
+    negative_keywords:
+      - species
+      - shaped like
+    regexes:
+      - pattern: "\\b(itis|osis|algia|ectomy|emia|opathy|phagia|plasty)\\b"
+        weight: 0.5
+        description: "Medical suffix detection"
+      - pattern: "\\(medicine\\)|\\(pathology\\)|\\(medical\\)"
+        weight: 0.7
+        description: "Medical field markers"
+      - pattern: "\\b(disease of|medical condition|disorder characterized|syndrome characterized|illness characterized)\\b"
+        weight: 0.7
+        description: "Medical condition phrases"
+    base_weight: 0.55
+  - name: "Physical Sciences & Engineering"
+    description: "Physics, mechanical and electrical engineering, and related sciences."
+    seed_examples:
+      - torque
+      - momentum
+      - dielectric
+      - inertia
+      - capacitor
+      - gearbox
+      - thermodynamics
+      - oscillator
+      - resonance
+      - wavelength
+    keywords:
+      - torque
+      - momentum
+      - velocity
+      - gear
+      - circuit
+      - dielectric
+      - resonance
+      - vector
+      - actuator
+      - inertia
+    negative_keywords:
+      - statute
+      - mythology
+      - shaped like
+    regexes:
+      - pattern: "\\b(Newton|Pascal|joule|ampere|volt|ohm)s?\\b"
+        weight: 0.4
+        description: "SI unit references"
+    base_weight: 0.5
+  - name: "Chemistry & Materials"
+    description: "Chemical compounds, reactions, materials science, and mineralogy."
+    seed_examples:
+      - polymer
+      - catalysis
+      - oxidation
+      - ligand
+      - isomer
+      - crystalline lattice
+      - alloy
+      - reagent
+      - stoichiometry
+      - electrolyte
+    keywords:
+      - catalyst
+      - reagent
+      - polymer
+      - crystalline
+      - alloy
+      - solvent
+      - molarity
+      - stoichiometry
+      - precipitate
+    negative_keywords:
+      - statute
+      - theorem
+      - shaped like
+    regexes:
+      - pattern: "\\b([A-Z][a-z]?\\d+){1,}\\b"
+        weight: 0.6
+        description: "Chemical formula"
+      - pattern: "\\b(ate|ite|ole|ol|one|ine|ium)s?\\b"
+        weight: 0.35
+        description: "Chemical suffix"
+    base_weight: 0.55
+  - name: "Mathematics & Logic"
+    description: "Mathematical structures, proofs, logic, and quantitative reasoning."
+    seed_examples:
+      - theorem
+      - lemma
+      - bijection
+      - manifold
+      - integral
+      - calculus
+      - predicate logic
+      - boolean algebra
+      - topology
+      - isomorphism
+    keywords:
+      - lemma
+      - theorem
+      - axiom
+      - proof
+      - manifold
+      - bijection
+      - boolean
+      - predicate
+      - quantifier
+      - vector space
+      - mathematical
+      - equation
+    negative_keywords:
+      - statute
+      - mythology
+      - shaped like
+      - food
+      - drink
+      - beverage
+    regexes:
+      - pattern: "\\b(group|ring|field|algebra)s?\\b"
+        weight: 0.45
+        description: "Abstract algebra term"
+    base_weight: 0.55
+  - name: "Technology & Computing"
+    description: "Computer science, software, hardware, and information systems."
+    seed_examples:
+      - algorithm
+      - hash
+      - kernel
+      - protocol
+      - compiler
+      - database
+      - encryption
+      - bytecode
+      - microprocessor
+      - virtualization
+    keywords:
+      - algorithm
+      - hash
+      - protocol
+      - compiler
+      - database
+      - encryption
+      - kernel
+      - byte
+      - firmware
+      - cloud
+    negative_keywords:
+      - species
+      - statute
+      - shaped like
+    regexes:
+      - pattern: "\\b(api|sdk|cli|bios)\\b"
+        weight: 0.4
+        description: "Acronyms common in computing"
+    base_weight: 0.5
+  - name: "Business, Economics & Finance"
+    description: "Commerce, markets, accounting, management, and financial instruments."
+    seed_examples:
+      - dividend
+      - leverage
+      - arbitrage
+      - ledger
+      - derivative
+      - profit margin
+      - balance sheet
+      - capital expenditure
+      - bond yield
+      - risk premium
+    keywords:
+      - dividend
+      - leverage
+      - arbitrage
+      - ledger
+      - bond
+      - derivative
+      - portfolio
+      - equity
+      - marginal
+      - revenue
+    negative_keywords:
+      - theorem
+      - enzyme
+    regexes:
+      - pattern: "\\b(P&L|ROI|EBITDA)\\b"
+        weight: 0.45
+        description: "Finance acronyms"
+    base_weight: 0.5
+  - name: "Law, Government & Civics"
+    description: "Legal systems, governance, policy, and civic processes."
+    seed_examples:
+      - statute
+      - ordinance
+      - jurisdiction
+      - plaintiff
+      - tort
+      - precedent
+      - legislature
+      - habeas corpus
+      - constitution
+      - administrative law
+    keywords:
+      - statute
+      - tort
+      - jurisdiction
+      - ordinance
+      - plaintiff
+      - defendant
+      - precedent
+      - legislature
+      - court
+      - constitution
+      - legal
+    negative_keywords:
+      - theorem
+      - enzyme
+    regexes:
+      - pattern: "\\b(v\\.\\s|vs\\.|et\\sal\\.|habeas|amicus)\\b"
+        weight: 0.4
+        description: "Legal Latin / abbreviations"
+      - pattern: "\\(law\\)|\\blegal term\\b|\\bcourt of law\\b"
+        weight: 0.6
+        description: "Legal field markers"
+    base_weight: 0.55
+  - name: "Social & Behavioral Sciences"
+    description: "Psychology, sociology, anthropology, and human behaviour."
+    seed_examples:
+      - cognition
+      - ethnography
+      - sociology
+      - anthropology
+      - survey methodology
+      - social norm
+      - behaviourism
+      - psyche
+      - demography
+      - qualitative research
+    keywords:
+      - cognition
+      - norm
+      - ethnography
+      - sociology
+      - anthropology
+      - survey
+      - behaviour
+      - culture
+      - demography
+      - psychosocial
+    negative_keywords:
+      - algorithm
+      - torque
+    regexes:
+      - pattern: "\\b(psych(o|-)\\w+)"
+        weight: 0.4
+        description: "Psychology terms"
+    base_weight: 0.45
+  - name: "Religion, Philosophy & Mythology"
+    description: "Religious studies, philosophy, theology, and mythic traditions."
+    seed_examples:
+      - ontology
+      - epistemology
+      - pantheon
+      - soteriology
+      - teleology
+      - metaphysics
+      - liturgy
+      - exegesis
+      - monotheism
+      - mythic narrative
+    keywords:
+      - ontology
+      - epistemology
+      - pantheon
+      - theology
+      - liturgy
+      - doctrine
+      - metaphysics
+      - deity
+      - ritual
+      - mythology
+      - religious
+      - ecclesiastical
+    negative_keywords:
+      - algorithm
+    regexes:
+      - pattern: "\\b(soteriology|teleology|eschatology)\\b"
+        weight: 0.45
+        description: "Philosophical/theological terms"
+      - pattern: "\\b(religious vestment|religious garment|liturgical|religious ceremony|religious ritual|ecclesiastical)\\b"
+        weight: 0.6
+        description: "Religious terminology"
+    base_weight: 0.5
+  - name: "Geography, Earth & Environment"
+    description: "Geosciences, climatology, environmental science, and geography."
+    seed_examples:
+      - watershed
+      - tectonic
+      - sedimentary
+      - biome
+      - erosion
+      - lithosphere
+      - climatology
+      - permafrost
+      - estuary
+      - geomorphology
+    keywords:
+      - sedimentary
+      - tectonic
+      - watershed
+      - biome
+      - erosion
+      - estuary
+      - lithosphere
+      - climate
+      - geomorphology
+      - ecology
+    negative_keywords:
+      - statute
+      - algorithm
+    regexes:
+      - pattern: "\\b(latitude|longitude|isobar|isotherm)\\b"
+        weight: 0.35
+        description: "Geospatial terminology"
+    base_weight: 0.45
+  - name: "Maritime & Navigation"
+    description: "Seafaring, naval operations, navigation tools, and maritime practices - NOT including metaphorical shape descriptions."
+    seed_examples:
+      - keel
+      - aft
+      - starboard
+      - sextant
+      - astrolabe
+      - dead reckoning
+      - bilge
+      - brigantine
+      - sonar
+      - convoy
+    keywords:
+      - starboard
+      - portside
+      - aft
+      - sextant
+      - astrolabe
+      - bilge
+      - convoy
+      - helm
+      - ballast
+      - sailing
+      - seafaring
+      - navigation
+    negative_keywords:
+      - statute
+      - theorem
+      - shaped like
+      - resembling
+      - in the form of
+      - having the shape
+      - shape of
+      - form of
+    regexes:
+      - pattern: "\\b(naval|abaft|bo'sun|boatswain|seafaring)\\b"
+        weight: 0.4
+        description: "Nautical jargon"
+      - pattern: "\\b(type of ship|type of boat|sailing vessel|naval vessel|warship|merchant ship)\\b"
+        weight: 0.7
+        description: "Actual ships and vessels"
+    base_weight: 0.35
+  - name: "Material Culture & Applied Skills"
+    description: "Craftsmanship, tools, culinary arts, agriculture, and practical trades."
+    seed_examples:
+      - loom
+      - fermentation
+      - kiln
+      - solder
+      - tincture
+      - horticulture
+      - textile
+      - carpentry
+      - metallurgy
+      - pottery
+      - ale
+      - beer
+      - wine
+      - bread
+    keywords:
+      - loom
+      - fermentation
+      - kiln
+      - solder
+      - tincture
+      - horticulture
+      - textile
+      - craftsmanship
+      - forge
+      - artisan
+      - culinary
+      - food
+      - beverage
+      - cooking
+      - garment
+      - clothing
+      - ale
+      - beer
+      - wine
+      - drink
+    negative_keywords:
+      - statute
+      - theorem
+    regexes:
+      - pattern: "\\b(handcraft|apprentice|smithing)\\b"
+        weight: 0.35
+        description: "Craft terminology"
+      - pattern: "\\b(type of food|type of dish|culinary|beverage made|alcoholic drink|type of bread|type of cake)\\b"
+        weight: 0.7
+        description: "Food and beverage"
+      - pattern: "\\b(ale|beer|wine|liquor|spirits)\\b"
+        weight: 0.6
+        description: "Alcoholic beverages"
+      - pattern: "\\b(type of garment|piece of clothing|article of clothing|worn as)\\b"
+        weight: 0.5
+        description: "Clothing and textiles"
+    base_weight: 0.45
+  - name: "Military & Security"
+    description: "Armed forces, strategy, intelligence, and security operations."
+    seed_examples:
+      - sortie
+      - bivouac
+      - flank
+      - ballistics
+      - counterintelligence
+      - reconnaissance
+      - battalion
+      - ordinance
+      - SIGINT
+      - garrison
+    keywords:
+      - sortie
+      - bivouac
+      - flank
+      - artillery
+      - reconnaissance
+      - intelligence
+      - SIGINT
+      - counterintelligence
+      - garrison
+      - brigade
+      - military
+      - army
+      - officer
+    negative_keywords:
+      - theorem
+      - enzyme
+    regexes:
+      - pattern: "\\b(ops?|counter-?intel|special forces)\\b"
+        weight: 0.4
+        description: "Military abbreviations"
+      - pattern: "\\b(military rank|military officer|army officer|naval officer|commissioned officer)\\b"
+        weight: 0.7
+        description: "Military positions and ranks"
+    base_weight: 0.5
