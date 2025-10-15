@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block title %}Visualizations · Vocabulary Explorer{% endblock %}
+
+{% block extra_head %}
+<style>
+    .viz-page {
+        padding: var(--space-10) 0;
+    }
+
+    .viz-header {
+        display: grid;
+        gap: var(--space-5);
+        margin-bottom: var(--space-6);
+    }
+
+    .viz-controls {
+        display: grid;
+        gap: var(--space-4);
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        align-items: end;
+    }
+
+    .viz-card {
+        background: var(--bg-secondary);
+        border-radius: var(--border-radius-lg);
+        box-shadow: var(--shadow-md);
+        padding: var(--space-6);
+    }
+
+    .viz-toggle {
+        display: inline-flex;
+        border: 1px solid var(--border-primary);
+        border-radius: var(--border-radius-full);
+        overflow: hidden;
+    }
+
+    .viz-toggle button {
+        border: none;
+        background: transparent;
+        padding: var(--space-2) var(--space-4);
+        font-weight: var(--font-weight-medium);
+        cursor: pointer;
+        transition: background var(--transition-fast), color var(--transition-fast);
+    }
+
+    .viz-toggle button.active {
+        background: var(--color-primary);
+        color: #fff;
+    }
+
+    .viz-graph-shell {
+        position: relative;
+        min-height: 560px;
+        background: linear-gradient(180deg, rgba(248, 250, 252, 0.9), rgba(241, 245, 249, 0.7));
+        border-radius: var(--border-radius-lg);
+        overflow: hidden;
+    }
+
+    .viz-graph {
+        position: absolute;
+        inset: 0;
+    }
+
+    .viz-hidden {
+        display: none !important;
+    }
+
+    .viz-status {
+        margin-top: var(--space-4);
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+        min-height: 1.5em;
+    }
+
+    .viz-meta {
+        display: grid;
+        gap: var(--space-3);
+        margin-top: var(--space-4);
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+    }
+
+    .viz-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+    }
+
+    .viz-legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        padding: var(--space-1) var(--space-3);
+        background: rgba(255, 255, 255, 0.92);
+        border-radius: var(--border-radius-full);
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        box-shadow: var(--shadow-sm);
+        color: var(--text-primary);
+    }
+
+    .viz-legend-swatch {
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+        box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.3);
+    }
+
+    .viz-legend-count {
+        font-size: var(--font-size-xs);
+        color: var(--text-secondary);
+    }
+
+    .viz-tooltip {
+        position: absolute;
+        pointer-events: none;
+        background: rgba(255, 255, 255, 0.97);
+        border-radius: var(--border-radius-md);
+        padding: var(--space-2) var(--space-3);
+        box-shadow: var(--shadow-lg);
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        max-width: 260px;
+        z-index: 30;
+        transition: opacity var(--transition-fast);
+        opacity: 0;
+        transform: translate(-9999px, -9999px);
+    }
+
+    .viz-tooltip-title {
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
+    }
+
+    .viz-tooltip-meta {
+        font-size: var(--font-size-xs);
+        color: var(--text-secondary);
+        margin: var(--space-1) 0;
+    }
+
+    .viz-tooltip-definition {
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary);
+        margin-top: var(--space-1);
+    }
+
+    .viz-slider-group {
+        display: flex;
+        gap: var(--space-2);
+        align-items: center;
+    }
+
+    .viz-slider-value {
+        font-variant-numeric: tabular-nums;
+        min-width: 40px;
+        text-align: right;
+        color: var(--text-secondary);
+    }
+</style>
+
+<!-- Force Graph Libraries - Load dependencies in correct order -->
+<!-- Three.js r149 (stable, no deprecation) -->
+<script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
+
+<!-- Load d3-force-3d with all its methods exposed globally -->
+<script src="https://cdn.jsdelivr.net/npm/d3-force-3d@3/dist/d3-force-3d.min.js"></script>
+
+<!-- 2D force graph (works fine) -->
+<script src="https://unpkg.com/force-graph@1.43.4/dist/force-graph.js"></script>
+
+<!-- Try 3d-force-graph from jsdelivr which may have better dependency resolution -->
+<script src="https://cdn.jsdelivr.net/npm/3d-force-graph@1.70.0/dist/3d-force-graph.min.js"></script>
+
+<!-- SpriteText for 3D labels -->
+<script src="https://unpkg.com/three-spritetext@1.8.2/dist/three-spritetext.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<section class="viz-page container">
+    <div class="viz-header">
+        <div>
+            <h1 class="display-5 fw-bold text-primary">Vocabulary Visualizations</h1>
+            <p class="text-secondary mb-0">
+                Explore rarity distributions and semantic similarity relationships across the corpus. Switch between 2D and 3D layouts, adjust force strength, and rotate the scene in real time.
+            </p>
+        </div>
+
+        <form id="semantic-graph-form" class="viz-controls">
+            <div>
+                <label for="semantic-term" class="form-label">Focal term</label>
+                <input type="text" id="semantic-term" class="form-control" placeholder="e.g. abaca" value="abaca" autocomplete="off">
+                <div class="form-text">Leave blank to keep the current word or get a random suggestion.</div>
+            </div>
+
+            <div>
+                <label for="semantic-similarity" class="form-label">Similarity floor</label>
+                <input type="number" id="semantic-similarity" class="form-control" step="0.05" min="0" max="1" value="0.45">
+                <div class="form-text">Higher values tighten the cluster.</div>
+            </div>
+
+            <div>
+                <label for="semantic-max-nodes" class="form-label">Max nodes</label>
+                <input type="number" id="semantic-max-nodes" class="form-control" min="5" max="150" value="32">
+                <div class="form-text">Upper bound on graph size.</div>
+            </div>
+
+            <div>
+                <label for="semantic-embedding" class="form-label">Embedding model</label>
+                <select id="semantic-embedding" class="form-select">
+                    <option value="">Auto-select best</option>
+                    {% for model in embedding_models %}
+                    <option value="{{ model }}">{{ model }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="viz-slider-group">
+                <div class="flex-grow-1">
+                    <label for="force-strength" class="form-label">Force strength</label>
+                    <input type="range" class="form-range" id="force-strength" min="-400" max="-40" step="10" value="-160">
+                </div>
+                <span class="viz-slider-value" id="force-strength-value">-160</span>
+            </div>
+
+            <div class="viz-slider-group">
+                <div class="flex-grow-1">
+                    <label for="rotate-x" class="form-label">Rotate X axis</label>
+                    <input type="range" class="form-range" id="rotate-x" min="-180" max="180" step="1" value="0">
+                </div>
+                <span class="viz-slider-value" id="rotate-x-value">0°</span>
+            </div>
+
+            <div class="viz-slider-group">
+                <div class="flex-grow-1">
+                    <label for="rotate-y" class="form-label">Rotate Y axis</label>
+                    <input type="range" class="form-range" id="rotate-y" min="-180" max="180" step="1" value="0">
+                </div>
+                <span class="viz-slider-value" id="rotate-y-value">0°</span>
+            </div>
+
+            <div class="viz-slider-group">
+                <button type="submit" class="btn btn-primary flex-fill">Load graph</button>
+                <button type="button" class="btn btn-outline-secondary flex-fill" id="semantic-random">Surprise me</button>
+            </div>
+
+            <div>
+                <label class="form-label d-block">Graph mode</label>
+                <div class="viz-toggle" role="group" aria-label="Graph mode toggle">
+                    <button type="button" class="active" data-graph-mode="2d">2D</button>
+                    <button type="button" data-graph-mode="3d">3D</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="viz-card">
+        <div class="viz-graph-shell">
+            <div id="semantic-graph-2d" class="viz-graph"></div>
+            <div id="semantic-graph-3d" class="viz-graph viz-hidden"></div>
+            <div id="semantic-tooltip" class="viz-tooltip"></div>
+        </div>
+
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', path='js/visualizations.js') }}"></script>
+{% endblock %}
