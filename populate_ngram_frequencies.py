@@ -81,7 +81,7 @@ class NgramFrequencyPopulator:
         try:
             query = """
                 SELECT id, term
-                FROM defined
+                FROM vocab.defined
                 WHERE ngram_freq IS NULL
                 AND (phrase IS NULL OR phrase = 0)
                 ORDER BY id
@@ -105,20 +105,20 @@ class NgramFrequencyPopulator:
 
         try:
             # Total records
-            cursor.execute("SELECT COUNT(*) FROM defined")
+            cursor.execute("SELECT COUNT(*) FROM vocab.defined")
             total_records = cursor.fetchone()[0]
 
             # Records with ngram_freq
-            cursor.execute("SELECT COUNT(*) FROM defined WHERE ngram_freq IS NOT NULL")
+            cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE ngram_freq IS NOT NULL")
             completed_records = cursor.fetchone()[0]
 
             # Multi-word terms (phrases) that we skip
-            cursor.execute("SELECT COUNT(*) FROM defined WHERE phrase = 1")
+            cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE phrase = 1")
             phrase_records = cursor.fetchone()[0]
 
             # Remaining single-word terms to process
             cursor.execute("""
-                SELECT COUNT(*) FROM defined
+                SELECT COUNT(*) FROM vocab.defined
                 WHERE ngram_freq IS NULL
                 AND (phrase IS NULL OR phrase = 0)
             """)
@@ -147,7 +147,7 @@ class NgramFrequencyPopulator:
             updated_count = 0
             for term_id, score in term_scores.items():
                 cursor.execute(
-                    "UPDATE defined SET ngram_freq = %s WHERE id = %s",
+                    "UPDATE vocab.defined SET ngram_freq = %s WHERE id = %s",
                     (score, term_id)
                 )
                 updated_count += cursor.rowcount

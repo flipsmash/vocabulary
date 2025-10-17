@@ -282,7 +282,7 @@ DOMAIN_RULES: Iterable[DomainRule] = (
 
 
 def fetch_domain_id_map(cursor) -> Dict[str, int]:
-    cursor.execute("SELECT id, name FROM domains")
+    cursor.execute("SELECT id, name FROM vocab.domains")
     return {name.lower(): domain_id for domain_id, name in cursor.fetchall()}
 
 
@@ -309,7 +309,7 @@ def main() -> None:
         keyword_map = {rule.domain_name: rule.keywords for rule in DOMAIN_RULES}
 
         cursor.execute(
-            "SELECT id, COALESCE(definition, '') FROM defined"
+            "SELECT id, COALESCE(definition, '') FROM vocab.defined"
         )
         rows = cursor.fetchall()
 
@@ -326,7 +326,7 @@ def main() -> None:
 
         cursor.executemany(
             """
-            INSERT INTO word_domains (word_id, primary_domain, domain_id)
+            INSERT INTO vocab.word_domains (word_id, primary_domain, domain_id)
             VALUES (%s, %s, %s)
             ON DUPLICATE KEY UPDATE
                 primary_domain = VALUES(primary_domain),

@@ -74,8 +74,8 @@ class PronunciationGenerator:
         sql = """
         SELECT d.id, d.term, wp.ipa_transcription, wp.arpabet_transcription, 
                wp.stress_pattern, wp.syllable_count
-        FROM defined d 
-        JOIN word_phonetics wp ON d.id = wp.word_id 
+        FROM vocab.defined d 
+        JOIN vocab.word_phonetics wp ON d.id = wp.word_id 
         WHERE (d.wav_url IS NULL OR d.wav_url = "")
         AND (wp.ipa_transcription IS NOT NULL AND wp.ipa_transcription != "")
         ORDER BY d.term
@@ -263,7 +263,7 @@ class PronunciationGenerator:
             relative_path = Path(audio_path).name
             
             cursor.execute(
-                "UPDATE defined SET wav_url = %s WHERE id = %s",
+                "UPDATE vocab.defined SET wav_url = %s WHERE id = %s",
                 (f"/pronunciation/{relative_path}", word_id)
             )
             conn.commit()

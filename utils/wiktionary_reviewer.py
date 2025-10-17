@@ -43,7 +43,7 @@ class WordReviewer:
                        rarity_indicators, context_snippet, raw_definition,
                        etymology_preview, date_discovered,
                        DATEDIFF(CURRENT_DATE, date_discovered) as days_pending
-                FROM candidate_words
+                FROM vocab.candidate_words
                 WHERE review_status = 'pending'
                 ORDER BY utility_score DESC, date_discovered ASC
                 LIMIT %s
@@ -91,7 +91,7 @@ class WordReviewer:
             cursor = conn.cursor()
             
             cursor.execute("""
-                UPDATE candidate_words 
+                UPDATE vocab.candidate_words 
                 SET review_status = %s, rejection_reason = %s, notes = %s,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
@@ -116,7 +116,7 @@ class WordReviewer:
             
             cursor.execute("""
                 SELECT review_status, COUNT(*) as count
-                FROM candidate_words
+                FROM vocab.candidate_words
                 GROUP BY review_status
             """)
             

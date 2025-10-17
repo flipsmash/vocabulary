@@ -575,7 +575,7 @@ class VocabularyListHarvester:
             # Check which terms already exist
             cursor.execute(f"""
                 SELECT LOWER(term)
-                FROM defined
+                FROM vocab.defined
                 WHERE LOWER(term) IN ({placeholders})
             """, term_strings)
 
@@ -647,7 +647,7 @@ class VocabularyListHarvester:
 
             # Batch insert with ON DUPLICATE KEY UPDATE
             cursor.executemany("""
-                INSERT INTO candidate_words
+                INSERT INTO vocab.candidate_words
                 (term, source_type, source_reference, context_snippet, raw_definition,
                  etymology_preview, part_of_speech, utility_score, rarity_indicators,
                  date_discovered, review_status)

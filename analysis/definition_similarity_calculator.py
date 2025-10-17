@@ -14,6 +14,12 @@ import time
 
 from core.database_manager import db_manager
 
+try:
+    from psycopg.rows import execute_batch
+    EXECUTE_BATCH_AVAILABLE = True
+except ImportError:
+    EXECUTE_BATCH_AVAILABLE = False
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -124,7 +130,7 @@ class DefinitionSimilarityCalculator:
         """Get word definitions from database"""
         query = (
             "SELECT id, term, definition "
-            "FROM defined "
+            "FROM vocab.defined "
             "WHERE definition IS NOT NULL "
             "AND TRIM(definition) <> '' "
             "AND LENGTH(TRIM(definition)) > 10 "
@@ -175,7 +181,7 @@ class DefinitionSimilarityCalculator:
         logger.info(f"Storing {len(definitions)} embeddings in database")
         
         insert_query = """
-            INSERT INTO definition_embeddings
+            INSERT INTO vocab.definition_embeddings
             (word_id, word, definition_text, embedding_json, embedding_model)
             VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (word_id)
@@ -211,7 +217,7 @@ class DefinitionSimilarityCalculator:
         """Load embeddings from database"""
         query = (
             "SELECT word_id, word, definition_text, embedding_json "
-            "FROM definition_embeddings "
+            "FROM vocab.definition_embeddings "
             "WHERE embedding_model = %s "
             "ORDER BY word_id"
         )
@@ -270,45 +276,47 @@ class DefinitionSimilarityCalculator:
         # Calculate cosine similarity matrix
         return normalized_emb1 @ normalized_emb2.T
     
-    def calculate_all_similarities(self, similarity_threshold: float = 0.3, batch_size: int = 1000):
-        """Calculate similarities between all definition pairs"""
+    def calculate_all_similarities(self, similarity_threshold: float = 0.3, batch_size: int = 1000, store_batch_size: int = 100000):
+        """Calculate similarities between all definition pairs with incremental storage"""
         logger.info(f"Calculating definition similarities with threshold {similarity_threshold}")
-        
+
         # Load embeddings
         definitions = self.load_embeddings()
         if not definitions:
             logger.error("No embeddings found. Run generate_embeddings first.")
             return
-        
+
         embeddings = np.array([d.embedding for d in definitions])
         word_ids = [d.word_id for d in definitions]
-        
+
         logger.info(f"Processing {len(definitions)} definitions")
-        
+        logger.info(f"Will store to database every {store_batch_size:,} similar pairs found")
+
         similarity_scores = []
         processed_pairs = 0
-        
+        total_stored = 0
+
         # Process in batches to manage memory
         for i in tqdm(range(0, len(definitions), batch_size), desc="Calculating similarities"):
             batch_end = min(i + batch_size, len(definitions))
             batch_embeddings = embeddings[i:batch_end]
-            
+
             # Calculate similarities between this batch and all subsequent definitions
             for j in range(i, len(definitions), batch_size):
                 other_batch_end = min(j + batch_size, len(definitions))
                 other_batch_embeddings = embeddings[j:other_batch_end]
-                
+
                 # Calculate similarity matrix
                 similarities = self.calculate_cosine_similarity_matrix(
                     batch_embeddings, other_batch_embeddings
                 )
-                
+
                 # Extract pairs above threshold
                 for bi, batch_idx in enumerate(range(i, batch_end)):
                     for oj, other_idx in enumerate(range(j, other_batch_end)):
                         if batch_idx >= other_idx:  # Only process upper triangle
                             continue
-                            
+
                         similarity = similarities[bi, oj]
                         if similarity >= similarity_threshold:
                             similarity_scores.append(DefinitionSimilarityScore(
@@ -317,37 +325,63 @@ class DefinitionSimilarityCalculator:
                                 cosine_similarity=float(similarity),
                                 model_name=self.model_name
                             ))
-                
+
                 processed_pairs += batch_embeddings.shape[0] * other_batch_embeddings.shape[0]
-        
-        logger.info(f"Found {len(similarity_scores)} similar pairs from {processed_pairs:,} comparisons")
-        
-        # Store similarities
+
+                # Incrementally store to database when we hit the storage batch size
+                if len(similarity_scores) >= store_batch_size:
+                    logger.info(f"Storing batch of {len(similarity_scores):,} similarities to database...")
+                    self.store_similarities(similarity_scores)
+                    total_stored += len(similarity_scores)
+                    logger.info(f"Total stored so far: {total_stored:,}")
+                    similarity_scores = []  # Clear the list to free memory
+
+        # Store any remaining similarities
         if similarity_scores:
+            logger.info(f"Storing final batch of {len(similarity_scores):,} similarities...")
             self.store_similarities(similarity_scores)
-        
-        return similarity_scores
+            total_stored += len(similarity_scores)
+
+        logger.info(f"Complete! Stored {total_stored:,} similar pairs from {processed_pairs:,} comparisons")
+
+        # Return count instead of full list (to avoid memory issues)
+        return total_stored
     
-    def store_similarities(self, similarities: List[DefinitionSimilarityScore]):
-        """Store similarity scores in database"""
-        logger.info(f"Storing {len(similarities)} similarity scores")
-        
-        insert_query = """
-            INSERT INTO definition_similarity
-            (word1_id, word2_id, cosine_similarity, embedding_model)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (word1_id, word2_id, embedding_model)
-            DO UPDATE SET
-                cosine_similarity = EXCLUDED.cosine_similarity,
-                created_at = CURRENT_TIMESTAMP
-        """
+    def store_similarities(self, similarities: List[DefinitionSimilarityScore], batch_size: int = 10000):
+        """Store similarity scores in database with batching for large datasets"""
+        logger.info(f"Storing {len(similarities)} similarity scores in batches of {batch_size}")
 
         data = [(s.word1_id, s.word2_id, s.cosine_similarity, s.model_name)
                 for s in similarities]
 
-        with self._cursor(autocommit=True) as cursor:
-            cursor.executemany(insert_query, data)
-        logger.info("Similarities stored successfully")
+        # Process in batches to avoid overwhelming the database
+        total_batches = (len(data) + batch_size - 1) // batch_size
+        for i in range(0, len(data), batch_size):
+            batch = data[i:i + batch_size]
+            batch_num = (i // batch_size) + 1
+            logger.info(f"Storing batch {batch_num}/{total_batches} ({len(batch)} rows)")
+
+            # Build VALUES clause with all rows in one query (avoids prepared statement issues)
+            placeholders = ','.join(['(%s,%s,%s,%s)'] * len(batch))
+            insert_query = f"""
+                INSERT INTO vocab.definition_similarity
+                (word1_id, word2_id, cosine_similarity, embedding_model)
+                VALUES {placeholders}
+                ON CONFLICT (word1_id, word2_id, embedding_model)
+                DO UPDATE SET
+                    cosine_similarity = EXCLUDED.cosine_similarity,
+                    created_at = CURRENT_TIMESTAMP
+            """
+
+            # Flatten the batch data for the query
+            flattened = [item for row in batch for item in row]
+
+            with self._cursor(autocommit=True) as cursor:
+                cursor.execute(insert_query, flattened)
+
+            logger.info(f"Batch {batch_num}/{total_batches} completed")
+
+        logger.info(f"All {len(similarities)} similarities stored successfully")
 
 def main():
     """Main function for testing"""
@@ -383,9 +417,9 @@ def main():
         
         for i, sim in enumerate(similarities[:10]):
             with db_manager.get_cursor() as cursor:
-                cursor.execute("SELECT term FROM defined WHERE id = %s", (sim.word1_id,))
+                cursor.execute("SELECT term FROM vocab.defined WHERE id = %s", (sim.word1_id,))
                 word1 = cursor.fetchone()[0]
-                cursor.execute("SELECT term FROM defined WHERE id = %s", (sim.word2_id,))
+                cursor.execute("SELECT term FROM vocab.defined WHERE id = %s", (sim.word2_id,))
                 word2 = cursor.fetchone()[0]
 
             print(f"{i+1:2d}. {word1:15} <-> {word2:15} (similarity: {sim.cosine_similarity:.3f})")

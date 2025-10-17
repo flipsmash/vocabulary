@@ -121,8 +121,8 @@ class VocabularyAnalytics:
                        SUM(CASE WHEN qs.completed_at IS NOT NULL THEN 1 ELSE 0 END) as completed_sessions,
                        COUNT(uqr.id) as total_questions,
                        SUM(CASE WHEN uqr.is_correct = 1 THEN 1 ELSE 0 END) as total_correct
-                FROM quiz_sessions qs
-                LEFT JOIN user_quiz_results uqr ON qs.id = uqr.session_id
+                FROM vocab.quiz_sessions qs
+                LEFT JOIN vocab.user_quiz_results uqr ON qs.id = uqr.session_id
                 WHERE qs.user_id = %s
             """, (user_id,))
 
@@ -135,7 +135,7 @@ class VocabularyAnalytics:
             # Question type preferences
             cursor.execute("""
                 SELECT question_type, COUNT(*) as count, AVG(is_correct) as accuracy
-                FROM user_quiz_results
+                FROM vocab.user_quiz_results
                 WHERE user_id = %s
                 GROUP BY question_type
                 ORDER BY count DESC
@@ -152,8 +152,8 @@ class VocabularyAnalytics:
                        COUNT(DISTINCT qs.id) as sessions,
                        COUNT(uqr.id) as questions,
                        AVG(CASE WHEN uqr.is_correct = 1 THEN 100.0 ELSE 0.0 END) as accuracy
-                FROM quiz_sessions qs
-                LEFT JOIN user_quiz_results uqr ON qs.id = uqr.session_id
+                FROM vocab.quiz_sessions qs
+                LEFT JOIN vocab.user_quiz_results uqr ON qs.id = uqr.session_id
                 WHERE qs.user_id = %s AND qs.completed_at IS NOT NULL
                 GROUP BY qs.difficulty
                 ORDER BY sessions DESC
@@ -169,8 +169,8 @@ class VocabularyAnalytics:
                 SELECT qs.id, qs.completed_at,
                        COUNT(uqr.id) as questions,
                        SUM(CASE WHEN uqr.is_correct = 1 THEN 1 ELSE 0 END) as correct
-                FROM quiz_sessions qs
-                LEFT JOIN user_quiz_results uqr ON qs.id = uqr.session_id
+                FROM vocab.quiz_sessions qs
+                LEFT JOIN vocab.user_quiz_results uqr ON qs.id = uqr.session_id
                 WHERE qs.user_id = %s AND qs.completed_at IS NOT NULL
                 GROUP BY qs.id, qs.completed_at
                 HAVING questions > 0
@@ -185,7 +185,7 @@ class VocabularyAnalytics:
             # This week's activity
             cursor.execute("""
                 SELECT COUNT(*)
-                FROM quiz_sessions
+                FROM vocab.quiz_sessions
                 WHERE user_id = %s AND started_at >= (NOW() - INTERVAL '7 days')
             """, (user_id,))
 
@@ -220,7 +220,7 @@ class VocabularyAnalytics:
             # Mastery level breakdown
             cursor.execute("""
                 SELECT mastery_level, COUNT(*) as count
-                FROM user_word_mastery
+                FROM vocab.user_word_mastery
                 WHERE user_id = %s
                 GROUP BY mastery_level
             """, (user_id,))
@@ -230,7 +230,7 @@ class VocabularyAnalytics:
             # Words due for review
             cursor.execute("""
                 SELECT COUNT(*) as due_today
-                FROM user_word_mastery
+                FROM vocab.user_word_mastery
                 WHERE user_id = %s AND next_review <= NOW()
             """, (user_id,))
 
@@ -238,7 +238,7 @@ class VocabularyAnalytics:
 
             cursor.execute("""
                 SELECT COUNT(*) as overdue
-                FROM user_word_mastery
+                FROM vocab.user_word_mastery
                 WHERE user_id = %s AND next_review < (NOW() - INTERVAL '1 day')
             """, (user_id,))
 
@@ -250,8 +250,8 @@ class VocabularyAnalytics:
                        COUNT(*) as word_count,
                        AVG(uwm.correct_attempts / uwm.total_attempts * 100) as avg_accuracy,
                        SUM(CASE WHEN uwm.mastery_level = 'mastered' THEN 1 ELSE 0 END) as mastered_count
-                FROM user_word_mastery uwm
-                JOIN word_domains wd ON uwm.word_id = wd.word_id
+                FROM vocab.user_word_mastery uwm
+                JOIN vocab.word_domains wd ON uwm.word_id = wd.word_id
                 WHERE uwm.user_id = %s AND wd.primary_domain IS NOT NULL
                 GROUP BY wd.primary_domain
                 HAVING word_count >= 3
@@ -301,9 +301,9 @@ class VocabularyAnalytics:
                 SELECT uwm.word_id, d.term, d.definition, d.part_of_speech, wd.primary_domain,
                        uwm.total_attempts, uwm.correct_attempts, uwm.mastery_level,
                        uwm.streak, uwm.last_seen, uwm.next_review, uwm.ease_factor
-                FROM user_word_mastery uwm
-                JOIN defined d ON uwm.word_id = d.id
-                LEFT JOIN word_domains wd ON uwm.word_id = wd.word_id
+                FROM vocab.user_word_mastery uwm
+                JOIN vocab.defined d ON uwm.word_id = d.id
+                LEFT JOIN vocab.word_domains wd ON uwm.word_id = wd.word_id
                 WHERE uwm.user_id = %s
                 ORDER BY uwm.last_seen DESC
                 LIMIT %s
@@ -347,7 +347,7 @@ class VocabularyAnalytics:
             cursor.execute("""
                 SELECT id, quiz_type, difficulty, total_questions, correct_answers,
                        started_at, completed_at, topic_domain
-                FROM quiz_sessions
+                FROM vocab.quiz_sessions
                 WHERE user_id = %s
                 ORDER BY started_at DESC
                 LIMIT %s
@@ -394,9 +394,9 @@ class VocabularyAnalytics:
                 SELECT d.term, d.part_of_speech, wd.primary_domain,
                        uwm.total_attempts, uwm.correct_attempts,
                        (uwm.correct_attempts / uwm.total_attempts * 100) as accuracy
-                FROM user_word_mastery uwm
-                JOIN defined d ON uwm.word_id = d.id
-                LEFT JOIN word_domains wd ON uwm.word_id = wd.word_id
+                FROM vocab.user_word_mastery uwm
+                JOIN vocab.defined d ON uwm.word_id = d.id
+                LEFT JOIN vocab.word_domains wd ON uwm.word_id = wd.word_id
                 WHERE uwm.user_id = %s AND uwm.total_attempts >= 3
                   AND (uwm.correct_attempts / uwm.total_attempts) < 0.5
                 ORDER BY accuracy ASC, uwm.total_attempts DESC
@@ -419,7 +419,7 @@ class VocabularyAnalytics:
             cursor.execute("""
                 SELECT question_type, COUNT(*) as total, SUM(is_correct) as correct,
                        AVG(is_correct) * 100 as accuracy
-                FROM user_quiz_results
+                FROM vocab.user_quiz_results
                 WHERE user_id = %s
                 GROUP BY question_type
                 HAVING total >= 5 AND accuracy < 70
@@ -440,8 +440,8 @@ class VocabularyAnalytics:
             cursor.execute("""
                 SELECT wd.primary_domain, COUNT(*) as word_count,
                        AVG(uwm.correct_attempts / uwm.total_attempts * 100) as avg_accuracy
-                FROM user_word_mastery uwm
-                JOIN word_domains wd ON uwm.word_id = wd.word_id
+                FROM vocab.user_word_mastery uwm
+                JOIN vocab.word_domains wd ON uwm.word_id = wd.word_id
                 WHERE uwm.user_id = %s AND wd.primary_domain IS NOT NULL
                 GROUP BY wd.primary_domain
                 HAVING word_count >= 3 AND avg_accuracy < 60
@@ -521,7 +521,7 @@ class VocabularyAnalytics:
             # Most active day of week
             cursor.execute("""
                 SELECT DAYNAME(started_at) as day, COUNT(*) as sessions
-                FROM quiz_sessions
+                FROM vocab.quiz_sessions
                 WHERE user_id = %s
                 GROUP BY DAYOFWEEK(started_at)
                 ORDER BY sessions DESC
@@ -534,7 +534,7 @@ class VocabularyAnalytics:
             # Most active hour
             cursor.execute("""
                 SELECT HOUR(started_at) as hour, COUNT(*) as sessions
-                FROM quiz_sessions
+                FROM vocab.quiz_sessions
                 WHERE user_id = %s
                 GROUP BY HOUR(started_at)
                 ORDER BY sessions DESC
@@ -547,7 +547,7 @@ class VocabularyAnalytics:
             # Days since last quiz
             cursor.execute("""
                 SELECT DATEDIFF(NOW(), MAX(started_at)) as days_since
-                FROM quiz_sessions
+                FROM vocab.quiz_sessions
                 WHERE user_id = %s
             """, (user_id,))
 
@@ -557,7 +557,7 @@ class VocabularyAnalytics:
             # Study consistency (sessions in last 7 days)
             cursor.execute("""
                 SELECT COUNT(DISTINCT DATE(started_at)) as active_days
-                FROM quiz_sessions
+                FROM vocab.quiz_sessions
                 WHERE user_id = %s AND started_at >= (NOW() - INTERVAL '7 days')
             """, (user_id,))
 

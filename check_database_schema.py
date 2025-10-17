@@ -43,7 +43,7 @@ def check_sample_data(columns):
         # Build query with actual columns
         column_list = ", ".join(columns)
         
-        cursor.execute(f"SELECT {column_list} FROM defined ORDER BY id LIMIT 20")
+        cursor.execute(f"SELECT {column_list} FROM vocab.defined ORDER BY id LIMIT 20")
         sample_data = cursor.fetchall()
         
         print(f"\n=== SAMPLE DATA (First 20 entries) ===")
@@ -87,7 +87,7 @@ def check_browse_query():
         # This mimics what the browse page likely does
         cursor.execute("""
             SELECT id, term, definition, part_of_speech 
-            FROM defined 
+            FROM vocab.defined 
             ORDER BY term 
             LIMIT 25
         """)
@@ -136,7 +136,7 @@ def search_specific_terms():
         found_terms = []
         
         for term in problematic_terms:
-            cursor.execute("SELECT id, term, definition FROM defined WHERE term = %s", (term,))
+            cursor.execute("SELECT id, term, definition FROM vocab.defined WHERE term = %s", (term,))
             result = cursor.fetchone()
             
             if result:
@@ -160,13 +160,13 @@ def get_database_stats():
     cursor = conn.cursor()
     
     try:
-        cursor.execute("SELECT COUNT(*) FROM defined")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined")
         total_count = cursor.fetchone()[0]
         
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE definition IS NULL OR definition = ''")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE definition IS NULL OR definition = ''")
         no_definition = cursor.fetchone()[0]
         
-        cursor.execute("SELECT AVG(LENGTH(term)) FROM defined WHERE term IS NOT NULL")
+        cursor.execute("SELECT AVG(LENGTH(term)) FROM vocab.defined WHERE term IS NOT NULL")
         avg_length = cursor.fetchone()[0]
         
         print(f"\n=== DATABASE STATISTICS ===")

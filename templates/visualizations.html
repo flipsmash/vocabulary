@@ -16,9 +16,100 @@
 
     .viz-controls {
         display: grid;
-        gap: var(--space-4);
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        align-items: end;
+        gap: var(--space-5) var(--space-4);
+        grid-template-columns: repeat(12, 1fr);
+    }
+
+    /* Control items with specific column spans */
+    .viz-control-item {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+    }
+
+    .viz-control-item.span-3 {
+        grid-column: span 3;
+    }
+
+    .viz-control-item.span-4 {
+        grid-column: span 4;
+    }
+
+    .viz-control-item.span-6 {
+        grid-column: span 6;
+    }
+
+    .viz-control-item.span-12 {
+        grid-column: span 12;
+    }
+
+    /* Form controls consistent height */
+    .viz-controls .form-control,
+    .viz-controls .form-select,
+    .viz-controls .btn {
+        height: 42px;
+    }
+
+    .viz-controls .form-label {
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+        color: var(--text-primary);
+        margin-bottom: var(--space-2);
+    }
+
+    .viz-controls .form-text {
+        font-size: var(--font-size-xs);
+        color: var(--text-secondary);
+        margin-top: var(--space-1);
+        line-height: var(--line-height-snug);
+    }
+
+    /* Responsive breakpoints */
+    @media (max-width: 1200px) {
+        .viz-control-item.span-3 {
+            grid-column: span 4;
+        }
+    }
+
+    @media (max-width: 992px) {
+        .viz-controls {
+            grid-template-columns: repeat(8, 1fr);
+        }
+
+        .viz-control-item.span-3,
+        .viz-control-item.span-4 {
+            grid-column: span 4;
+        }
+
+        .viz-control-item.span-6 {
+            grid-column: span 8;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .viz-controls {
+            grid-template-columns: repeat(4, 1fr);
+        }
+
+        .viz-control-item.span-3,
+        .viz-control-item.span-4,
+        .viz-control-item.span-6 {
+            grid-column: span 4;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .viz-controls {
+            grid-template-columns: 1fr;
+            gap: var(--space-4);
+        }
+
+        .viz-control-item.span-3,
+        .viz-control-item.span-4,
+        .viz-control-item.span-6,
+        .viz-control-item.span-12 {
+            grid-column: span 1;
+        }
     }
 
     .viz-card {
@@ -29,24 +120,43 @@
     }
 
     .viz-toggle {
-        display: inline-flex;
+        display: flex;
+        width: 100%;
+        height: 42px;
         border: 1px solid var(--border-primary);
-        border-radius: var(--border-radius-full);
+        border-radius: var(--border-radius-md);
         overflow: hidden;
+        background: var(--bg-primary);
     }
 
     .viz-toggle button {
+        flex: 1;
         border: none;
         background: transparent;
-        padding: var(--space-2) var(--space-4);
+        padding: 0 var(--space-4);
+        font-size: var(--font-size-sm);
         font-weight: var(--font-weight-medium);
         cursor: pointer;
-        transition: background var(--transition-fast), color var(--transition-fast);
+        transition: all var(--transition-fast);
+        color: var(--text-secondary);
+    }
+
+    .viz-toggle button:hover:not(.active) {
+        background: var(--bg-secondary);
+        color: var(--text-primary);
     }
 
     .viz-toggle button.active {
         background: var(--color-primary);
         color: #fff;
+    }
+
+    .viz-toggle button + button {
+        border-left: 1px solid var(--border-primary);
+    }
+
+    .viz-toggle button.active + button {
+        border-left-color: transparent;
     }
 
     .viz-graph-shell {
@@ -87,28 +197,71 @@
         gap: var(--space-2);
     }
 
+    .viz-legend-overlay {
+        position: absolute;
+        bottom: var(--space-4);
+        left: var(--space-4);
+        z-index: 10;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: var(--border-radius-lg);
+        padding: var(--space-3);
+        box-shadow: var(--shadow-lg);
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        max-width: 300px;
+        display: none;
+    }
+
+    .viz-legend-overlay.visible {
+        display: block;
+    }
+
+    .viz-legend-title {
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-semibold);
+        color: var(--text-primary);
+        margin-bottom: var(--space-2);
+    }
+
+    .viz-legend-items {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+    }
+
     .viz-legend-item {
         display: inline-flex;
         align-items: center;
         gap: var(--space-2);
-        padding: var(--space-1) var(--space-3);
-        background: rgba(255, 255, 255, 0.92);
-        border-radius: var(--border-radius-full);
-        border: 1px solid rgba(15, 23, 42, 0.08);
-        box-shadow: var(--shadow-sm);
+        padding: var(--space-1) var(--space-2);
+        background: rgba(255, 255, 255, 0.5);
+        border-radius: var(--border-radius-md);
         color: var(--text-primary);
+        font-size: var(--font-size-sm);
     }
 
     .viz-legend-swatch {
-        width: 12px;
-        height: 12px;
+        width: 14px;
+        height: 14px;
         border-radius: 999px;
-        box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.3);
+        box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.2);
+        flex-shrink: 0;
+    }
+
+    .viz-legend-label {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .viz-legend-count {
         font-size: var(--font-size-xs);
         color: var(--text-secondary);
+        font-variant-numeric: tabular-nums;
+        margin-left: auto;
+        padding-left: var(--space-2);
     }
 
     .viz-tooltip {
@@ -145,15 +298,153 @@
 
     .viz-slider-group {
         display: flex;
+        flex-direction: column;
         gap: var(--space-2);
+    }
+
+    .viz-slider-wrapper {
+        display: flex;
+        gap: var(--space-3);
         align-items: center;
+    }
+
+    .viz-slider-wrapper input[type="range"] {
+        flex: 1;
     }
 
     .viz-slider-value {
         font-variant-numeric: tabular-nums;
-        min-width: 40px;
+        min-width: 50px;
         text-align: right;
         color: var(--text-secondary);
+        font-size: var(--font-size-sm);
+        font-weight: var(--font-weight-medium);
+    }
+
+    /* Button group styling */
+    .viz-button-group {
+        display: flex;
+        gap: var(--space-2);
+    }
+
+    .viz-button-group .btn {
+        flex: 1;
+    }
+
+    /* Section divider for visual grouping */
+    .viz-section-divider {
+        grid-column: 1 / -1;
+        height: 1px;
+        background: linear-gradient(
+            to right,
+            transparent,
+            var(--border-primary) 10%,
+            var(--border-primary) 90%,
+            transparent
+        );
+        margin: var(--space-2) 0;
+    }
+
+    @media (max-width: 576px) {
+        .viz-section-divider {
+            display: none;
+        }
+    }
+
+    /* Fullscreen styles */
+    .viz-page:fullscreen {
+        background: var(--bg-primary);
+        padding: 0;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .viz-page:fullscreen .viz-header {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        background: rgba(255, 255, 255, 0.98);
+        backdrop-filter: blur(10px);
+        padding: var(--space-4);
+        box-shadow: var(--shadow-lg);
+        transform: translateY(-100%);
+        transition: transform 0.3s ease-out;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .viz-page:fullscreen .viz-header > div:first-child {
+        display: none;
+    }
+
+    .viz-page:fullscreen .viz-header:hover,
+    .viz-page:fullscreen .viz-header:focus-within {
+        transform: translateY(0);
+    }
+
+    .viz-page:fullscreen .viz-card {
+        flex: 1;
+        margin: 0;
+        border-radius: 0;
+        box-shadow: none;
+        padding: 0;
+    }
+
+    .viz-page:fullscreen .viz-graph-shell {
+        min-height: 100vh;
+    }
+
+    .viz-page::backdrop {
+        background: rgba(0, 0, 0, 0.95);
+    }
+
+    /* Fullscreen hint */
+    .fullscreen-hint {
+        display: none;
+        position: absolute;
+        top: var(--space-2);
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: var(--space-2) var(--space-4);
+        border-radius: var(--border-radius-full);
+        font-size: var(--font-size-sm);
+        z-index: 99;
+        pointer-events: none;
+        animation: fadeOut 3s forwards;
+    }
+
+    .viz-page:fullscreen .fullscreen-hint {
+        display: block;
+    }
+
+    @keyframes fadeOut {
+        0%, 70% { opacity: 1; }
+        100% { opacity: 0; }
+    }
+
+    /* Hover trigger area at top of screen */
+    .fullscreen-hover-trigger {
+        display: none;
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        z-index: 99;
+        pointer-events: all;
+    }
+
+    .viz-page:fullscreen .fullscreen-hover-trigger {
+        display: block;
+    }
+
+    .viz-page:fullscreen .fullscreen-hover-trigger:hover ~ .viz-header {
+        transform: translateY(0);
     }
 </style>
 
@@ -176,6 +467,8 @@
 
 {% block content %}
 <section class="viz-page container">
+    <div class="fullscreen-hint">Hover at top to show controls</div>
+    <div class="fullscreen-hover-trigger"></div>
     <div class="viz-header">
         <div>
             <h1 class="display-5 fw-bold text-primary">Vocabulary Visualizations</h1>
@@ -185,25 +478,26 @@
         </div>
 
         <form id="semantic-graph-form" class="viz-controls">
-            <div>
+            <!-- Row 1: Main Input Controls (4 columns each) -->
+            <div class="viz-control-item span-3">
                 <label for="semantic-term" class="form-label">Focal term</label>
                 <input type="text" id="semantic-term" class="form-control" placeholder="e.g. abaca" value="abaca" autocomplete="off">
                 <div class="form-text">Leave blank to keep the current word or get a random suggestion.</div>
             </div>
 
-            <div>
+            <div class="viz-control-item span-3">
                 <label for="semantic-similarity" class="form-label">Similarity floor</label>
                 <input type="number" id="semantic-similarity" class="form-control" step="0.05" min="0" max="1" value="0.45">
                 <div class="form-text">Higher values tighten the cluster.</div>
             </div>
 
-            <div>
+            <div class="viz-control-item span-3">
                 <label for="semantic-max-nodes" class="form-label">Max nodes</label>
                 <input type="number" id="semantic-max-nodes" class="form-control" min="5" max="150" value="32">
                 <div class="form-text">Upper bound on graph size.</div>
             </div>
 
-            <div>
+            <div class="viz-control-item span-3">
                 <label for="semantic-embedding" class="form-label">Embedding model</label>
                 <select id="semantic-embedding" class="form-select">
                     <option value="">Auto-select best</option>
@@ -213,41 +507,65 @@
                 </select>
             </div>
 
-            <div class="viz-slider-group">
-                <div class="flex-grow-1">
-                    <label for="force-strength" class="form-label">Force strength</label>
+            <!-- Visual divider -->
+            <div class="viz-section-divider"></div>
+
+            <!-- Row 2: Force Strength Slider (6 columns) + Graph Mode + Actions (6 columns) -->
+            <div class="viz-control-item viz-slider-group span-6">
+                <label for="force-strength" class="form-label">Force strength</label>
+                <div class="viz-slider-wrapper">
                     <input type="range" class="form-range" id="force-strength" min="-400" max="-40" step="10" value="-160">
+                    <span class="viz-slider-value" id="force-strength-value">-160</span>
                 </div>
-                <span class="viz-slider-value" id="force-strength-value">-160</span>
             </div>
 
-            <div class="viz-slider-group">
-                <div class="flex-grow-1">
-                    <label for="rotate-x" class="form-label">Rotate X axis</label>
-                    <input type="range" class="form-range" id="rotate-x" min="-180" max="180" step="1" value="0">
-                </div>
-                <span class="viz-slider-value" id="rotate-x-value">0°</span>
-            </div>
-
-            <div class="viz-slider-group">
-                <div class="flex-grow-1">
-                    <label for="rotate-y" class="form-label">Rotate Y axis</label>
-                    <input type="range" class="form-range" id="rotate-y" min="-180" max="180" step="1" value="0">
-                </div>
-                <span class="viz-slider-value" id="rotate-y-value">0°</span>
-            </div>
-
-            <div class="viz-slider-group">
-                <button type="submit" class="btn btn-primary flex-fill">Load graph</button>
-                <button type="button" class="btn btn-outline-secondary flex-fill" id="semantic-random">Surprise me</button>
-            </div>
-
-            <div>
-                <label class="form-label d-block">Graph mode</label>
+            <div class="viz-control-item span-3">
+                <label class="form-label">Graph mode</label>
                 <div class="viz-toggle" role="group" aria-label="Graph mode toggle">
                     <button type="button" class="active" data-graph-mode="2d">2D</button>
                     <button type="button" data-graph-mode="3d">3D</button>
                 </div>
+            </div>
+
+            <div class="viz-control-item span-3">
+                <label class="form-label">&nbsp;</label>
+                <button type="button" class="btn btn-outline-secondary" id="fullscreen-btn">
+                    <span id="fullscreen-icon">⛶</span> Full Screen
+                </button>
+            </div>
+
+            <!-- Visual divider -->
+            <div class="viz-section-divider"></div>
+
+            <!-- Row 3: Rotation Controls (6 columns each) -->
+            <div class="viz-control-item viz-slider-group span-6">
+                <label for="rotate-x" class="form-label">Rotate X axis</label>
+                <div class="viz-slider-wrapper">
+                    <input type="range" class="form-range" id="rotate-x" min="-180" max="180" step="1" value="0">
+                    <span class="viz-slider-value" id="rotate-x-value">0°</span>
+                </div>
+            </div>
+
+            <div class="viz-control-item viz-slider-group span-6">
+                <label for="rotate-y" class="form-label">Rotate Y axis</label>
+                <div class="viz-slider-wrapper">
+                    <input type="range" class="form-range" id="rotate-y" min="-180" max="180" step="1" value="0">
+                    <span class="viz-slider-value" id="rotate-y-value">0°</span>
+                </div>
+            </div>
+
+            <!-- Visual divider -->
+            <div class="viz-section-divider"></div>
+
+            <!-- Row 4: Action Buttons (6 columns each) -->
+            <div class="viz-control-item span-6">
+                <label class="form-label">&nbsp;</label>
+                <button type="submit" class="btn btn-primary">Load graph</button>
+            </div>
+
+            <div class="viz-control-item span-6">
+                <label class="form-label">&nbsp;</label>
+                <button type="button" class="btn btn-outline-secondary" id="semantic-random">Surprise me</button>
             </div>
         </form>
     </div>
@@ -257,6 +575,7 @@
             <div id="semantic-graph-2d" class="viz-graph"></div>
             <div id="semantic-graph-3d" class="viz-graph viz-hidden"></div>
             <div id="semantic-tooltip" class="viz-tooltip"></div>
+            <div id="semantic-legend" class="viz-legend-overlay"></div>
         </div>
 
     </div>

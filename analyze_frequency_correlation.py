@@ -16,7 +16,7 @@ def analyze_correlation():
         # Get data where both frequencies are available (not -999)
         cursor.execute("""
             SELECT term, ngram_freq, python_wordfreq
-            FROM defined
+            FROM vocab.defined
             WHERE ngram_freq > -999 AND python_wordfreq > -999
             ORDER BY ngram_freq DESC
         """)
@@ -98,13 +98,13 @@ def analyze_correlation():
             print(f"  {i+1:2d}. {term:15s} | Ngram: {ngram:6.3f} | Python: {python:6.3f} | Diff: {diff:.3f}")
 
         # Count how many words are found in each system
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE ngram_freq > -999")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE ngram_freq > -999")
         ngram_found = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE python_wordfreq > -999")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE python_wordfreq > -999")
         python_found = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM defined")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined")
         total_words = cursor.fetchone()[0]
 
         print(f"\nCoverage Comparison:")

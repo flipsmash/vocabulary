@@ -80,7 +80,7 @@ class DatabaseManager:
         Example:
             with db_manager.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT * FROM defined")
+                cursor.execute("SELECT * FROM vocab.defined")
                 results = cursor.fetchall()
         """
         if not self.pool:
@@ -118,7 +118,7 @@ class DatabaseManager:
 
         Example:
             with db_manager.get_cursor(dictionary=True) as cursor:
-                cursor.execute("SELECT * FROM defined WHERE id = %s", (123,))
+                cursor.execute("SELECT * FROM vocab.defined WHERE id = %s", (123,))
                 result = cursor.fetchone()
         """
         cursor_kwargs = {}
@@ -146,8 +146,9 @@ class CursorWrapper:
         return self._cursor.execute(query, params, **kwargs)
 
     def executemany(self, query, params_seq, **kwargs):
-        """Execute many with prepare=False by default"""
-        kwargs.setdefault('prepare', False)
+        """Execute many - prepare parameter not supported by psycopg2"""
+        # Remove 'prepare' if present, as psycopg2 doesn't support it
+        kwargs.pop('prepare', None)
         return self._cursor.executemany(query, params_seq, **kwargs)
 
     # Delegate all other methods/attributes to the real cursor
@@ -177,14 +178,14 @@ class CursorWrapper:
         Example:
             # Fetch results
             results = db_manager.execute_query(
-                "SELECT * FROM defined WHERE term = %s",
+                "SELECT * FROM vocab.defined WHERE term = %s",
                 ("aberrant",),
                 dictionary=True
             )
 
             # Insert/Update (no fetch)
             db_manager.execute_query(
-                "UPDATE defined SET frequency = %s WHERE id = %s",
+                "UPDATE vocab.defined SET frequency = %s WHERE id = %s",
                 (0.5, 123),
                 fetch=False
             )
@@ -216,7 +217,7 @@ class CursorWrapper:
                 ("word3", "definition3")
             ]
             rows_affected = db_manager.execute_many(
-                "INSERT INTO candidate_words (term, raw_definition) VALUES (%s, %s)",
+                "INSERT INTO vocab.candidate_words (term, raw_definition) VALUES (%s, %s)",
                 params
             )
         """
@@ -357,7 +358,7 @@ def database_connection(dictionary: bool = False, autocommit: bool = False):
     Example:
         with database_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM defined")
+            cursor.execute("SELECT * FROM vocab.defined")
             results = cursor.fetchall()
     """
     with db_manager.get_connection(dictionary=dictionary, autocommit=autocommit) as conn:
@@ -378,7 +379,7 @@ def database_cursor(dictionary: bool = False, autocommit: bool = False):
 
     Example:
         with database_cursor(dictionary=True) as cursor:
-            cursor.execute("SELECT * FROM defined WHERE id = %s", (123,))
+            cursor.execute("SELECT * FROM vocab.defined WHERE id = %s", (123,))
             result = cursor.fetchone()
     """
     with db_manager.get_cursor(dictionary=dictionary, autocommit=autocommit) as cursor:
@@ -417,7 +418,7 @@ def main():
     # Test query execution
     try:
         sample_words = db_manager.execute_query(
-            "SELECT term, part_of_speech FROM defined LIMIT 3",
+            "SELECT term, part_of_speech FROM vocab.defined LIMIT 3",
             dictionary=True
         )
 

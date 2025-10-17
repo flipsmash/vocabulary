@@ -444,7 +444,7 @@ class WordlistOnlyHarvester:
 
             with database_cursor() as cursor:
                 cursor.execute(f"""
-                    SELECT LOWER(term) FROM defined
+                    SELECT LOWER(term) FROM vocab.defined
                     WHERE LOWER(term) IN ({placeholders})
                 """, term_strings)
 
@@ -496,7 +496,7 @@ class WordlistOnlyHarvester:
                 ))
 
             stored = db_manager.execute_many("""
-                INSERT INTO candidate_words
+                INSERT INTO vocab.candidate_words
                 (term, source_type, source_reference, context_snippet, raw_definition,
                  etymology_preview, part_of_speech, utility_score, rarity_indicators,
                  date_discovered, review_status)

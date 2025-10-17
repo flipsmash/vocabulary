@@ -137,7 +137,7 @@ ALTER TABLE word_domains
 
 
 UPSERT_DOMAINS_SQL = """
-INSERT INTO domains (name, description)
+INSERT INTO vocab.domains (name, description)
 VALUES (%s, %s)
 ON DUPLICATE KEY UPDATE
     description = VALUES(description),
@@ -150,7 +150,7 @@ def ensure_domains_table(cursor) -> None:
 
 
 def ensure_word_domains_fk(cursor) -> None:
-    cursor.execute("SHOW COLUMNS FROM word_domains LIKE 'domain_id'")
+    cursor.execute("SHOW COLUMNS FROM vocab.word_domains LIKE 'domain_id'")
     column_exists = cursor.fetchone() is not None
     if not column_exists:
         cursor.execute(ALTER_WORD_DOMAINS_SQL)

@@ -49,7 +49,7 @@ class IndependentFrequencyCalculator:
             # Always analyze all words for comprehensive analysis
             query = """
             SELECT id, term, definition, frequency as existing_freq
-            FROM defined 
+            FROM vocab.defined 
             ORDER BY id
             """
             if limit:
@@ -151,7 +151,7 @@ class IndependentFrequencyCalculator:
             # Load a sample of definitions to build mini-corpus
             with mysql.connector.connect(**self.db_config) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT definition FROM defined LIMIT 5000")
+                cursor.execute("SELECT definition FROM vocab.defined LIMIT 5000")
                 definitions = [row[0] for row in cursor.fetchall()]
             
             # Count occurrences in definitions
@@ -333,7 +333,7 @@ class IndependentFrequencyCalculator:
             
             # Insert results with rankings
             insert_sql = """
-            INSERT INTO word_frequencies_independent 
+            INSERT INTO vocab.word_frequencies_independent 
             (word_id, term, independent_frequency, source_frequencies, method_count, frequency_rank, rarity_percentile)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
@@ -374,7 +374,7 @@ class IndependentFrequencyCalculator:
             if use_calculated:
                 # Update from calculated frequencies where available
                 update_sql = """
-                UPDATE defined d
+                UPDATE vocab.defined d
                 JOIN word_frequencies_calculated wfc ON d.id = wfc.word_id
                 SET d.frequency = wfc.composite_frequency
                 WHERE d.frequency IS NULL OR d.frequency = 0
@@ -404,9 +404,9 @@ class IndependentFrequencyCalculator:
                 wfi.source_frequencies,
                 d.frequency as original_frequency,
                 wd.primary_domain
-            FROM word_frequencies_independent wfi
-            JOIN defined d ON wfi.word_id = d.id
-            LEFT JOIN word_domains wd ON d.id = wd.word_id
+            FROM vocab.word_frequencies_independent wfi
+            JOIN vocab.defined d ON wfi.word_id = d.id
+            LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
             ORDER BY wfi.independent_frequency DESC
             """
             

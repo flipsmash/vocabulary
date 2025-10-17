@@ -32,23 +32,23 @@ def main():
             cursor.execute('SET search_path TO vocab')
 
             # Total words
-            cursor.execute('SELECT COUNT(*) as total FROM defined')
+            cursor.execute('SELECT COUNT(*) as total FROM vocab.defined')
             total = cursor.fetchone()[0]
 
             # Words with wav_url
-            cursor.execute("SELECT COUNT(*) FROM defined WHERE wav_url IS NOT NULL AND wav_url != ''")
+            cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE wav_url IS NOT NULL AND wav_url != ''")
             with_wav = cursor.fetchone()[0]
 
             # Sample of wav_url patterns
-            cursor.execute("SELECT DISTINCT wav_url FROM defined WHERE wav_url IS NOT NULL AND wav_url != '' LIMIT 20")
+            cursor.execute("SELECT DISTINCT wav_url FROM vocab.defined WHERE wav_url IS NOT NULL AND wav_url != '' LIMIT 20")
             samples = cursor.fetchall()
 
             # Check for external URLs (http/https)
-            cursor.execute("SELECT COUNT(*) FROM defined WHERE wav_url LIKE 'http%'")
+            cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE wav_url LIKE 'http%'")
             external_urls = cursor.fetchone()[0]
 
             # Check for local paths
-            cursor.execute("SELECT COUNT(*) FROM defined WHERE wav_url LIKE '/pronunciation/%'")
+            cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE wav_url LIKE '/pronunciation/%'")
             local_paths = cursor.fetchone()[0]
 
             print('=' * 60)

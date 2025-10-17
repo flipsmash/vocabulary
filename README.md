@@ -65,6 +65,7 @@ python cuda_enhanced_cli.py --calculate-similarities --similarity-threshold 0.2
 - **📈 Learning Analytics**: Personal progress tracking with visual insights and streaks
 - **🔄 Spaced Repetition**: Science-based review scheduling for optimal retention
 - **🔍 Advanced Search & Browse**: Explore 22,000+ words with filtering and pagination
+- **📊 Visualization Studio**: Interactive rarity histograms, domain heatmaps, and semantic neighborhood graphs
 - **👥 User Management**: Complete admin dashboard with user statistics and controls
 - **✏️ Definition Editor**: Professional admin tools for managing vocabulary database
 

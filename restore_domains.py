@@ -91,13 +91,13 @@ def populate_word_domains():
     cursor = conn.cursor()
     
     print("Fetching words from defined table...")
-    cursor.execute("SELECT id, term, definition, part_of_speech FROM defined WHERE definition IS NOT NULL")
+    cursor.execute("SELECT id, term, definition, part_of_speech FROM vocab.defined WHERE definition IS NOT NULL")
     words = cursor.fetchall()
     
     print(f"Processing {len(words)} words...")
     
     # Clear existing data
-    cursor.execute("DELETE FROM word_domains")
+    cursor.execute("DELETE FROM vocab.word_domains")
     conn.commit()
     
     # Process in batches
@@ -113,7 +113,7 @@ def populate_word_domains():
         
         if len(insert_data) >= batch_size:
             cursor.executemany(
-                "INSERT INTO word_domains (word_id, primary_domain) VALUES (%s, %s)",
+                "INSERT INTO vocab.word_domains (word_id, primary_domain) VALUES (%s, %s)",
                 insert_data
             )
             conn.commit()
@@ -123,14 +123,14 @@ def populate_word_domains():
     # Insert remaining data
     if insert_data:
         cursor.executemany(
-            "INSERT INTO word_domains (word_id, primary_domain) VALUES (%s, %s)",
+            "INSERT INTO vocab.word_domains (word_id, primary_domain) VALUES (%s, %s)",
             insert_data
         )
         conn.commit()
     
     # Show domain distribution
     print("\nDomain distribution:")
-    cursor.execute("SELECT primary_domain, COUNT(*) FROM word_domains GROUP BY primary_domain ORDER BY COUNT(*) DESC")
+    cursor.execute("SELECT primary_domain, COUNT(*) FROM vocab.word_domains GROUP BY primary_domain ORDER BY COUNT(*) DESC")
     for domain, count in cursor.fetchall():
         print(f"  {domain}: {count}")
     

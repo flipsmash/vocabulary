@@ -99,7 +99,7 @@ class QuizTracker:
 
         try:
             cursor.execute("""
-                INSERT INTO quiz_sessions
+                INSERT INTO vocab.quiz_sessions
                 (id, user_id, started_at, quiz_type, difficulty, topic_domain,
                  topic_pos, total_questions, correct_answers, session_config)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -129,7 +129,7 @@ class QuizTracker:
         try:
             # Insert question result
             cursor.execute("""
-                INSERT INTO user_quiz_results
+                INSERT INTO vocab.user_quiz_results
                 (user_id, word_id, session_id, question_type, is_correct,
                  response_time_ms, answered_at, difficulty_level)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -158,7 +158,7 @@ class QuizTracker:
 
         try:
             cursor.execute("""
-                UPDATE quiz_sessions
+                UPDATE vocab.quiz_sessions
                 SET completed_at = %s, correct_answers = %s
                 WHERE id = %s
             """, (datetime.now(), final_score, session_id))
@@ -182,7 +182,7 @@ class QuizTracker:
             # Get current mastery record
             cursor.execute("""
                 SELECT mastery_level, total_attempts, correct_attempts, streak, ease_factor
-                FROM user_word_mastery
+                FROM vocab.user_word_mastery
                 WHERE user_id = %s AND word_id = %s
             """, (user_id, word_id))
 
@@ -225,7 +225,7 @@ class QuizTracker:
                     next_review = datetime.now() + timedelta(days=1)
 
                 cursor.execute("""
-                    UPDATE user_word_mastery
+                    UPDATE vocab.user_word_mastery
                     SET mastery_level = %s, total_attempts = %s, correct_attempts = %s,
                         last_seen = %s, next_review = %s, streak = %s, ease_factor = %s
                     WHERE user_id = %s AND word_id = %s
@@ -240,7 +240,7 @@ class QuizTracker:
                 next_review = datetime.now() + timedelta(days=1)
 
                 cursor.execute("""
-                    INSERT INTO user_word_mastery
+                    INSERT INTO vocab.user_word_mastery
                     (user_id, word_id, mastery_level, total_attempts, correct_attempts,
                      last_seen, next_review, streak, ease_factor)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -263,7 +263,7 @@ class QuizTracker:
                        AVG(correct_answers / total_questions * 100) as avg_accuracy,
                        SUM(correct_answers) as total_correct,
                        SUM(total_questions) as total_questions
-                FROM quiz_sessions
+                FROM vocab.quiz_sessions
                 WHERE user_id = %s AND completed_at IS NOT NULL
             """, (user_id,))
 
@@ -272,7 +272,7 @@ class QuizTracker:
             # Word mastery breakdown
             cursor.execute("""
                 SELECT mastery_level, COUNT(*)
-                FROM user_word_mastery
+                FROM vocab.user_word_mastery
                 WHERE user_id = %s
                 GROUP BY mastery_level
             """, (user_id,))
@@ -284,7 +284,7 @@ class QuizTracker:
                 SELECT DATE(answered_at) as quiz_date,
                        COUNT(*) as questions,
                        SUM(is_correct) as correct
-                FROM user_quiz_results
+                FROM vocab.user_quiz_results
                 WHERE user_id = %s AND answered_at >= (NOW() - INTERVAL '30 days')
                 GROUP BY DATE(answered_at)
                 ORDER BY quiz_date DESC
@@ -321,8 +321,8 @@ class QuizTracker:
             cursor.execute("""
                 SELECT d.id, d.term, d.definition, uwm.mastery_level, uwm.next_review,
                        uwm.total_attempts, uwm.correct_attempts
-                FROM user_word_mastery uwm
-                JOIN defined d ON uwm.word_id = d.id
+                FROM vocab.user_word_mastery uwm
+                JOIN vocab.defined d ON uwm.word_id = d.id
                 WHERE uwm.user_id = %s AND uwm.next_review <= NOW()
                 ORDER BY uwm.next_review ASC, uwm.mastery_level ASC
                 LIMIT %s

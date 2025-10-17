@@ -110,7 +110,7 @@ def mark_obsolete_words(high_confidence_only: bool = False, dry_run: bool = Fals
     print("\nFetching all definitions...")
     cursor.execute("""
         SELECT id, term, definition, part_of_speech
-        FROM defined
+        FROM vocab.defined
         WHERE definition IS NOT NULL
         ORDER BY id
     """)
@@ -152,7 +152,7 @@ def mark_obsolete_words(high_confidence_only: bool = False, dry_run: bool = Fals
         cursor.execute("""
             SELECT term, part_of_speech,
                    substring(definition, 1, 100) as def_preview
-            FROM defined
+            FROM vocab.defined
             WHERE definition ILIKE '%obsolete%'
                OR definition ILIKE '%archaic%'
                OR definition ~ '\\[Obs\\.?\\]'
@@ -166,7 +166,7 @@ def mark_obsolete_words(high_confidence_only: bool = False, dry_run: bool = Fals
             cursor.execute("""
                 SELECT term, part_of_speech,
                        substring(definition, 1, 100) as def_preview
-                FROM defined
+                FROM vocab.defined
                 WHERE (definition ILIKE '%dated%' OR definition ILIKE '%formerly%')
                   AND NOT (
                       definition ILIKE '%obsolete%'
@@ -182,12 +182,12 @@ def mark_obsolete_words(high_confidence_only: bool = False, dry_run: bool = Fals
         print("\nUpdating database...")
 
         # First, reset all to FALSE
-        cursor.execute("UPDATE defined SET obsolete_or_archaic = FALSE")
+        cursor.execute("UPDATE vocab.defined SET obsolete_or_archaic = FALSE")
 
         # Then mark obsolete words as TRUE
         if obsolete_ids:
             cursor.execute("""
-                UPDATE defined
+                UPDATE vocab.defined
                 SET obsolete_or_archaic = TRUE
                 WHERE id = ANY(%s)
             """, (obsolete_ids,))
@@ -199,7 +199,7 @@ def mark_obsolete_words(high_confidence_only: bool = False, dry_run: bool = Fals
         # Verify the update
         cursor.execute("""
             SELECT COUNT(*)
-            FROM defined
+            FROM vocab.defined
             WHERE obsolete_or_archaic = TRUE
         """)
         verified_count = cursor.fetchone()[0]
@@ -214,7 +214,7 @@ def mark_obsolete_words(high_confidence_only: bool = False, dry_run: bool = Fals
                 COUNT(*) FILTER (WHERE definition ~ '\\[Obs\\.?\\]') as obs_brackets,
                 COUNT(*) FILTER (WHERE definition ILIKE '%no longer%') as no_longer,
                 COUNT(*) FILTER (WHERE definition ILIKE '%antiquated%') as antiquated
-            FROM defined
+            FROM vocab.defined
             WHERE obsolete_or_archaic = TRUE
         """)
 
@@ -230,7 +230,7 @@ def mark_obsolete_words(high_confidence_only: bool = False, dry_run: bool = Fals
                 SELECT
                     COUNT(*) FILTER (WHERE definition ILIKE '%dated%') as dated,
                     COUNT(*) FILTER (WHERE definition ILIKE '%formerly%') as formerly
-                FROM defined
+                FROM vocab.defined
                 WHERE obsolete_or_archaic = TRUE
                   AND NOT (
                       definition ILIKE '%obsolete%'

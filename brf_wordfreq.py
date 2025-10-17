@@ -135,7 +135,7 @@ class ZipfFrequencyUpdater:
             # Get terms where python_wordfreq is NULL or empty
             query = """
                     SELECT id, term
-                    FROM defined
+                    FROM vocab.defined
                     WHERE python_wordfreq IS NULL \
                        OR python_wordfreq = ''
                     ORDER BY id
@@ -155,7 +155,7 @@ class ZipfFrequencyUpdater:
             cursor = conn.cursor()
             query = """
                     SELECT COUNT(*)
-                    FROM defined
+                    FROM vocab.defined
                     WHERE python_wordfreq IS NULL \
                        OR python_wordfreq = '' \
                     """
@@ -185,7 +185,7 @@ class ZipfFrequencyUpdater:
             cursor = conn.cursor()
 
             update_query = """
-                           UPDATE defined
+                           UPDATE vocab.defined
                            SET python_wordfreq = %s
                            WHERE id = %s
                            """
@@ -267,7 +267,7 @@ class ZipfFrequencyUpdater:
                                  MIN(python_wordfreq)   as min_zipf, \
                                  MAX(python_wordfreq)   as max_zipf, \
                                  STD(python_wordfreq)   as std_zipf
-                          FROM defined
+                          FROM vocab.defined
                           WHERE python_wordfreq IS NOT NULL \
                           """
 
@@ -286,7 +286,7 @@ class ZipfFrequencyUpdater:
                                     ELSE 'Very Rare (<1.0)' \
                                     END as frequency_category, \
                                 COUNT(*) as count
-                         FROM defined
+                         FROM vocab.defined
                          WHERE python_wordfreq IS NOT NULL
                          GROUP BY frequency_category
                          ORDER BY MIN(python_wordfreq) DESC \
@@ -298,7 +298,7 @@ class ZipfFrequencyUpdater:
             # Get top and bottom frequency words
             top_query = """
                         SELECT term, python_wordfreq
-                        FROM defined
+                        FROM vocab.defined
                         WHERE python_wordfreq IS NOT NULL
                         ORDER BY python_wordfreq DESC LIMIT 10 \
                         """
@@ -307,7 +307,7 @@ class ZipfFrequencyUpdater:
 
             bottom_query = """
                            SELECT term, python_wordfreq
-                           FROM defined
+                           FROM vocab.defined
                            WHERE python_wordfreq IS NOT NULL
                            ORDER BY python_wordfreq ASC LIMIT 10 \
                            """

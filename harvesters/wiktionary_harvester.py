@@ -410,11 +410,11 @@ class HarvesterDatabase:
             cursor = conn.cursor()
             
             # Get from main vocabulary
-            cursor.execute("SELECT LOWER(term) FROM defined")
+            cursor.execute("SELECT LOWER(term) FROM vocab.defined")
             existing = {row[0] for row in cursor.fetchall()}
             
             # Get from candidates
-            cursor.execute("SELECT LOWER(term) FROM candidate_words")
+            cursor.execute("SELECT LOWER(term) FROM vocab.candidate_words")
             candidates = {row[0] for row in cursor.fetchall()}
             
             return existing.union(candidates)
@@ -437,7 +437,7 @@ class HarvesterDatabase:
             cursor = conn.cursor()
             
             insert_query = """
-            INSERT INTO candidate_words 
+            INSERT INTO vocab.candidate_words 
             (term, source_type, source_reference, context_snippet, raw_definition, 
              etymology_preview, part_of_speech, utility_score, rarity_indicators, date_discovered)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)

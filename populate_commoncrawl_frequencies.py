@@ -17,7 +17,7 @@ def check_database_schema():
 
     try:
         # Check if column exists
-        cursor.execute("SHOW COLUMNS FROM defined LIKE 'commoncrawl_freq'")
+        cursor.execute("SHOW COLUMNS FROM vocab.defined LIKE 'commoncrawl_freq'")
         column_exists = cursor.fetchone() is not None
 
         if not column_exists:
@@ -46,7 +46,7 @@ def get_all_terms() -> List[Tuple[int, str]]:
     try:
         cursor.execute("""
             SELECT id, term
-            FROM defined
+            FROM vocab.defined
             WHERE (phrase IS NULL OR phrase = 0)
             AND term NOT LIKE '% %'
             ORDER BY id
@@ -65,7 +65,7 @@ def reset_commoncrawl_freq():
     cursor = conn.cursor()
 
     try:
-        cursor.execute("UPDATE defined SET commoncrawl_freq = NULL")
+        cursor.execute("UPDATE vocab.defined SET commoncrawl_freq = NULL")
         reset_count = cursor.rowcount
         conn.commit()
 
@@ -134,7 +134,7 @@ def populate_commoncrawl_frequencies():
 
                 # Update database
                 cursor.execute(
-                    "UPDATE defined SET commoncrawl_freq = %s WHERE id = %s",
+                    "UPDATE vocab.defined SET commoncrawl_freq = %s WHERE id = %s",
                     (score, word_id)
                 )
 
@@ -170,16 +170,16 @@ def verify_completion():
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE commoncrawl_freq IS NULL")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE commoncrawl_freq IS NULL")
         remaining_count = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE commoncrawl_freq IS NOT NULL")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE commoncrawl_freq IS NOT NULL")
         populated_count = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE commoncrawl_freq > -999")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE commoncrawl_freq > -999")
         found_count = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE commoncrawl_freq = -999")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE commoncrawl_freq = -999")
         not_found_count = cursor.fetchone()[0]
 
         print(f"\nVerification:")
@@ -206,7 +206,7 @@ def check_commoncrawl_status():
 
     try:
         # Check if column exists
-        cursor.execute("SHOW COLUMNS FROM defined LIKE 'commoncrawl_freq'")
+        cursor.execute("SHOW COLUMNS FROM vocab.defined LIKE 'commoncrawl_freq'")
         column_exists = cursor.fetchone() is not None
 
         if not column_exists:
@@ -214,16 +214,16 @@ def check_commoncrawl_status():
             return
 
         # Check counts
-        cursor.execute("SELECT COUNT(*) FROM defined")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined")
         total_count = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE commoncrawl_freq IS NULL")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE commoncrawl_freq IS NULL")
         null_count = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE commoncrawl_freq IS NOT NULL")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE commoncrawl_freq IS NOT NULL")
         populated_count = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE commoncrawl_freq > -999")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE commoncrawl_freq > -999")
         found_count = cursor.fetchone()[0]
 
         print(f"Common Crawl Frequency Status:")

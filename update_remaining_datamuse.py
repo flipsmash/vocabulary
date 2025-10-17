@@ -35,7 +35,7 @@ cursor = conn.cursor()
 # Get all remaining terms without frequency
 cursor.execute("""
     SELECT id, term
-    FROM defined
+    FROM vocab.defined
     WHERE frequency IS NULL
     ORDER BY id
 """)
@@ -53,11 +53,11 @@ for i, (term_id, term) in enumerate(terms, 1):
     frequency = get_datamuse_frequency(term)
 
     if frequency is not None:
-        cursor.execute("UPDATE defined SET frequency = %s WHERE id = %s", (frequency, term_id))
+        cursor.execute("UPDATE vocab.defined SET frequency = %s WHERE id = %s", (frequency, term_id))
         updated_count += 1
         print(f"  Updated with frequency: {frequency}")
     else:
-        cursor.execute("UPDATE defined SET frequency = -999 WHERE id = %s", (term_id,))
+        cursor.execute("UPDATE vocab.defined SET frequency = -999 WHERE id = %s", (term_id,))
         not_found_count += 1
         print(f"  No frequency found, set to -999")
 

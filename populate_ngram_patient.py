@@ -80,7 +80,7 @@ class PatientNgramPopulator:
             # Focus on words that don't have any frequency data yet
             query = """
                 SELECT id, term
-                FROM defined
+                FROM vocab.defined
                 WHERE ngram_freq IS NULL
                 AND (phrase IS NULL OR phrase = 0)
                 AND term NOT LIKE '% %'
@@ -135,7 +135,7 @@ class PatientNgramPopulator:
                         print(f"    NOT FOUND {term}: set to {self.not_found_value}")
 
                     cursor.execute(
-                        "UPDATE defined SET ngram_freq = %s WHERE id = %s",
+                        "UPDATE vocab.defined SET ngram_freq = %s WHERE id = %s",
                         (score, term_id)
                     )
 

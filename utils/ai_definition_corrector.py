@@ -159,7 +159,7 @@ class AIDefinitionCorrector:
         
         cursor.execute("""
             SELECT definition 
-            FROM defined 
+            FROM vocab.defined 
             WHERE term = %s 
             AND (has_circular_definition IS FALSE OR has_circular_definition IS NULL)
             AND definition IS NOT NULL
@@ -235,7 +235,7 @@ class AIDefinitionCorrector:
         
         sql = """
             SELECT id, term, definition, corrected_definition 
-            FROM defined 
+            FROM vocab.defined 
             WHERE has_circular_definition = TRUE
         """
         if limit:
@@ -263,7 +263,7 @@ class AIDefinitionCorrector:
                 'or relating to or' not in new_correction.lower()):
                 
                 cursor.execute("""
-                    UPDATE defined 
+                    UPDATE vocab.defined 
                     SET corrected_definition = %s
                     WHERE id = %s
                 """, (new_correction, def_id))

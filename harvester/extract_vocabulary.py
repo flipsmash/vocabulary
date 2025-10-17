@@ -581,7 +581,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 batch = [t.lower() for t in terms[i:i+chunk]]
                 placeholders = ','.join(['%s'] * len(batch))
                 cursor.execute(
-                    f"SELECT LOWER(term) FROM defined WHERE LOWER(term) IN ({placeholders})",
+                    f"SELECT LOWER(term) FROM vocab.defined WHERE LOWER(term) IN ({placeholders})",
                     batch,
                 )
                 for (t,) in cursor.fetchall():
@@ -628,7 +628,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             )
             cur = conn.cursor()
             sql = (
-                "INSERT INTO defined (term, definition, date_added, definition_source) "
+                "INSERT INTO vocab.defined (term, definition, date_added, definition_source) "
                 "VALUES (%s, %s, %s, %s)"
             )
             data = [(td.term, td.definition, today, source_label) for td in pairs]

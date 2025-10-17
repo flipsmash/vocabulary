@@ -178,7 +178,7 @@ class CircularDefinitionDetector:
         cursor = conn.cursor()
         
         # Get all definitions
-        sql = "SELECT id, term, definition FROM defined WHERE definition IS NOT NULL"
+        sql = "SELECT id, term, definition FROM vocab.defined WHERE definition IS NOT NULL"
         if limit:
             sql += f" LIMIT {limit}"
         
@@ -206,7 +206,7 @@ class CircularDefinitionDetector:
                 
                 # Update database
                 update_sql = """
-                    UPDATE defined 
+                    UPDATE vocab.defined 
                     SET has_circular_definition = TRUE,
                         corrected_definition = %s
                     WHERE id = %s
@@ -233,7 +233,7 @@ class CircularDefinitionDetector:
         
         cursor.execute("""
             SELECT id, term, definition, corrected_definition, part_of_speech
-            FROM defined 
+            FROM vocab.defined 
             WHERE has_circular_definition = TRUE
             ORDER BY term
             LIMIT %s
@@ -260,7 +260,7 @@ class CircularDefinitionDetector:
         cursor = conn.cursor()
         
         cursor.execute("""
-            UPDATE defined 
+            UPDATE vocab.defined 
             SET corrected_definition = %s
             WHERE id = %s
         """, (corrected_definition, def_id))

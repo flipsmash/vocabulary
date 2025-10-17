@@ -152,7 +152,7 @@ def _fetch_existing_pos_values() -> Dict[str, str]:
         cursor.execute(
             """
             SELECT DISTINCT part_of_speech
-            FROM defined
+            FROM vocab.defined
             WHERE part_of_speech IS NOT NULL
               AND TRIM(part_of_speech) != ''
             """
@@ -174,7 +174,7 @@ def _load_missing_rows(limit: Optional[int]) -> List[MissingDefinitionRow]:
 
     query = (
         "SELECT id, term, part_of_speech "
-        "FROM defined "
+        "FROM vocab.defined "
         "WHERE definition IS NULL OR TRIM(definition) = '' "
         "ORDER BY id ASC"
     )
@@ -212,7 +212,7 @@ def _fetch_existing_filled_keys(existing_pos_map: Dict[str, str]) -> set[Tuple[s
         cursor.execute(
             """
             SELECT LOWER(term), part_of_speech
-            FROM defined
+            FROM vocab.defined
             WHERE definition IS NOT NULL
               AND TRIM(definition) != ''
             """
@@ -374,7 +374,7 @@ def _apply_updates(
                 params.append(action.definition_source)
 
             params.append(action.row_id)
-            sql = f"UPDATE defined SET {', '.join(set_clauses)} WHERE id = %s"
+            sql = f"UPDATE vocab.defined SET {', '.join(set_clauses)} WHERE id = %s"
             cursor.execute(sql, params)
             updated_rows += cursor.rowcount
 
@@ -400,7 +400,7 @@ def _apply_inserts(
         column_names.append("date_added")
 
     placeholders = ", ".join(["%s"] * len(column_names))
-    insert_sql = f"INSERT INTO defined ({', '.join(column_names)}) VALUES ({placeholders})"
+    insert_sql = f"INSERT INTO vocab.defined ({', '.join(column_names)}) VALUES ({placeholders})"
 
     with database_cursor() as cursor:
         for action in inserts:
@@ -421,7 +421,7 @@ def _apply_inserts(
 
 def _fetch_defined_columns() -> set[str]:
     with database_cursor() as cursor:
-        cursor.execute("SHOW COLUMNS FROM defined")
+        cursor.execute("SHOW COLUMNS FROM vocab.defined")
         columns = {row[0] for row in cursor.fetchall()}
     return columns
 

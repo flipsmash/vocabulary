@@ -22,7 +22,7 @@ def reset_admin_password():
         
         # Update the admin user
         cursor.execute("""
-            UPDATE users 
+            UPDATE vocab.users 
             SET password_hash = %s 
             WHERE username = 'admin'
         """, (hashed_password,))

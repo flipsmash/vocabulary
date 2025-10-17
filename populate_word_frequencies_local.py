@@ -98,7 +98,7 @@ def populate_frequencies():
         print("Getting words from database...")
         cursor.execute("""
             SELECT id, term
-            FROM defined
+            FROM vocab.defined
             WHERE ngram_freq IS NULL
             AND (phrase IS NULL OR phrase = 0)
             ORDER BY id
@@ -123,7 +123,7 @@ def populate_frequencies():
                 found_count += 1
 
             cursor.execute(
-                "UPDATE defined SET ngram_freq = %s WHERE id = %s",
+                "UPDATE vocab.defined SET ngram_freq = %s WHERE id = %s",
                 (frequency, word_id)
             )
             updated_count += cursor.rowcount

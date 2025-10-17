@@ -42,7 +42,7 @@ class VocabularyDeduplicator:
             
             # Get terms from main vocabulary table (defined words)
             try:
-                cursor.execute("SELECT LOWER(TRIM(term)) FROM defined WHERE term IS NOT NULL AND term != ''")
+                cursor.execute("SELECT LOWER(TRIM(term)) FROM vocab.defined WHERE term IS NOT NULL AND term != ''")
                 main_vocab = {row[0] for row in cursor.fetchall() if row[0]}
                 existing_terms.update(main_vocab)
                 logger.debug(f"Found {len(main_vocab)} terms in main vocabulary")
@@ -51,7 +51,7 @@ class VocabularyDeduplicator:
             
             # Get terms from candidate words
             try:
-                cursor.execute("SELECT LOWER(TRIM(term)) FROM candidate_words WHERE term IS NOT NULL AND term != ''")
+                cursor.execute("SELECT LOWER(TRIM(term)) FROM vocab.candidate_words WHERE term IS NOT NULL AND term != ''")
                 candidate_terms = {row[0] for row in cursor.fetchall() if row[0]}
                 existing_terms.update(candidate_terms)
                 logger.debug(f"Found {len(candidate_terms)} terms in candidate_words")

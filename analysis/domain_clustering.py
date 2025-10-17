@@ -45,8 +45,8 @@ class DomainClusterAnalyzer:
                 d.definition,
                 d.part_of_speech,
                 d.frequency
-            FROM definition_embeddings e
-            JOIN defined d ON e.word_id = d.id
+            FROM vocab.definition_embeddings e
+            JOIN vocab.defined d ON e.word_id = d.id
             ORDER BY e.word_id
             """
             

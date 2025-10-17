@@ -141,7 +141,7 @@ class PhoneticMetricsCalculator:
             query = f"""
             SELECT word_id, word, ipa_transcription, arpabet_transcription, 
                    syllable_count, stress_pattern
-            FROM word_phonetics 
+            FROM vocab.word_phonetics 
             WHERE word_id IN ({placeholders})
             """
             
@@ -167,7 +167,7 @@ class PhoneticMetricsCalculator:
             cursor = conn.cursor()
             
             update_query = """
-            UPDATE pronunciation_similarity 
+            UPDATE vocab.pronunciation_similarity 
             SET phonetic_distance = %s, stress_similarity = %s, 
                 rhyme_score = %s, syllable_similarity = %s
             WHERE word1_id = %s AND word2_id = %s
@@ -195,7 +195,7 @@ class PhoneticMetricsCalculator:
                 # Get batch of similarity records
                 select_query = """
                 SELECT word1_id, word2_id, overall_similarity
-                FROM pronunciation_similarity 
+                FROM vocab.pronunciation_similarity 
                 WHERE phonetic_distance = 0 AND stress_similarity = 0 
                 AND rhyme_score = 0 AND syllable_similarity = 0
                 LIMIT %s OFFSET %s

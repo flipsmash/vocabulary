@@ -526,7 +526,7 @@ class ProjectGutenbergHarvester:
             cursor = conn.cursor()
             
             insert_query = """
-                INSERT INTO candidate_words 
+                INSERT INTO vocab.candidate_words 
                 (term, source_type, part_of_speech, utility_score, rarity_indicators,
                  context_snippet, raw_definition, etymology_preview, date_discovered)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)

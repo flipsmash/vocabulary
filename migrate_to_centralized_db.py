@@ -121,14 +121,14 @@ from core.database_manager import db_manager, database_cursor, database_connecti
 # Example 1: Simple query execution
 def get_word_count():
     """Get total word count using simple query"""
-    result = db_manager.execute_query("SELECT COUNT(*) FROM defined")
+    result = db_manager.execute_query("SELECT COUNT(*) FROM vocab.defined")
     return result[0][0] if result else 0
 
 # Example 2: Query with parameters
 def find_words_by_pattern(pattern: str):
     """Find words matching a pattern"""
     results = db_manager.execute_query(
-        "SELECT term, definition FROM defined WHERE term LIKE %s LIMIT 10",
+        "SELECT term, definition FROM vocab.defined WHERE term LIKE %s LIMIT 10",
         (f"%{pattern}%",),
         dictionary=True
     )
@@ -140,8 +140,8 @@ def get_word_details(word_id: int):
     with database_cursor(dictionary=True) as cursor:
         cursor.execute("""
             SELECT d.*, p.ipa_transcription, p.syllable_count
-            FROM defined d
-            LEFT JOIN word_phonetics p ON d.id = p.word_id
+            FROM vocab.defined d
+            LEFT JOIN vocab.word_phonetics p ON d.id = p.word_id
             WHERE d.id = %s
         """, (word_id,))
 
@@ -157,7 +157,7 @@ def store_multiple_candidates(candidates: list):
     ]
 
     rows_affected = db_manager.execute_many("""
-        INSERT INTO candidate_words
+        INSERT INTO vocab.candidate_words
         (term, source_type, source_reference, context_snippet, raw_definition,
          etymology_preview, part_of_speech, utility_score, rarity_indicators,
          date_discovered, review_status)
@@ -174,10 +174,10 @@ def complex_database_operation():
 
         try:
             # Multiple related queries
-            cursor.execute("SELECT COUNT(*) as count FROM defined")
+            cursor.execute("SELECT COUNT(*) as count FROM vocab.defined")
             count = cursor.fetchone()['count']
 
-            cursor.execute("SELECT AVG(frequency) as avg_freq FROM defined WHERE frequency IS NOT NULL")
+            cursor.execute("SELECT AVG(frequency) as avg_freq FROM vocab.defined WHERE frequency IS NOT NULL")
             avg_freq = cursor.fetchone()['avg_freq']
 
             # Insert summary

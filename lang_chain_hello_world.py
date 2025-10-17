@@ -174,7 +174,7 @@ def fetch_training_examples(
     limit: int | None,
 ) -> List[TrainingExample]:
     query = (
-        "SELECT term, definition, part_of_speech FROM defined "
+        "SELECT term, definition, part_of_speech FROM vocab.defined "
         "WHERE definition IS NOT NULL "
         "AND TRIM(definition) <> '' "
         "AND part_of_speech IS NOT NULL "
@@ -308,7 +308,7 @@ def fetch_definition_batch(
     last_id: int,
 ) -> List[DefinitionRecord]:
     query = (
-        "SELECT id, term, definition FROM defined "
+        "SELECT id, term, definition FROM vocab.defined "
         "WHERE definition IS NOT NULL "
         "AND TRIM(definition) <> '' "
         "AND (part_of_speech IS NULL OR TRIM(part_of_speech) = '') "
@@ -326,7 +326,7 @@ def update_part_of_speech(
     if not updates:
         return
 
-    sql = "UPDATE defined SET part_of_speech = %s WHERE id = %s"
+    sql = "UPDATE vocab.defined SET part_of_speech = %s WHERE id = %s"
     with connection.cursor() as cursor:
         cursor.executemany(sql, updates)
     connection.commit()

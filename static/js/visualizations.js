@@ -44,11 +44,14 @@
     const rotateYInput = document.querySelector('#rotate-y');
     const rotateXValue = document.querySelector('#rotate-x-value');
     const rotateYValue = document.querySelector('#rotate-y-value');
+    const fullscreenBtn = document.querySelector('#fullscreen-btn');
+    const fullscreenIcon = document.querySelector('#fullscreen-icon');
 
     const graphShell = document.querySelector('.viz-graph-shell');
     const graph2DEl = document.querySelector('#semantic-graph-2d');
     const graph3DEl = document.querySelector('#semantic-graph-3d');
     const tooltipEl = document.querySelector('#semantic-tooltip');
+    const legendEl = document.querySelector('#semantic-legend');
 
     if (!formEl || !graph2DEl || !graph3DEl || !tooltipEl) {
       console.warn('[Viz] Visualization controls missing from DOM.');
@@ -410,12 +413,25 @@
     }
 
     function ensureSize() {
-      const preferredHeight = Math.max(window.innerHeight * 0.55, 560);
-      const rect = graphShell.getBoundingClientRect();
-      const width = Math.max(rect.width || 800, 480);
-      Graph2D.width(width).height(preferredHeight);
-      if (Graph3D) {
-        Graph3D.width(width).height(preferredHeight);
+      const isFullscreen = !!document.fullscreenElement;
+
+      // In fullscreen, use full window dimensions
+      // Otherwise, use container bounds
+      if (isFullscreen) {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        Graph2D.width(width).height(height);
+        if (Graph3D) {
+          Graph3D.width(width).height(height);
+        }
+      } else {
+        const rect = graphShell.getBoundingClientRect();
+        const width = Math.max(rect.width || 800, 480);
+        const height = Math.max(window.innerHeight * 0.55, 560);
+        Graph2D.width(width).height(height);
+        if (Graph3D) {
+          Graph3D.width(width).height(height);
+        }
       }
     }
 
@@ -466,7 +482,28 @@
     }
 
     function updateMeta(raw) {
-      // Metadata display removed - keeping function for compatibility
+      // Update legend
+      if (legendEl && state.legendEntries.length > 0) {
+        const legendItems = state.legendEntries
+          .map(entry => `
+            <div class="viz-legend-item">
+              <span class="viz-legend-swatch" style="background-color:${entry.color}"></span>
+              <span class="viz-legend-label">${entry.domain}</span>
+              <span class="viz-legend-count">${entry.count}</span>
+            </div>
+          `)
+          .join('');
+
+        legendEl.innerHTML = `
+          <div class="viz-legend-title">Domains</div>
+          <div class="viz-legend-items">
+            ${legendItems}
+          </div>
+        `;
+        legendEl.classList.add('visible');
+      } else if (legendEl) {
+        legendEl.classList.remove('visible');
+      }
     }
 
     function applyGraph(raw) {
@@ -611,6 +648,62 @@
     ensureSize();
     updateForceStrengthDisplay();
     updateRotationDisplay();
+
+    // Fullscreen functionality
+    if (fullscreenBtn) {
+      fullscreenBtn.addEventListener('click', () => {
+        const vizPage = document.querySelector('.viz-page');
+
+        if (!document.fullscreenElement) {
+          // Enter fullscreen
+          if (vizPage.requestFullscreen) {
+            vizPage.requestFullscreen();
+          } else if (vizPage.webkitRequestFullscreen) {
+            vizPage.webkitRequestFullscreen();
+          } else if (vizPage.msRequestFullscreen) {
+            vizPage.msRequestFullscreen();
+          }
+        } else {
+          // Exit fullscreen
+          if (document.exitFullscreen) {
+            document.exitFullscreen();
+          } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+          } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+          }
+        }
+      });
+
+      // Update button text when fullscreen state changes
+      document.addEventListener('fullscreenchange', () => {
+        if (document.fullscreenElement) {
+          fullscreenIcon.textContent = '⛶';
+          fullscreenBtn.innerHTML = '<span id="fullscreen-icon">⛶</span> Exit Full Screen';
+          // Resize graphs to fill fullscreen
+          setTimeout(() => {
+            ensureSize();
+            if (state.mode === '2d') {
+              Graph2D.zoomToFit(300, 40);
+            } else if (Graph3D) {
+              Graph3D.zoomToFit(300, 80);
+            }
+          }, 100);
+        } else {
+          fullscreenIcon.textContent = '⛶';
+          fullscreenBtn.innerHTML = '<span id="fullscreen-icon">⛶</span> Full Screen';
+          // Resize graphs back to normal
+          setTimeout(() => {
+            ensureSize();
+            if (state.mode === '2d') {
+              Graph2D.zoomToFit(300, 40);
+            } else if (Graph3D) {
+              Graph3D.zoomToFit(300, 80);
+            }
+          }, 100);
+        }
+      });
+    }
 
     const initialTerm = termInput.value.trim();
     console.log('[Viz] Initial term:', initialTerm);

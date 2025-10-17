@@ -135,7 +135,10 @@
       "Bash(playwright screenshot:*)",
       "Read(//usr/local/bin/**)",
       "Bash(~/.local/bin/playwright --help)",
-      "Bash(~/.local/bin/playwright:*)"
+      "Bash(~/.local/bin/playwright:*)",
+      "Bash(psql:*)",
+      "Bash(nvidia-smi:*)",
+      "Bash(sed:*)"
     ],
     "deny": [],
     "ask": []

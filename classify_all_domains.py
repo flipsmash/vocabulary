@@ -41,7 +41,7 @@ def fetch_all_terms() -> List[Tuple[int, str, str]]:
     logger.info("Fetching all terms from defined table...")
     cursor.execute("""
         SELECT id, term, definition
-        FROM defined
+        FROM vocab.defined
         WHERE definition IS NOT NULL
         ORDER BY id
     """)
@@ -108,32 +108,31 @@ def classify_and_store(batch_size: int = 500):
                 result['confidence']
             ))
 
-        # Insert/update in database
-        cursor = conn.cursor()
-        try:
+        # Insert/update in database - use fresh cursor for each batch to avoid prepared statement conflicts
+        with conn.cursor() as cursor:
             # Use UPSERT to handle any existing records
-            cursor.executemany("""
-                INSERT INTO word_domains (word_id, primary_domain)
-                VALUES (%s, %s)
-                ON CONFLICT (word_id)
-                DO UPDATE SET primary_domain = EXCLUDED.primary_domain
-            """, [(wid, domain) for wid, domain, _ in records_to_insert])
-
+            for wid, domain, conf in records_to_insert:
+                cursor.execute("""
+                    INSERT INTO vocab.word_domains (word_id, primary_domain, confidence)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (word_id)
+                    DO UPDATE SET
+                        primary_domain = EXCLUDED.primary_domain,
+                        confidence = EXCLUDED.confidence
+                """, (wid, domain, conf))
             conn.commit()
-        finally:
-            cursor.close()
 
         total_processed += len(batch)
         logger.info(f"Progress: {total_processed:,}/{len(all_terms):,} ({100.0*total_processed/len(all_terms):.1f}%)")
 
     # Verify results
     with conn.cursor() as cursor:
-        cursor.execute("SELECT COUNT(*) FROM word_domains")
+        cursor.execute("SELECT COUNT(*) FROM vocab.word_domains")
         count = cursor.fetchone()[0]
 
         cursor.execute("""
             SELECT primary_domain, COUNT(*) as count
-            FROM word_domains
+            FROM vocab.word_domains
             GROUP BY primary_domain
             ORDER BY count DESC
         """)

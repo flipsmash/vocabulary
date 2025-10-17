@@ -12,22 +12,22 @@ def check_progress():
 
     try:
         # Count total records
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE (phrase IS NULL OR phrase = 0) AND term NOT LIKE '% %'")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE (phrase IS NULL OR phrase = 0) AND term NOT LIKE '% %'")
         total_single_words = cursor.fetchone()[0]
 
         # Count NULL records (not processed yet)
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE ngram_freq IS NULL AND (phrase IS NULL OR phrase = 0) AND term NOT LIKE '% %'")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE ngram_freq IS NULL AND (phrase IS NULL OR phrase = 0) AND term NOT LIKE '% %'")
         null_count = cursor.fetchone()[0]
 
         # Count processed records
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE ngram_freq IS NOT NULL AND (phrase IS NULL OR phrase = 0) AND term NOT LIKE '% %'")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE ngram_freq IS NOT NULL AND (phrase IS NULL OR phrase = 0) AND term NOT LIKE '% %'")
         processed_count = cursor.fetchone()[0]
 
         # Count found vs not found
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE ngram_freq > -999 AND (phrase IS NULL OR phrase = 0) AND term NOT LIKE '% %'")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE ngram_freq > -999 AND (phrase IS NULL OR phrase = 0) AND term NOT LIKE '% %'")
         found_count = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE ngram_freq = -999 AND (phrase IS NULL OR phrase = 0) AND term NOT LIKE '% %'")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE ngram_freq = -999 AND (phrase IS NULL OR phrase = 0) AND term NOT LIKE '% %'")
         not_found_count = cursor.fetchone()[0]
 
         print(f"Ngram Frequency Population Progress:")

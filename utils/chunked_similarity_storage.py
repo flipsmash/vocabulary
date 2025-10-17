@@ -116,7 +116,7 @@ class PureChunkedInserter:
                     
                     # Use INSERT IGNORE to skip duplicates
                     insert_query = """
-                    INSERT IGNORE INTO definition_similarity 
+                    INSERT IGNORE INTO vocab.definition_similarity 
                     (word1_id, word2_id, cosine_similarity, embedding_model)
                     VALUES (%s, %s, %s, %s)
                     """
@@ -163,7 +163,7 @@ class PureChunkedInserter:
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM definition_similarity")
+                cursor.execute("SELECT COUNT(*) FROM vocab.definition_similarity")
                 final_count = cursor.fetchone()[0]
                 
             print(f"\nSUCCESS!")

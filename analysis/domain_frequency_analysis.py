@@ -33,9 +33,9 @@ def analyze_domain_frequencies():
             wfi.frequency_rank,
             wfi.rarity_percentile,
             wfi.source_frequencies
-        FROM defined d
-        LEFT JOIN word_domains wd ON d.id = wd.word_id
-        LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
+        FROM vocab.defined d
+        LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
+        LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
         WHERE wfi.independent_frequency IS NOT NULL
         ORDER BY wfi.frequency_rank
     """)

@@ -26,7 +26,7 @@ def recalculate_frequencies():
     # Get all existing frequency records
     cursor.execute("""
         SELECT word_id, term, source_frequencies 
-        FROM word_frequencies_independent
+        FROM vocab.word_frequencies_independent
         ORDER BY word_id
     """)
     
@@ -86,7 +86,7 @@ def recalculate_frequencies():
     logger.info("Updating database with new frequencies...")
     
     update_sql = """
-        UPDATE word_frequencies_independent 
+        UPDATE vocab.word_frequencies_independent 
         SET independent_frequency = %s 
         WHERE word_id = %s
     """
@@ -105,13 +105,13 @@ def recalculate_frequencies():
     logger.info("Recalculating frequency rankings...")
     
     # Get total count first
-    cursor.execute("SELECT COUNT(*) FROM word_frequencies_independent")
+    cursor.execute("SELECT COUNT(*) FROM vocab.word_frequencies_independent")
     total_words = cursor.fetchone()[0]
     
     # Use a different approach for ranking
     cursor.execute("""
         SELECT word_id, independent_frequency 
-        FROM word_frequencies_independent 
+        FROM vocab.word_frequencies_independent 
         ORDER BY independent_frequency DESC, word_id ASC
     """)
     
@@ -121,7 +121,7 @@ def recalculate_frequencies():
     rank_updates = [(rank + 1, word_id) for rank, (word_id, _) in enumerate(ranked_words)]
     
     cursor.executemany("""
-        UPDATE word_frequencies_independent 
+        UPDATE vocab.word_frequencies_independent 
         SET frequency_rank = %s 
         WHERE word_id = %s
     """, rank_updates)
@@ -130,7 +130,7 @@ def recalculate_frequencies():
     logger.info("Recalculating rarity percentiles...")
     
     cursor.execute("""
-        UPDATE word_frequencies_independent 
+        UPDATE vocab.word_frequencies_independent 
         SET rarity_percentile = ROUND((frequency_rank / %s) * 100, 1)
     """, (total_words,))
     
@@ -147,7 +147,7 @@ def recalculate_frequencies():
             MIN(independent_frequency) as min_freq,
             MAX(independent_frequency) as max_freq,
             COUNT(*) - COUNT(CASE WHEN independent_frequency > 0 THEN 1 END) as zero_freq_count
-        FROM word_frequencies_independent
+        FROM vocab.word_frequencies_independent
     """)
     
     stats = cursor.fetchone()

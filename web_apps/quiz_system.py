@@ -141,17 +141,17 @@ class QuizSystem:
                     wd.primary_domain, wfi.frequency_rank,
                     wp.ipa_transcription, wp.arpabet_transcription,
                     ps.overall_similarity
-                FROM pronunciation_similarity ps
-                JOIN defined d ON (
+                FROM vocab.pronunciation_similarity ps
+                JOIN vocab.defined d ON (
                     CASE 
                         WHEN ps.word1_id = %s THEN d.id = ps.word2_id
                         WHEN ps.word2_id = %s THEN d.id = ps.word1_id
                         ELSE FALSE
                     END
                 )
-                LEFT JOIN word_domains wd ON d.id = wd.word_id
-                LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id  
-                LEFT JOIN word_phonetics wp ON d.id = wp.word_id
+                LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
+                LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id  
+                LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id
                 WHERE ps.overall_similarity > 0.3
                 AND d.id != %s
                 ORDER BY ps.overall_similarity DESC
@@ -179,8 +179,8 @@ class QuizSystem:
             # Get target word info first
             cursor.execute("""
                 SELECT d.part_of_speech, wd.primary_domain
-                FROM defined d
-                LEFT JOIN word_domains wd ON d.id = wd.word_id
+                FROM vocab.defined d
+                LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
                 WHERE d.id = %s
             """, (target_word_id,))
             
@@ -197,17 +197,17 @@ class QuizSystem:
                     wd.primary_domain, wfi.frequency_rank,
                     wp.ipa_transcription, wp.arpabet_transcription,
                     ds.cosine_similarity
-                FROM definition_similarity ds
-                JOIN defined d ON (
+                FROM vocab.definition_similarity ds
+                JOIN vocab.defined d ON (
                     CASE 
                         WHEN ds.word1_id = %s THEN d.id = ds.word2_id
                         WHEN ds.word2_id = %s THEN d.id = ds.word1_id
                         ELSE FALSE
                     END
                 )
-                LEFT JOIN word_domains wd ON d.id = wd.word_id
-                LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-                LEFT JOIN word_phonetics wp ON d.id = wp.word_id
+                LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
+                LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+                LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id
                 WHERE ds.cosine_similarity > 0.2
                 AND ds.cosine_similarity < 0.8
                 AND d.id != %s
@@ -247,7 +247,7 @@ class QuizSystem:
         
         try:
             # Get target word POS
-            cursor.execute("SELECT part_of_speech FROM defined WHERE id = %s", (target_word_id,))
+            cursor.execute("SELECT part_of_speech FROM vocab.defined WHERE id = %s", (target_word_id,))
             result = cursor.fetchone()
             if not result:
                 return []
@@ -259,10 +259,10 @@ class QuizSystem:
                     d.id, d.term, d.definition, d.part_of_speech,
                     wd.primary_domain, wfi.frequency_rank,
                     wp.ipa_transcription, wp.arpabet_transcription
-                FROM defined d
-                LEFT JOIN word_domains wd ON d.id = wd.word_id
-                LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-                LEFT JOIN word_phonetics wp ON d.id = wp.word_id
+                FROM vocab.defined d
+                LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
+                LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+                LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id
                 WHERE d.id != %s
             """
             
@@ -395,10 +395,10 @@ def main():
         SELECT d.id, d.term, d.definition, d.part_of_speech,
                wd.primary_domain, wfi.frequency_rank,
                wp.ipa_transcription, wp.arpabet_transcription
-        FROM defined d
-        LEFT JOIN word_domains wd ON d.id = wd.word_id
-        LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-        LEFT JOIN word_phonetics wp ON d.id = wp.word_id
+        FROM vocab.defined d
+        LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
+        LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+        LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id
         WHERE d.term = 'abacinate'
         LIMIT 1
     """)

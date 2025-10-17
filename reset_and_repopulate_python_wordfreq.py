@@ -32,7 +32,7 @@ def reset_python_wordfreq():
     cursor = conn.cursor()
 
     try:
-        cursor.execute("UPDATE defined SET python_wordfreq = NULL")
+        cursor.execute("UPDATE vocab.defined SET python_wordfreq = NULL")
         reset_count = cursor.rowcount
         conn.commit()
 
@@ -56,7 +56,7 @@ def get_all_terms() -> List[Tuple[int, str]]:
     try:
         cursor.execute("""
             SELECT id, term
-            FROM defined
+            FROM vocab.defined
             WHERE (phrase IS NULL OR phrase = 0)
             AND term NOT LIKE '% %'
             ORDER BY id
@@ -142,7 +142,7 @@ def populate_all_wordfreq():
 
                 # Update database
                 cursor.execute(
-                    "UPDATE defined SET python_wordfreq = %s WHERE id = %s",
+                    "UPDATE vocab.defined SET python_wordfreq = %s WHERE id = %s",
                     (score, word_id)
                 )
 
@@ -178,16 +178,16 @@ def verify_completion():
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE python_wordfreq IS NULL")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE python_wordfreq IS NULL")
         remaining_count = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE python_wordfreq IS NOT NULL")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE python_wordfreq IS NOT NULL")
         populated_count = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE python_wordfreq > -999")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE python_wordfreq > -999")
         found_count = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE python_wordfreq = -999")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE python_wordfreq = -999")
         not_found_count = cursor.fetchone()[0]
 
         print(f"\nVerification:")

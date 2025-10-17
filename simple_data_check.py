@@ -19,7 +19,7 @@ def check_browse_data():
     try:
         cursor.execute("""
             SELECT id, term, definition, part_of_speech 
-            FROM defined 
+            FROM vocab.defined 
             ORDER BY term 
             LIMIT 50
         """)
@@ -98,7 +98,7 @@ def search_specific_terms():
         found = []
         
         for term in terms_to_find:
-            cursor.execute("SELECT id, term, definition FROM defined WHERE term = %s", (term,))
+            cursor.execute("SELECT id, term, definition FROM vocab.defined WHERE term = %s", (term,))
             result = cursor.fetchone()
             
             if result:
@@ -123,7 +123,7 @@ def get_random_sample():
     try:
         cursor.execute("""
             SELECT id, term, definition, part_of_speech 
-            FROM defined 
+            FROM vocab.defined 
             ORDER BY RAND() 
             LIMIT 20
         """)
@@ -148,13 +148,13 @@ def get_stats():
     cursor = conn.cursor()
     
     try:
-        cursor.execute("SELECT COUNT(*) FROM defined")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined")
         total = cursor.fetchone()[0]
         
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE definition IS NULL OR definition = ''")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE definition IS NULL OR definition = ''")
         no_def = cursor.fetchone()[0]
         
-        cursor.execute("SELECT MIN(LENGTH(term)), MAX(LENGTH(term)), AVG(LENGTH(term)) FROM defined WHERE term IS NOT NULL")
+        cursor.execute("SELECT MIN(LENGTH(term)), MAX(LENGTH(term)), AVG(LENGTH(term)) FROM vocab.defined WHERE term IS NOT NULL")
         min_len, max_len, avg_len = cursor.fetchone()
         
         print("=== DATABASE STATISTICS ===")

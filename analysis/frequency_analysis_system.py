@@ -271,7 +271,7 @@ class FrequencyCollectionManager:
                 for freq_data in freq_list:
                     try:
                         cursor.execute("""
-                            INSERT INTO word_frequency_data 
+                            INSERT INTO vocab.word_frequency_data 
                             (word, source, zipf_score, raw_frequency, confidence, 
                              metadata, composite_zipf, composite_confidence)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -322,7 +322,7 @@ class FrequencyCollectionManager:
             placeholders = ', '.join(['%s'] * len(words))
             cursor.execute(f"""
                 SELECT word, composite_zipf, composite_confidence
-                FROM word_frequency_data 
+                FROM vocab.word_frequency_data 
                 WHERE word IN ({placeholders}) AND source = 'wordfreq_combined'
                 ORDER BY collection_date DESC
             """, words)
@@ -350,7 +350,7 @@ class FrequencyCollectionManager:
             stats = {}
             
             # Total words with frequency data
-            cursor.execute("SELECT COUNT(DISTINCT word) FROM word_frequency_data")
+            cursor.execute("SELECT COUNT(DISTINCT word) FROM vocab.word_frequency_data")
             stats['total_words'] = cursor.fetchone()[0]
             
             # Distribution by Zipf score ranges
@@ -365,7 +365,7 @@ class FrequencyCollectionManager:
                         ELSE 'very_common'
                     END as frequency_category,
                     COUNT(DISTINCT word) as word_count
-                FROM word_frequency_data
+                FROM vocab.word_frequency_data
                 WHERE source = 'wordfreq_combined'
                 GROUP BY frequency_category
             """)
@@ -375,7 +375,7 @@ class FrequencyCollectionManager:
             # Recent collection activity
             cursor.execute("""
                 SELECT DATE(collection_date) as date, COUNT(*) as entries
-                FROM word_frequency_data
+                FROM vocab.word_frequency_data
                 WHERE collection_date >= DATE_SUB(CURRENT_DATE, INTERVAL 7 DAY)
                 GROUP BY DATE(collection_date)
                 ORDER BY date DESC

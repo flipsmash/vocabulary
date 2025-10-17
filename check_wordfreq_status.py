@@ -13,19 +13,19 @@ def check_wordfreq_status():
 
     try:
         # Check total records
-        cursor.execute("SELECT COUNT(*) FROM defined")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined")
         total_count = cursor.fetchone()[0]
 
         # Check NULL python_wordfreq
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE python_wordfreq IS NULL")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE python_wordfreq IS NULL")
         null_count = cursor.fetchone()[0]
 
         # Check populated python_wordfreq
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE python_wordfreq IS NOT NULL")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE python_wordfreq IS NOT NULL")
         populated_count = cursor.fetchone()[0]
 
         # Check if column exists
-        cursor.execute("SHOW COLUMNS FROM defined LIKE 'python_wordfreq'")
+        cursor.execute("SHOW COLUMNS FROM vocab.defined LIKE 'python_wordfreq'")
         column_exists = cursor.fetchone() is not None
 
         print(f"Python WordFreq Status:")

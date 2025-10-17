@@ -50,9 +50,9 @@ class VocabularyDatabase:
                    AVG(wfi.rarity_percentile) as avg_rarity_percentile,
                    wd.primary_domain,
                    MIN(d.id) as representative_id
-            FROM defined d
-            LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-            LEFT JOIN word_domains wd ON d.id = wd.word_id
+            FROM vocab.defined d
+            LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+            LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
             WHERE d.term LIKE %s
             GROUP BY d.term, wd.primary_domain
             ORDER BY COALESCE(MIN(wfi.frequency_rank), 999999) ASC 
@@ -70,9 +70,9 @@ class VocabularyDatabase:
                    AVG(wfi.rarity_percentile) as avg_rarity_percentile,
                    wd.primary_domain,
                    MIN(d.id) as representative_id
-            FROM defined d
-            LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-            LEFT JOIN word_domains wd ON d.id = wd.word_id
+            FROM vocab.defined d
+            LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+            LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
             GROUP BY d.term, wd.primary_domain
             ORDER BY COALESCE(MIN(wfi.frequency_rank), 999999) ASC 
             LIMIT %s OFFSET %s
@@ -108,9 +108,9 @@ class VocabularyDatabase:
         SELECT d.id, d.term, d.definition, d.part_of_speech, d.frequency,
                wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
                wd.primary_domain
-        FROM defined d
-        LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-        LEFT JOIN word_domains wd ON d.id = wd.word_id
+        FROM vocab.defined d
+        LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+        LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
         WHERE d.id = %s
         """
         
@@ -144,7 +144,7 @@ class VocabularyDatabase:
         cursor = conn.cursor()
         
         # Get total count
-        cursor.execute("SELECT COUNT(*) FROM defined")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined")
         total_count = cursor.fetchone()[0]
         
         # Get random word
@@ -154,9 +154,9 @@ class VocabularyDatabase:
         SELECT d.id, d.term, d.definition, d.part_of_speech, d.frequency,
                wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
                wd.primary_domain
-        FROM defined d
-        LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-        LEFT JOIN word_domains wd ON d.id = wd.word_id
+        FROM vocab.defined d
+        LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+        LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
         LIMIT 1 OFFSET %s
         """
         
@@ -189,9 +189,9 @@ class VocabularyDatabase:
         SELECT d.id, d.term, d.definition, d.part_of_speech, d.frequency,
                wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
                wd.primary_domain
-        FROM defined d
-        LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-        LEFT JOIN word_domains wd ON d.id = wd.word_id
+        FROM vocab.defined d
+        LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+        LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
         WHERE 1=1
         """
         params = []
@@ -240,7 +240,7 @@ class VocabularyDatabase:
         
         sql = """
         SELECT DISTINCT primary_domain 
-        FROM word_domains 
+        FROM vocab.word_domains 
         WHERE primary_domain IS NOT NULL 
         ORDER BY primary_domain
         """
@@ -264,9 +264,9 @@ class VocabularyDatabase:
         SELECT d.id, d.term, d.definition, d.part_of_speech, d.frequency,
                wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
                wd.primary_domain
-        FROM defined d
-        LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-        LEFT JOIN word_domains wd ON d.id = wd.word_id
+        FROM vocab.defined d
+        LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+        LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
         WHERE 1=1
         """
         params = []
@@ -327,7 +327,7 @@ class VocabularyDatabase:
         
         sql = """
         SELECT UPPER(LEFT(term, 1)) as letter, COUNT(DISTINCT term) as word_count
-        FROM defined 
+        FROM vocab.defined 
         WHERE term REGEXP '^[A-Za-z]'
         GROUP BY UPPER(LEFT(term, 1))
         ORDER BY letter
@@ -457,9 +457,9 @@ async def browse_enhanced(
                AVG(wfi.rarity_percentile) as avg_rarity_percentile,
                MIN(wd.primary_domain) as primary_domain,
                MIN(d.id) as representative_id
-        FROM defined d
-        LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-        LEFT JOIN word_domains wd ON d.id = wd.word_id
+        FROM vocab.defined d
+        LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+        LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
         WHERE 1=1
         """
         params = []
@@ -501,9 +501,9 @@ async def browse_enhanced(
         # Get total count for pagination - build a separate count query
         count_sql = """
         SELECT COUNT(DISTINCT d.term)
-        FROM defined d
-        LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-        LEFT JOIN word_domains wd ON d.id = wd.word_id
+        FROM vocab.defined d
+        LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+        LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
         WHERE 1=1
         """
         count_params = []
@@ -742,7 +742,7 @@ async def browse_words_enhanced_page(request: Request):
         # Get parts of speech from the original method
         conn = db.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT part_of_speech FROM defined WHERE part_of_speech IS NOT NULL ORDER BY part_of_speech")
+        cursor.execute("SELECT DISTINCT part_of_speech FROM vocab.defined WHERE part_of_speech IS NOT NULL ORDER BY part_of_speech")
         parts_of_speech = [row[0] for row in cursor.fetchall() if row[0]]
         cursor.close()
         conn.close()

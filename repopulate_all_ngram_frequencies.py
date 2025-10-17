@@ -40,7 +40,7 @@ class NgramRepopulator:
         try:
             query = """
                 SELECT id, term
-                FROM defined
+                FROM vocab.defined
                 WHERE ngram_freq IS NULL
                 AND (phrase IS NULL OR phrase = 0)
                 AND term NOT LIKE '% %'
@@ -91,7 +91,7 @@ class NgramRepopulator:
                         score = self.not_found_value
 
                     cursor.execute(
-                        "UPDATE defined SET ngram_freq = %s WHERE id = %s",
+                        "UPDATE vocab.defined SET ngram_freq = %s WHERE id = %s",
                         (score, term_id)
                     )
 

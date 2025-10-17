@@ -43,8 +43,8 @@ class FrequencyAnalyzer:
                 d.date_added,
                 wd.primary_domain,
                 wd.all_domains
-            FROM defined d
-            LEFT JOIN word_domains wd ON d.id = wd.word_id
+            FROM vocab.defined d
+            LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
             ORDER BY d.frequency DESC
             """
             

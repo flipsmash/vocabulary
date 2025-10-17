@@ -202,8 +202,8 @@ class EnhancedQuizSystem:
             # Get target word info for filtering
             cursor.execute("""
                 SELECT d.part_of_speech, wd.primary_domain
-                FROM defined d
-                LEFT JOIN word_domains wd ON d.id = wd.word_id
+                FROM vocab.defined d
+                LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
                 WHERE d.id = %s
             """, (target_word_id,))
             
@@ -218,14 +218,14 @@ class EnhancedQuizSystem:
                 SELECT d2.id, d2.term, d2.definition, d2.part_of_speech,
                        wd2.primary_domain, wfi2.frequency_rank,
                        wp2.ipa_transcription, wp2.arpabet_transcription
-                FROM definition_similarity ds
-                JOIN defined d2 ON (
+                FROM vocab.definition_similarity ds
+                JOIN vocab.defined d2 ON (
                     CASE WHEN ds.word1_id = %s THEN d2.id = ds.word2_id
                          ELSE d2.id = ds.word1_id END
                 )
-                LEFT JOIN word_domains wd2 ON d2.id = wd2.word_id
-                LEFT JOIN word_frequencies_independent wfi2 ON d2.id = wfi2.word_id
-                LEFT JOIN word_phonetics wp2 ON d2.id = wp2.word_id
+                LEFT JOIN vocab.word_domains wd2 ON d2.id = wd2.word_id
+                LEFT JOIN vocab.word_frequencies_independent wfi2 ON d2.id = wfi2.word_id
+                LEFT JOIN vocab.word_phonetics wp2 ON d2.id = wp2.word_id
                 WHERE (ds.word1_id = %s OR ds.word2_id = %s)
                 AND ds.cosine_similarity BETWEEN 0.2 AND 0.8
                 AND d2.id != %s
@@ -266,7 +266,7 @@ class EnhancedQuizSystem:
         try:
             # Get target POS for filtering
             cursor.execute("""
-                SELECT part_of_speech FROM defined WHERE id = %s
+                SELECT part_of_speech FROM vocab.defined WHERE id = %s
             """, (target_word_id,))
             
             target_info = cursor.fetchone()
@@ -280,14 +280,14 @@ class EnhancedQuizSystem:
                 SELECT d2.id, d2.term, d2.definition, d2.part_of_speech,
                        wd2.primary_domain, wfi2.frequency_rank,
                        wp2.ipa_transcription, wp2.arpabet_transcription
-                FROM pronunciation_similarity ps
-                JOIN defined d2 ON (
+                FROM vocab.pronunciation_similarity ps
+                JOIN vocab.defined d2 ON (
                     CASE WHEN ps.word1_id = %s THEN d2.id = ps.word2_id
                          ELSE d2.id = ps.word1_id END
                 )
-                LEFT JOIN word_domains wd2 ON d2.id = wd2.word_id
-                LEFT JOIN word_frequencies_independent wfi2 ON d2.id = wfi2.word_id
-                LEFT JOIN word_phonetics wp2 ON d2.id = wp2.word_id
+                LEFT JOIN vocab.word_domains wd2 ON d2.id = wd2.word_id
+                LEFT JOIN vocab.word_frequencies_independent wfi2 ON d2.id = wfi2.word_id
+                LEFT JOIN vocab.word_phonetics wp2 ON d2.id = wp2.word_id
                 WHERE (ps.word1_id = %s OR ps.word2_id = %s)
                 AND ps.overall_similarity > 0.3
                 AND d2.id != %s
@@ -324,7 +324,7 @@ class EnhancedQuizSystem:
         
         try:
             # Get target POS
-            cursor.execute("SELECT part_of_speech FROM defined WHERE id = %s", (target_word_id,))
+            cursor.execute("SELECT part_of_speech FROM vocab.defined WHERE id = %s", (target_word_id,))
             result = cursor.fetchone()
             if not result:
                 return []
@@ -339,10 +339,10 @@ class EnhancedQuizSystem:
                 SELECT d.id, d.term, d.definition, d.part_of_speech,
                        wd.primary_domain, wfi.frequency_rank,
                        wp.ipa_transcription, wp.arpabet_transcription
-                FROM defined d
-                LEFT JOIN word_domains wd ON d.id = wd.word_id
-                LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-                LEFT JOIN word_phonetics wp ON d.id = wp.word_id
+                FROM vocab.defined d
+                LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
+                LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+                LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id
                 WHERE d.id NOT IN ({exclude_placeholders})
                 AND d.definition IS NOT NULL AND d.definition != ''
             """
@@ -375,7 +375,7 @@ class EnhancedQuizSystem:
         
         try:
             # Get target word POS for filtering
-            cursor.execute("SELECT part_of_speech FROM defined WHERE id = %s", (target_word_id,))
+            cursor.execute("SELECT part_of_speech FROM vocab.defined WHERE id = %s", (target_word_id,))
             target_info = cursor.fetchone()
             if not target_info:
                 return []
@@ -391,10 +391,10 @@ class EnhancedQuizSystem:
                            wp.ipa_transcription, wp.arpabet_transcription,
                            ump.mistake_count, ump.confidence_level
                     FROM user_mistake_patterns ump
-                    JOIN defined d ON ump.chosen_distractor_word_id = d.id
-                    LEFT JOIN word_domains wd ON d.id = wd.word_id
-                    LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-                    LEFT JOIN word_phonetics wp ON d.id = wp.word_id
+                    JOIN vocab.defined d ON ump.chosen_distractor_word_id = d.id
+                    LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
+                    LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+                    LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id
                     WHERE ump.user_id = %s 
                     AND ump.correct_word_id = %s
                     AND d.id != %s
@@ -422,10 +422,10 @@ class EnhancedQuizSystem:
                            wp.ipa_transcription, wp.arpabet_transcription,
                            SUM(ump.mistake_count) as total_mistakes
                     FROM user_mistake_patterns ump
-                    JOIN defined d ON ump.chosen_distractor_word_id = d.id
-                    LEFT JOIN word_domains wd ON d.id = wd.word_id
-                    LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-                    LEFT JOIN word_phonetics wp ON d.id = wp.word_id
+                    JOIN vocab.defined d ON ump.chosen_distractor_word_id = d.id
+                    LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
+                    LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+                    LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id
                     WHERE ump.correct_word_id = %s
                     AND d.id != %s
                 """
@@ -712,7 +712,7 @@ class EnhancedQuizSystem:
             cursor.execute("""
                 SELECT mastery_level, total_attempts, correct_attempts, consecutive_correct,
                        interval_days, ease_factor, difficulty_rating
-                FROM user_word_mastery 
+                FROM vocab.user_word_mastery 
                 WHERE user_id = %s AND word_id = %s
             """, (user_id, word_id))
             
@@ -763,7 +763,7 @@ class EnhancedQuizSystem:
             
             # Upsert mastery record
             cursor.execute("""
-                INSERT INTO user_word_mastery 
+                INSERT INTO vocab.user_word_mastery 
                 (user_id, word_id, mastery_level, total_attempts, correct_attempts, 
                  consecutive_correct, last_seen, next_review, interval_days, ease_factor, difficulty_rating)
                 VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s, %s, %s, %s)
@@ -802,11 +802,11 @@ class EnhancedQuizSystem:
                        wd.primary_domain, wfi.frequency_rank,
                        wp.ipa_transcription, wp.arpabet_transcription,
                        uwm.mastery_level, uwm.next_review, uwm.difficulty_rating
-                FROM user_word_mastery uwm
-                JOIN defined d ON uwm.word_id = d.id
-                LEFT JOIN word_domains wd ON d.id = wd.word_id
-                LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-                LEFT JOIN word_phonetics wp ON d.id = wp.word_id
+                FROM vocab.user_word_mastery uwm
+                JOIN vocab.defined d ON uwm.word_id = d.id
+                LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
+                LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+                LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id
                 WHERE uwm.user_id = %s 
                 AND uwm.next_review <= NOW()
                 AND d.definition IS NOT NULL
@@ -860,7 +860,7 @@ class EnhancedQuizSystem:
                     COUNT(*) as total_questions,
                     SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) as correct_answers,
                     AVG(response_time_ms) as avg_response_time
-                FROM user_quiz_results
+                FROM vocab.user_quiz_results
                 WHERE user_id = %s AND answered_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
             """, (user_id, days))
             
@@ -876,7 +876,7 @@ class EnhancedQuizSystem:
                     SUM(CASE WHEN mastery_level = 'learning' THEN 1 ELSE 0 END) as words_learning,
                     SUM(CASE WHEN mastery_level = 'reviewing' THEN 1 ELSE 0 END) as words_reviewing,
                     SUM(CASE WHEN mastery_level = 'mastered' THEN 1 ELSE 0 END) as words_mastered
-                FROM user_word_mastery
+                FROM vocab.user_word_mastery
                 WHERE user_id = %s
             """, (user_id,))
             
@@ -890,7 +890,7 @@ class EnhancedQuizSystem:
                 SELECT DATE(answered_at) as answer_date, 
                        SUM(CASE WHEN is_correct THEN 1 ELSE 0 END) as daily_correct,
                        COUNT(*) as daily_total
-                FROM user_quiz_results
+                FROM vocab.user_quiz_results
                 WHERE user_id = %s
                 GROUP BY DATE(answered_at)
                 ORDER BY answer_date DESC
@@ -940,10 +940,10 @@ def main():
             SELECT d.id, d.term, d.definition, d.part_of_speech,
                    wd.primary_domain, wfi.frequency_rank,
                    wp.ipa_transcription, wp.arpabet_transcription
-            FROM defined d
-            LEFT JOIN word_domains wd ON d.id = wd.word_id
-            LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-            LEFT JOIN word_phonetics wp ON d.id = wp.word_id
+            FROM vocab.defined d
+            LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
+            LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+            LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id
             WHERE d.term = 'abacinate'
             LIMIT 1
         """)

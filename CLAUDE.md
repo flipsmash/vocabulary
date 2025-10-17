@@ -102,8 +102,9 @@ python web_apps/vocabulary_web_app.py
 
 ### Database Architecture
 
-**Primary Database**: MySQL on host `10.0.0.160:3306`, database `vocab`
-- Configuration managed in `config.py` (VocabularyConfig class)
+**Primary Database**: PostgreSQL on host `10.0.0.99:6543`, database `postgres`, schema `vocab`
+- ⚠️ **CRITICAL**: Database host is **10.0.0.99** (NOT 10.0.0.160!)
+- Configuration managed in `core/config.py` and `core/secure_config.py`
 - High-performance connection pooling via `custom_database_manager.py`
 - Optimized for 22,094 vocabulary words with 240M+ pairwise comparisons
 

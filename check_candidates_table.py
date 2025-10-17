@@ -28,13 +28,13 @@ def check_candidates_table():
                 print(f"  {column[0]}: {column[1]}")
                 
             # Count records
-            cursor.execute("SELECT COUNT(*) FROM candidate_words")
+            cursor.execute("SELECT COUNT(*) FROM vocab.candidate_words")
             count = cursor.fetchone()[0]
             print(f"\nTotal records: {count}")
             
             if count > 0:
                 # Show sample records
-                cursor.execute("SELECT id, term, review_status, utility_score FROM candidate_words LIMIT 5")
+                cursor.execute("SELECT id, term, review_status, utility_score FROM vocab.candidate_words LIMIT 5")
                 samples = cursor.fetchall()
                 print("\nSample records:")
                 for sample in samples:

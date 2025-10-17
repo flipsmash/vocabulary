@@ -23,7 +23,7 @@ class DefinitionReviewer:
         
         cursor.execute("""
             SELECT id, term, definition, corrected_definition, part_of_speech
-            FROM defined 
+            FROM vocab.defined 
             WHERE has_circular_definition = TRUE 
             AND (corrected_definition IS NULL OR LENGTH(corrected_definition) < 20)
             ORDER BY term
@@ -50,7 +50,7 @@ class DefinitionReviewer:
         cursor = conn.cursor()
         
         cursor.execute("""
-            UPDATE defined 
+            UPDATE vocab.defined 
             SET corrected_definition = %s
             WHERE id = %s
         """, (corrected_definition, def_id))

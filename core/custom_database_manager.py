@@ -161,7 +161,7 @@ class CustomDatabaseManager:
             cursor = conn.cursor()
 
             insert_query = """
-                           INSERT INTO word_phonetics
+                           INSERT INTO vocab.word_phonetics
                            (word_id, word, ipa_transcription, arpabet_transcription,
                             syllable_count, stress_pattern, phonemes_json, transcription_source)
                            VALUES (%(word_id)s, %(word)s, %(ipa)s, %(arpabet)s,
@@ -202,7 +202,7 @@ class CustomDatabaseManager:
             cursor = conn.cursor()
 
             insert_query = """
-                           INSERT INTO pronunciation_similarity
+                           INSERT INTO vocab.pronunciation_similarity
                            (word1_id, word2_id, overall_similarity, phonetic_distance,
                             stress_similarity, rhyme_score, syllable_similarity)
                            VALUES (%(word1_id)s, %(word2_id)s, %(overall_similarity)s, %(phonetic_distance)s,
@@ -243,20 +243,20 @@ class CustomDatabaseManager:
             total_words = cursor.fetchone()[0]
 
             # Processed words
-            cursor.execute("SELECT COUNT(*) FROM word_phonetics")
+            cursor.execute("SELECT COUNT(*) FROM vocab.word_phonetics")
             processed_words = cursor.fetchone()[0]
 
             # Source breakdown
             cursor.execute("""
                            SELECT transcription_source, COUNT(*)
-                           FROM word_phonetics
+                           FROM vocab.word_phonetics
                            GROUP BY transcription_source
                            ORDER BY COUNT(*) DESC
                            """)
             source_breakdown = cursor.fetchall()
 
             # Similarity count
-            cursor.execute("SELECT COUNT(*) FROM pronunciation_similarity")
+            cursor.execute("SELECT COUNT(*) FROM vocab.pronunciation_similarity")
             similarity_count = cursor.fetchone()[0]
 
             return {

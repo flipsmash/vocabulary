@@ -128,7 +128,7 @@ class HighPerformanceInserter:
             
             # Use optimized INSERT IGNORE (faster than ON DUPLICATE KEY UPDATE)
             insert_query = """
-                INSERT IGNORE INTO pronunciation_similarity
+                INSERT IGNORE INTO vocab.pronunciation_similarity
                 (word1_id, word2_id, overall_similarity, phonetic_distance,
                  stress_similarity, rhyme_score, syllable_similarity)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)

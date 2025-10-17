@@ -98,7 +98,7 @@ def main():
             print(f"[INFO] Finding semantic distractors for word ID {word_id}")
 
             with db_manager.get_cursor() as cursor:
-                cursor.execute("SELECT term FROM defined WHERE id = %s", (word_id,))
+                cursor.execute("SELECT term FROM vocab.defined WHERE id = %s", (word_id,))
                 result = cursor.fetchone()
                 if not result:
                     print("Word not found")
@@ -110,8 +110,8 @@ def main():
                 cursor.execute(
                     """
                     SELECT d.term, ds.cosine_similarity, d.definition
-                    FROM definition_similarity ds
-                    JOIN defined d ON (
+                    FROM vocab.definition_similarity ds
+                    JOIN vocab.defined d ON (
                         (ds.word1_id = %s AND ds.word2_id = d.id) OR
                         (ds.word2_id = %s AND ds.word1_id = d.id)
                     )

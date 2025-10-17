@@ -58,13 +58,13 @@ class EnhancedPronunciationSystem:
         with self.db_manager.get_connection() as conn:
             cursor = conn.cursor()
             
-            cursor.execute("SELECT COUNT(*) FROM word_phonetics WHERE ipa_transcription != ''")
+            cursor.execute("SELECT COUNT(*) FROM vocab.word_phonetics WHERE ipa_transcription != ''")
             total_words = cursor.fetchone()[0]
             
-            cursor.execute("SELECT COUNT(*) FROM pronunciation_similarity")
+            cursor.execute("SELECT COUNT(*) FROM vocab.pronunciation_similarity")
             current_similarities = cursor.fetchone()[0]
             
-            cursor.execute("SELECT MAX(word1_id) FROM pronunciation_similarity")
+            cursor.execute("SELECT MAX(word1_id) FROM vocab.pronunciation_similarity")
             max_word1 = cursor.fetchone()[0] or 0
             
             total_pairs = total_words * (total_words - 1) // 2
@@ -129,7 +129,7 @@ class EnhancedPronunciationSystem:
             query = """
                 SELECT word_id, word, ipa_transcription, arpabet_transcription,
                        syllable_count, stress_pattern, phonemes_json
-                FROM word_phonetics
+                FROM vocab.word_phonetics
                 WHERE ipa_transcription != ''
                 ORDER BY word_id
             """
@@ -248,7 +248,7 @@ def benchmark_cuda_vs_cpu(system, sample_size: int = 1000):
         query = f"""
         SELECT word_id, word, ipa_transcription, arpabet_transcription,
                syllable_count, stress_pattern, phonemes_json
-        FROM word_phonetics
+        FROM vocab.word_phonetics
         WHERE ipa_transcription != ''
         LIMIT {sample_size}
         """

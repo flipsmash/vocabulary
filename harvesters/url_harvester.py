@@ -237,11 +237,11 @@ class URLVocabularyHarvester:
             cursor = conn.cursor()
             
             # Check both tables
-            cursor.execute("SELECT 1 FROM defined WHERE word = %s LIMIT 1", (term.lower(),))
+            cursor.execute("SELECT 1 FROM vocab.defined WHERE word = %s LIMIT 1", (term.lower(),))
             if cursor.fetchone():
                 return True
             
-            cursor.execute("SELECT 1 FROM candidate_words WHERE word = %s LIMIT 1", (term.lower(),))
+            cursor.execute("SELECT 1 FROM vocab.candidate_words WHERE word = %s LIMIT 1", (term.lower(),))
             if cursor.fetchone():
                 return True
             
@@ -266,7 +266,7 @@ class URLVocabularyHarvester:
             cursor = conn.cursor()
             
             insert_query = """
-                INSERT IGNORE INTO candidate_words 
+                INSERT IGNORE INTO vocab.candidate_words 
                 (word, part_of_speech, confidence, context_sentence, source_type, raw_definition, source_reference)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
             """

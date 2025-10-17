@@ -50,7 +50,7 @@ def setup_user_tables():
         
         if user_tables:
             # Check if default admin user was created
-            cursor.execute("SELECT username, role FROM users WHERE role = 'admin'")
+            cursor.execute("SELECT username, role FROM vocab.users WHERE role = 'admin'")
             admin_users = cursor.fetchall()
             if admin_users:
                 logger.info(f"Admin users: {[f'{user[0]} ({user[1]})' for user in admin_users]}")

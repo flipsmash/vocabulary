@@ -8,7 +8,9 @@ from fastapi import FastAPI, HTTPException, Query, Request, Form, Depends, statu
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict, Tuple
+from collections import defaultdict
+from decimal import Decimal
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -79,10 +81,10 @@ class WordQueryBuilder:
         wp.stress_pattern, d.obsolete_or_archaic"""
 
     # Standard JOINs - define once, use everywhere
-    WORD_JOINS = """FROM defined d
-        LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-        LEFT JOIN word_domains wd ON d.id = wd.word_id
-        LEFT JOIN word_phonetics wp ON d.id = wp.word_id"""
+    WORD_JOINS = """FROM vocab.defined d
+        LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+        LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
+        LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id"""
 
     @staticmethod
     def base_query(where_clause: str = "WHERE 1=1") -> str:
@@ -187,6 +189,8 @@ class WordQueryBuilder:
 class VocabularyDatabase:
     def __init__(self):
         self.config = get_db_config()
+        self._word_domains_table_available = True
+        self._word_domains_domain_id_supported = True
 
     def count_search_words(
         self,
@@ -197,9 +201,9 @@ class VocabularyDatabase:
         max_frequency: Optional[int] = None,
     ) -> int:
         """Count words matching search filters"""
-        sql = """SELECT COUNT(*) FROM defined d
-            LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-            LEFT JOIN word_domains wd ON d.id = wd.word_id
+        sql = """SELECT COUNT(*) FROM vocab.defined d
+            LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+            LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
             WHERE 1=1"""
         params: List[Any] = []
 
@@ -296,11 +300,696 @@ class VocabularyDatabase:
 
         return WordQueryBuilder.tuple_to_word(result)
 
+    def get_word_by_term(self, term: str) -> Optional[Word]:
+        """Resolve a word by its textual term (case insensitive)."""
+        if not term:
+            return None
+
+        normalized = term.strip().lower()
+        if not normalized:
+            return None
+
+        query = WordQueryBuilder.base_query("WHERE LOWER(d.term) = %s")
+
+        with db_manager.get_cursor() as cursor:
+            cursor.execute(query, (normalized,))
+            result = cursor.fetchone()
+
+        return WordQueryBuilder.tuple_to_word(result)
+
+    def _fetch_words_metadata(self, word_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+        """Fetch metadata for a set of words needed for visualizations."""
+        unique_ids = sorted({int(word_id) for word_id in word_ids if word_id is not None})
+        if not unique_ids:
+            return {}
+
+        placeholders = ", ".join(["%s"] * len(unique_ids))
+        sql = None
+
+        if self._word_domains_table_available and self._word_domains_domain_id_supported:
+            sql = f"""
+            SELECT
+                d.id,
+                d.term,
+                d.definition,
+                d.part_of_speech,
+                d.final_rarity,
+                wd.primary_domain,
+                wd.domain_id,
+                dom.name,
+                dom.description
+            FROM vocab.defined d
+            LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
+            LEFT JOIN vocab.domains dom ON wd.domain_id = dom.id
+            WHERE d.id IN ({placeholders})
+            """
+        elif self._word_domains_table_available:
+            sql = self._metadata_query_without_domain_ids(placeholders)
+        else:
+            sql = self._metadata_query_without_word_domains(placeholders)
+
+        metadata: Dict[int, Dict[str, Any]] = {}
+
+        rows = []
+
+        if sql is not None:
+            try:
+                with db_manager.get_cursor() as cursor:
+                    cursor.execute(sql, tuple(unique_ids))
+                    rows = cursor.fetchall()
+            except pg_errors.UndefinedColumn:
+                self._word_domains_domain_id_supported = False
+                fallback_sql = self._metadata_query_without_domain_ids(placeholders)
+                with db_manager.get_cursor() as cursor:
+                    cursor.execute(fallback_sql, tuple(unique_ids))
+                    rows = cursor.fetchall()
+            except pg_errors.UndefinedTable:
+                self._word_domains_table_available = False
+                fallback_sql = self._metadata_query_without_word_domains(placeholders)
+                with db_manager.get_cursor() as cursor:
+                    cursor.execute(fallback_sql, tuple(unique_ids))
+                    rows = cursor.fetchall()
+            except Exception as exc:
+                logger.warning(f"Unable to fetch metadata for nodes: {exc}")
+                rows = []
+
+        for (
+            word_id,
+            term,
+            definition,
+            part_of_speech,
+            final_rarity,
+            primary_domain,
+            domain_id,
+            domain_name,
+            domain_description,
+        ) in rows:
+            rarity_value: Optional[float]
+            if isinstance(final_rarity, Decimal):
+                rarity_value = float(final_rarity)
+            else:
+                rarity_value = float(final_rarity) if final_rarity is not None else None
+
+            definition_excerpt: Optional[str] = None
+            if isinstance(definition, str) and definition.strip():
+                clean_definition = definition.strip()
+                if len(clean_definition) > 200:
+                    definition_excerpt = f"{clean_definition[:200].rstrip()}..."
+                else:
+                    definition_excerpt = clean_definition
+
+            metadata[int(word_id)] = {
+                "id": int(word_id),
+                "term": term,
+                "part_of_speech": part_of_speech,
+                "final_rarity": rarity_value,
+                "primary_domain": primary_domain,
+                "domain_id": int(domain_id) if domain_id is not None else None,
+                "domain_name": domain_name,
+                "domain_description": domain_description,
+                "definition_excerpt": definition_excerpt,
+            }
+
+        return metadata
+
+    def _metadata_query_without_domain_ids(self, placeholders: str) -> str:
+        return f"""
+        SELECT
+            d.id,
+            d.term,
+            d.definition,
+            d.part_of_speech,
+            d.final_rarity,
+            wd.primary_domain,
+            NULL AS domain_id,
+            wd.primary_domain AS domain_name,
+            NULL AS domain_description
+        FROM vocab.defined d
+        LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
+        WHERE d.id IN ({placeholders})
+        """
+
+    def _metadata_query_without_word_domains(self, placeholders: str) -> str:
+        return f"""
+        SELECT
+            d.id,
+            d.term,
+            d.definition,
+            d.part_of_speech,
+            d.final_rarity,
+            NULL AS primary_domain,
+            NULL AS domain_id,
+            NULL AS domain_name,
+            NULL AS domain_description
+        FROM vocab.defined d
+        WHERE d.id IN ({placeholders})
+        """
+
+    def _query_domain_rarity_summary(self, *, use_domain_ids: bool) -> List[tuple]:
+        if not self._word_domains_table_available:
+            return []
+
+        if use_domain_ids:
+            base_sql = """
+            SELECT
+                wd.domain_id,
+                wd.primary_domain,
+                dom.name AS domain_name,
+                dom.description,
+                COALESCE(
+                    d.final_rarity::double precision,
+                    CASE
+                        WHEN wfi.rarity_percentile IS NOT NULL THEN wfi.rarity_percentile::double precision / 100.0
+                        ELSE NULL
+                    END
+                ) AS rarity_value
+            FROM vocab.defined d
+            JOIN vocab.word_domains wd ON d.id = wd.word_id
+            LEFT JOIN vocab.domains dom ON wd.domain_id = dom.id
+            LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+            WHERE COALESCE(d.final_rarity, wfi.rarity_percentile) IS NOT NULL
+            """
+
+            summary_sql = f"""
+            SELECT
+                domain_id,
+                primary_domain,
+                domain_name,
+                description,
+                COUNT(*) AS word_count,
+                AVG(rarity_value) AS avg_rarity,
+                MIN(rarity_value) AS min_rarity,
+                MAX(rarity_value) AS max_rarity,
+                percentile_cont(0.25) WITHIN GROUP (ORDER BY rarity_value) AS q1,
+                percentile_cont(0.5) WITHIN GROUP (ORDER BY rarity_value) AS median,
+                percentile_cont(0.75) WITHIN GROUP (ORDER BY rarity_value) AS q3
+            FROM ({base_sql}) AS domain_base
+            GROUP BY domain_id, primary_domain, domain_name, description
+            """
+        else:
+            base_sql = """
+            SELECT
+                wd.primary_domain,
+                COALESCE(
+                    d.final_rarity::double precision,
+                    CASE
+                        WHEN wfi.rarity_percentile IS NOT NULL THEN wfi.rarity_percentile::double precision / 100.0
+                        ELSE NULL
+                    END
+                ) AS rarity_value
+            FROM vocab.defined d
+            JOIN vocab.word_domains wd ON d.id = wd.word_id
+            LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+            WHERE COALESCE(d.final_rarity, wfi.rarity_percentile) IS NOT NULL
+            """
+
+            summary_sql = f"""
+            SELECT
+                NULL AS domain_id,
+                primary_domain,
+                primary_domain AS domain_name,
+                NULL AS description,
+                COUNT(*) AS word_count,
+                AVG(rarity_value) AS avg_rarity,
+                MIN(rarity_value) AS min_rarity,
+                MAX(rarity_value) AS max_rarity,
+                percentile_cont(0.25) WITHIN GROUP (ORDER BY rarity_value) AS q1,
+                percentile_cont(0.5) WITHIN GROUP (ORDER BY rarity_value) AS median,
+                percentile_cont(0.75) WITHIN GROUP (ORDER BY rarity_value) AS q3
+            FROM ({base_sql}) AS domain_base
+            GROUP BY primary_domain
+            """
+
+        with db_manager.get_cursor() as cursor:
+            cursor.execute(summary_sql)
+            return cursor.fetchall()
+
+    def get_rarity_histogram(self, bucket_count: int = 20) -> Dict[str, Any]:
+        """Aggregate words into rarity buckets (0 common, 1 rare)."""
+        bucket_count = max(4, min(bucket_count, 100))
+        bucket_sql = """
+        SELECT
+            FLOOR(
+                LEAST(GREATEST(d.final_rarity::double precision, 0), 0.999999)
+                * %s
+            )::int AS bucket_index,
+            COUNT(*) AS bucket_count,
+            AVG(d.final_rarity) AS avg_rarity
+        FROM vocab.defined d
+        WHERE d.final_rarity IS NOT NULL
+        GROUP BY bucket_index
+        ORDER BY bucket_index
+        """
+
+        with db_manager.get_cursor() as cursor:
+            cursor.execute(bucket_sql, (bucket_count,))
+            rows = cursor.fetchall()
+
+        bucket_map: Dict[int, Dict[str, Any]] = {}
+        total_words = 0
+        for bucket_index, bucket_total, avg_rarity in rows:
+            idx = int(bucket_index)
+            count_value = int(bucket_total)
+            total_words += count_value
+
+            avg_value: Optional[float]
+            if isinstance(avg_rarity, Decimal):
+                avg_value = float(avg_rarity)
+            else:
+                avg_value = float(avg_rarity) if avg_rarity is not None else None
+
+            bucket_map[idx] = {
+                "count": count_value,
+                "avg_rarity": avg_value,
+            }
+
+        bucket_width = 1.0 / bucket_count
+        ordered_buckets: List[Dict[str, Any]] = []
+
+        for idx in range(bucket_count):
+            bucket_info = bucket_map.get(idx, {"count": 0, "avg_rarity": None})
+            bucket_start = round(idx * bucket_width, 6)
+            bucket_end = round((idx + 1) * bucket_width, 6)
+            ordered_buckets.append(
+                {
+                    "bucket_index": idx,
+                    "bucket_start": bucket_start,
+                    "bucket_end": bucket_end,
+                    "count": bucket_info["count"],
+                    "avg_rarity": bucket_info["avg_rarity"],
+                }
+            )
+
+        return {
+            "bucket_count": bucket_count,
+            "bucket_width": bucket_width,
+            "total_words": total_words,
+            "buckets": ordered_buckets,
+        }
+
+    def get_domain_rarity_matrix(
+        self,
+        bucket_count: int = 10,
+        min_words: int = 20,
+        limit: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Summarize rarity distribution per domain."""
+        # Retain parameter names for backwards compatibility with existing endpoint
+        _ = bucket_count
+        min_words = max(0, min_words)
+
+        if not self._word_domains_table_available:
+            return {
+                "min_words": min_words,
+                "domain_count": 0,
+                "domains": [],
+            }
+
+        try:
+            summary_rows = self._query_domain_rarity_summary(use_domain_ids=self._word_domains_domain_id_supported)
+        except pg_errors.UndefinedColumn:
+            self._word_domains_domain_id_supported = False
+            summary_rows = self._query_domain_rarity_summary(use_domain_ids=False)
+        except pg_errors.UndefinedTable:
+            self._word_domains_table_available = False
+            return {
+                "min_words": min_words,
+                "domain_count": 0,
+                "domains": [],
+            }
+        except Exception as exc:
+            logger.warning(f"Unable to aggregate rarity by domain: {exc}")
+            summary_rows = []
+
+        domains: List[Dict[str, Any]] = []
+
+        for (
+            domain_id,
+            primary_domain,
+            domain_name,
+            domain_description,
+            word_count,
+            avg_rarity,
+            min_rarity,
+            max_rarity,
+            q1,
+            median,
+            q3,
+        ) in summary_rows:
+            count_value = int(word_count)
+            if count_value < min_words:
+                continue
+
+            display_name = domain_name or primary_domain or "Uncategorized"
+
+            def _to_float(value: Any) -> Optional[float]:
+                if value is None:
+                    return None
+                if isinstance(value, Decimal):
+                    return float(value)
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    return None
+
+            domains.append(
+                {
+                    "domain_id": int(domain_id) if domain_id is not None else None,
+                    "primary_domain": primary_domain,
+                    "domain_name": display_name,
+                    "domain_description": domain_description,
+                    "word_count": count_value,
+                    "avg_rarity": _to_float(avg_rarity),
+                    "min_rarity": _to_float(min_rarity),
+                    "max_rarity": _to_float(max_rarity),
+                    "quartiles": {
+                        "q1": _to_float(q1),
+                        "median": _to_float(median),
+                        "q3": _to_float(q3),
+                    },
+                }
+            )
+
+        domains.sort(key=lambda item: item["word_count"], reverse=True)
+
+        if limit is not None and limit > 0:
+            domains = domains[:limit]
+
+        return {
+            "min_words": min_words,
+            "domain_count": len(domains),
+            "domains": domains,
+        }
+
+    def get_available_embedding_models(self) -> List[str]:
+        sql = """
+        SELECT embedding_model, COUNT(*) AS total
+        FROM vocab.definition_similarity
+        GROUP BY embedding_model
+        ORDER BY total DESC, embedding_model ASC
+        """
+
+        try:
+            with db_manager.get_cursor() as cursor:
+                cursor.execute(sql)
+                rows = cursor.fetchall()
+        except Exception as exc:
+            logger.warning(f"Unable to fetch embedding models: {exc}")
+            return []
+
+        return [row[0] for row in rows if row[0]]
+
+    def get_word_graph(
+        self,
+        *,
+        word_id: Optional[int] = None,
+        term: Optional[str] = None,
+        embedding_model: Optional[str] = None,
+        similarity_floor: float = 0.4,
+        max_nodes: int = 30,
+        include_secondary_edges: bool = True,
+    ) -> Dict[str, Any]:
+        """Build a local similarity graph around a focal word."""
+
+        if word_id is None and not term:
+            raise ValueError("Either word_id or term must be provided")
+
+        max_nodes = max(2, min(max_nodes, 150))
+        similarity_floor = max(0.0, min(similarity_floor, 1.0))
+
+        center_word = None
+        if word_id is not None:
+            center_word = self.get_word_by_id(word_id)
+
+        if center_word is None and term:
+            center_word = self.get_word_by_term(term)
+
+        if center_word is None:
+            raise ValueError("Word not found")
+
+        available_models = self.get_available_embedding_models()
+
+        selected_model = embedding_model
+        if selected_model:
+            if available_models and selected_model not in available_models:
+                raise ValueError(f"Embedding model '{selected_model}' is not available")
+        else:
+            preferred_default = "all-MiniLM-L6-v2"
+            if preferred_default in available_models:
+                selected_model = preferred_default
+            elif available_models:
+                selected_model = available_models[0]
+
+        neighbor_limit = max_nodes - 1
+        neighbor_map: Dict[int, float] = {}
+
+        if neighbor_limit > 0 and selected_model:
+            neighbor_sql = """
+            SELECT
+                CASE WHEN ds.word1_id = %s THEN ds.word2_id ELSE ds.word1_id END AS neighbor_id,
+                ds.cosine_similarity
+            FROM vocab.definition_similarity ds
+            WHERE (ds.word1_id = %s OR ds.word2_id = %s)
+              AND ds.embedding_model = %s
+              AND ds.cosine_similarity >= %s
+            ORDER BY ds.cosine_similarity DESC
+            LIMIT %s
+            """
+
+            try:
+                with db_manager.get_cursor() as cursor:
+                    cursor.execute(
+                        neighbor_sql,
+                        (
+                            center_word.id,
+                            center_word.id,
+                            center_word.id,
+                            selected_model,
+                            similarity_floor,
+                            neighbor_limit,
+                        ),
+                    )
+                    neighbor_rows = cursor.fetchall()
+            except Exception as exc:
+                logger.warning(f"Unable to fetch neighbor graph: {exc}")
+                neighbor_rows = []
+
+            for neighbor_id, similarity in neighbor_rows:
+                if neighbor_id == center_word.id:
+                    continue
+
+                try:
+                    sid = int(neighbor_id)
+                except (TypeError, ValueError):
+                    continue
+
+                if similarity is None:
+                    continue
+
+                if isinstance(similarity, Decimal):
+                    similarity_value = float(similarity)
+                else:
+                    similarity_value = float(similarity)
+
+                neighbor_map[sid] = similarity_value
+
+        node_ids = [center_word.id] + list(neighbor_map.keys())
+        metadata = self._fetch_words_metadata(node_ids)
+
+        # Filter out neighbors without metadata (e.g., if missing joins)
+        valid_neighbor_map = {
+            node_id: similarity
+            for node_id, similarity in neighbor_map.items()
+            if node_id in metadata
+        }
+
+        edges: List[Dict[str, Any]] = []
+        edge_keys = set()
+        degree_counts = defaultdict(int)
+
+        for neighbor_id, similarity_value in valid_neighbor_map.items():
+            edge_key = tuple(sorted((center_word.id, neighbor_id)))
+            if edge_key in edge_keys:
+                continue
+            edge_keys.add(edge_key)
+            edges.append(
+                {
+                    "source": center_word.id,
+                    "target": neighbor_id,
+                    "similarity": similarity_value,
+                }
+            )
+            degree_counts[center_word.id] += 1
+            degree_counts[neighbor_id] += 1
+
+        secondary_floor = None
+        if include_secondary_edges and valid_neighbor_map and selected_model:
+            neighbor_ids = list(valid_neighbor_map.keys())
+            if len(neighbor_ids) > 1:
+                secondary_floor = max(similarity_floor - 0.05, 0.3)
+                neighbor_tuple = tuple(int(node_id) for node_id in neighbor_ids)
+                in_clause = ", ".join(["%s"] * len(neighbor_tuple))
+                secondary_sql = f"""
+                SELECT ds.word1_id, ds.word2_id, ds.cosine_similarity
+                FROM vocab.definition_similarity ds
+                WHERE ds.embedding_model = %s
+                  AND ds.cosine_similarity >= %s
+                  AND ds.word1_id IN ({in_clause})
+                  AND ds.word2_id IN ({in_clause})
+                LIMIT 500
+                """
+
+                try:
+                    with db_manager.get_cursor() as cursor:
+                        cursor.execute(
+                            secondary_sql,
+                            (
+                                selected_model,
+                                secondary_floor,
+                                *neighbor_tuple,
+                                *neighbor_tuple,
+                            ),
+                        )
+                        secondary_rows = cursor.fetchall()
+                except Exception as exc:
+                    logger.warning(f"Unable to fetch secondary edges: {exc}")
+                    secondary_rows = []
+
+                for node_a, node_b, similarity in secondary_rows:
+                    try:
+                        source_id = int(node_a)
+                        target_id = int(node_b)
+                    except (TypeError, ValueError):
+                        continue
+
+                    if source_id == target_id:
+                        continue
+
+                    if source_id not in metadata or target_id not in metadata:
+                        continue
+
+                    if isinstance(similarity, Decimal):
+                        similarity_value = float(similarity)
+                    else:
+                        similarity_value = float(similarity)
+
+                    edge_key = tuple(sorted((source_id, target_id)))
+                    if edge_key in edge_keys:
+                        continue
+
+                    edge_keys.add(edge_key)
+                    edges.append(
+                        {
+                            "source": source_id,
+                            "target": target_id,
+                            "similarity": similarity_value,
+                        }
+                    )
+                    degree_counts[source_id] += 1
+                    degree_counts[target_id] += 1
+
+        # Ensure center metadata is present for consistent response
+        metadata.setdefault(
+            center_word.id,
+            {
+                "id": center_word.id,
+                "term": center_word.term,
+                "part_of_speech": center_word.part_of_speech,
+                "final_rarity": None,
+                "primary_domain": None,
+                "domain_id": None,
+                "domain_name": None,
+                "domain_description": None,
+                "definition_excerpt": center_word.definition[:200] + "..."
+                if center_word.definition and len(center_word.definition) > 200
+                else center_word.definition,
+            },
+        )
+
+        ordered_neighbor_ids = sorted(
+            valid_neighbor_map.keys(),
+            key=lambda node_id: valid_neighbor_map[node_id],
+            reverse=True,
+        )
+
+        node_order = [center_word.id] + ordered_neighbor_ids
+        nodes: List[Dict[str, Any]] = []
+
+        for node_id in node_order:
+            node_meta = metadata.get(node_id)
+            if not node_meta:
+                continue
+
+            rarity_value = node_meta.get("final_rarity")
+            if isinstance(rarity_value, Decimal):
+                rarity_value = float(rarity_value)
+
+            node_payload = {
+                "id": node_meta.get("id", node_id),
+                "term": node_meta.get("term"),
+                "part_of_speech": node_meta.get("part_of_speech"),
+                "final_rarity": rarity_value,
+                "primary_domain": node_meta.get("primary_domain"),
+                "domain_id": node_meta.get("domain_id"),
+                "domain_name": node_meta.get("domain_name"),
+                "domain_description": node_meta.get("domain_description"),
+                "definition_excerpt": node_meta.get("definition_excerpt"),
+                "is_center": node_id == center_word.id,
+                "degree": degree_counts.get(node_id, 0),
+                "similarity_to_center": 1.0 if node_id == center_word.id else valid_neighbor_map.get(node_id),
+            }
+
+            nodes.append(node_payload)
+
+        # Add any metadata nodes that were not part of neighbor order (defensive)
+        known_ids = {node["id"] for node in nodes}
+        for node_id, node_meta in metadata.items():
+            if node_id in known_ids:
+                continue
+
+            rarity_value = node_meta.get("final_rarity")
+            if isinstance(rarity_value, Decimal):
+                rarity_value = float(rarity_value)
+
+            nodes.append(
+                {
+                    "id": node_meta.get("id", node_id),
+                    "term": node_meta.get("term"),
+                    "part_of_speech": node_meta.get("part_of_speech"),
+                    "final_rarity": rarity_value,
+                    "primary_domain": node_meta.get("primary_domain"),
+                    "domain_id": node_meta.get("domain_id"),
+                    "domain_name": node_meta.get("domain_name"),
+                    "domain_description": node_meta.get("domain_description"),
+                    "definition_excerpt": node_meta.get("definition_excerpt"),
+                    "is_center": node_id == center_word.id,
+                    "degree": degree_counts.get(node_id, 0),
+                    "similarity_to_center": 1.0 if node_id == center_word.id else valid_neighbor_map.get(node_id),
+                }
+            )
+
+        metadata_summary = {
+            "embedding_model": selected_model,
+            "available_models": available_models,
+            "similarity_floor": similarity_floor,
+            "secondary_edge_floor": secondary_floor,
+            "max_nodes": max_nodes,
+            "node_count": len(nodes),
+            "edge_count": len(edges),
+        }
+
+        return {
+            "center_word": next((node for node in nodes if node["is_center"]), None),
+            "nodes": nodes,
+            "edges": edges,
+            "metadata": metadata_summary,
+        }
+
     def get_similar_words(self, word_id: int, limit: int = 10) -> List[tuple]:
         sql = """
         SELECT d.id, d.term, ds.cosine_similarity
-        FROM definition_similarity ds
-        JOIN defined d ON (
+        FROM vocab.definition_similarity ds
+        JOIN vocab.defined d ON (
             CASE WHEN ds.word1_id = %s THEN ds.word2_id ELSE ds.word1_id END = d.id
         )
         WHERE (ds.word1_id = %s OR ds.word2_id = %s)
@@ -319,7 +1008,7 @@ class VocabularyDatabase:
     def get_random_word(self) -> Optional[Word]:
         """Get random word using standard query builder"""
         with db_manager.get_cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM defined")
+            cursor.execute("SELECT COUNT(*) FROM vocab.defined")
             total_count = cursor.fetchone()[0]
             if not total_count:
                 return None
@@ -335,7 +1024,7 @@ class VocabularyDatabase:
     def get_domains(self) -> List[str]:
         sql = """
         SELECT DISTINCT primary_domain
-        FROM word_domains
+        FROM vocab.word_domains
         WHERE primary_domain IS NOT NULL
         ORDER BY 1
         """
@@ -355,7 +1044,7 @@ class VocabularyDatabase:
     def get_parts_of_speech(self) -> List[str]:
         with db_manager.get_cursor() as cursor:
             cursor.execute(
-                "SELECT DISTINCT part_of_speech FROM defined "
+                "SELECT DISTINCT part_of_speech FROM vocab.defined "
                 "WHERE part_of_speech IS NOT NULL ORDER BY part_of_speech"
             )
             results = cursor.fetchall()
@@ -412,8 +1101,8 @@ async def browse(request: Request,
         if not letters:
             letter_query = """
             SELECT DISTINCT LOWER(LEFT(d.term, 1)) as first_letter
-            FROM defined d
-            LEFT JOIN word_domains wd ON d.id = wd.word_id
+            FROM vocab.defined d
+            LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
             WHERE 1=1
             """
             if domain:
@@ -427,8 +1116,8 @@ async def browse(request: Request,
             next_pos = len(letters) + 1
             letter_query = (
                 "SELECT DISTINCT LOWER(LEFT(d.term, %s)) as next_letters "
-                "FROM defined d "
-                "LEFT JOIN word_domains wd ON d.id = wd.word_id "
+                "FROM vocab.defined d "
+                "LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id "
                 "WHERE LOWER(d.term) LIKE %s AND LENGTH(d.term) >= %s"
             )
             letter_params = [next_pos, f"{letters.lower()}%", next_pos]
@@ -598,11 +1287,11 @@ async def get_stats():
     try:
         with db_manager.get_cursor() as cursor:
             # Get total word count
-            cursor.execute("SELECT COUNT(*) FROM defined")
+            cursor.execute("SELECT COUNT(*) FROM vocab.defined")
             total_words = cursor.fetchone()[0]
 
             # Get max frequency rank
-            cursor.execute("SELECT MAX(frequency_rank) FROM word_frequencies_independent WHERE frequency_rank IS NOT NULL")
+            cursor.execute("SELECT MAX(frequency_rank) FROM vocab.word_frequencies_independent WHERE frequency_rank IS NOT NULL")
             max_frequency_rank = cursor.fetchone()[0]
 
             # Round max frequency rank up to nearest 1000
@@ -617,6 +1306,66 @@ async def get_stats():
     except Exception as e:
         logger.error(f"Error getting stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/visualizations/rarity-distribution")
+async def rarity_distribution(bucket_count: int = Query(20, ge=4, le=100)):
+    """Histogram of final_rarity values across the corpus."""
+    try:
+        return db.get_rarity_histogram(bucket_count=bucket_count)
+    except Exception as exc:
+        logger.error(f"Error building rarity distribution: {exc}")
+        raise HTTPException(status_code=500, detail="Unable to build rarity distribution")
+
+
+@app.get("/api/visualizations/domain-rarity")
+async def domain_rarity(
+    bucket_count: int = Query(10, ge=4, le=50),
+    min_words: int = Query(20, ge=0),
+    limit: Optional[int] = Query(None, ge=1),
+):
+    """Rarity distribution grouped by domain."""
+    try:
+        return db.get_domain_rarity_matrix(
+            bucket_count=bucket_count,
+            min_words=min_words,
+            limit=limit,
+        )
+    except Exception as exc:
+        logger.error(f"Error building domain rarity snapshot: {exc}")
+        raise HTTPException(status_code=500, detail="Unable to build domain rarity snapshot")
+
+
+@app.get("/api/visualizations/word-graph")
+async def word_graph(
+    word_id: Optional[int] = Query(None, description="ID of the focal word"),
+    term: Optional[str] = Query(None, description="Term of the focal word"),
+    embedding_model: Optional[str] = Query(None, description="Embedding model to use"),
+    similarity_floor: float = Query(0.4, ge=0.0, le=1.0, description="Minimum cosine similarity to include"),
+    max_nodes: int = Query(30, ge=2, le=150, description="Maximum nodes in the response"),
+    include_secondary_edges: bool = Query(True, description="Include edges among neighbor nodes"),
+):
+    """Force-directed graph data seeded from definition similarities."""
+    if word_id is None and (term is None or not term.strip()):
+        raise HTTPException(status_code=400, detail="Provide either word_id or term")
+
+    normalized_term = term.strip() if term else None
+
+    try:
+        graph_payload = db.get_word_graph(
+            word_id=word_id,
+            term=normalized_term,
+            embedding_model=embedding_model,
+            similarity_floor=similarity_floor,
+            max_nodes=max_nodes,
+            include_secondary_edges=include_secondary_edges,
+        )
+        return graph_payload
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+    except Exception as exc:
+        logger.error(f"Error building word graph: {exc}")
+        raise HTTPException(status_code=500, detail="Unable to build word graph")
 
 @app.get("/word/{word_id}", response_class=HTMLResponse)
 async def word_detail(request: Request, word_id: int):
@@ -649,6 +1398,27 @@ async def random_word_page(request: Request):
         "is_random": True,
         "current_user": current_user
     })
+
+
+@app.get("/visualizations", response_class=HTMLResponse)
+async def visualization_hub(request: Request):
+    """Visualization hub showcasing rarity and semantic relationships."""
+    current_user = await get_optional_current_user(request)
+
+    try:
+        embedding_models = db.get_available_embedding_models()
+    except Exception as exc:
+        logger.warning(f"Unable to fetch embedding models for visualization hub: {exc}")
+        embedding_models = []
+
+    return templates.TemplateResponse(
+        "visualizations.html",
+        {
+            "request": request,
+            "current_user": current_user,
+            "embedding_models": embedding_models,
+        },
+    )
 
 # Authentication endpoints
 @app.get("/register", response_class=HTMLResponse)
@@ -781,7 +1551,7 @@ async def update_profile(request: Request,
             # Get current password hash for verification
             conn = user_manager.get_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT password_hash FROM users WHERE id = %s", (current_user.id,))
+            cursor.execute("SELECT password_hash FROM vocab.users WHERE id = %s", (current_user.id,))
             result = cursor.fetchone()
             cursor.close()
             conn.close()
@@ -855,21 +1625,21 @@ async def admin_dashboard(request: Request):
 
     try:
         with db_manager.get_cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM users")
+            cursor.execute("SELECT COUNT(*) FROM vocab.users")
             total_users = cursor.fetchone()[0]
 
-            cursor.execute("SELECT COUNT(*) FROM users WHERE is_active = TRUE")
+            cursor.execute("SELECT COUNT(*) FROM vocab.users WHERE is_active = TRUE")
             active_users = cursor.fetchone()[0]
 
-            cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")
+            cursor.execute("SELECT COUNT(*) FROM vocab.users WHERE role = 'admin'")
             admin_users = cursor.fetchone()[0]
 
-            cursor.execute("SELECT COUNT(*) FROM defined")
+            cursor.execute("SELECT COUNT(*) FROM vocab.defined")
             total_words = cursor.fetchone()[0]
 
             cursor.execute(
                 "SELECT id, username, email, full_name, role, is_active, created_at, last_login_at "
-                "FROM users ORDER BY created_at DESC LIMIT 10"
+                "FROM vocab.users ORDER BY created_at DESC LIMIT 10"
             )
             recent_users = [
                 User(
@@ -1505,9 +2275,9 @@ class FlashcardDatabase:
                            WHEN ufp.mastery_level = 'reviewing' THEN 60
                            ELSE 20
                        END), 0) as progress
-                FROM flashcard_decks fd
-                LEFT JOIN flashcard_deck_items fdi ON fd.id = fdi.deck_id
-                LEFT JOIN user_flashcard_progress ufp
+                FROM vocab.flashcard_decks fd
+                LEFT JOIN vocab.flashcard_deck_items fdi ON fd.id = fdi.deck_id
+                LEFT JOIN vocab.user_flashcard_progress ufp
                     ON fdi.word_id = ufp.word_id AND ufp.user_id = %s
                 WHERE fd.user_id = %s
                 GROUP BY fd.id, fd.name, fd.description, fd.user_id, fd.created_at
@@ -1549,8 +2319,8 @@ class FlashcardDatabase:
                 """
                 SELECT d.id, d.name, d.description, d.user_id, d.created_at,
                        COUNT(fdi.id) as word_count
-                FROM flashcard_decks d
-                LEFT JOIN flashcard_deck_items fdi ON d.id = fdi.deck_id
+                FROM vocab.flashcard_decks d
+                LEFT JOIN vocab.flashcard_deck_items fdi ON d.id = fdi.deck_id
                 WHERE d.id = %s AND d.user_id = %s
                 GROUP BY d.id, d.name, d.description, d.user_id, d.created_at
                 """,
@@ -1571,7 +2341,7 @@ class FlashcardDatabase:
     def delete_deck(self, deck_id: int, user_id: int) -> bool:
         with self._cursor() as cursor:
             cursor.execute(
-                "DELETE FROM flashcard_decks WHERE id = %s AND user_id = %s",
+                "DELETE FROM vocab.flashcard_decks WHERE id = %s AND user_id = %s",
                 (deck_id, user_id),
             )
             return cursor.rowcount > 0
@@ -1590,7 +2360,7 @@ class FlashcardDatabase:
     def remove_word_from_deck(self, deck_id: int, word_id: int):
         with self._cursor() as cursor:
             cursor.execute(
-                "DELETE FROM flashcard_deck_items WHERE deck_id = %s AND word_id = %s",
+                "DELETE FROM vocab.flashcard_deck_items WHERE deck_id = %s AND word_id = %s",
                 (deck_id, word_id),
             )
 
@@ -1606,13 +2376,13 @@ class FlashcardDatabase:
                        COALESCE(ufp.mastery_level, 'learning') as mastery_level,
                        ufp.last_studied, ufp.study_count,
                        COALESCE(ufp.correct_count * 100.0 / NULLIF(ufp.study_count, 0), 0) as success_rate
-                FROM flashcard_deck_items fdi
-                JOIN flashcard_decks fd ON fdi.deck_id = fd.id
-                JOIN defined d ON fdi.word_id = d.id
-                LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-                LEFT JOIN word_domains wd ON d.id = wd.word_id
-                LEFT JOIN word_phonetics wp ON d.id = wp.word_id
-                LEFT JOIN user_flashcard_progress ufp
+                FROM vocab.flashcard_deck_items fdi
+                JOIN vocab.flashcard_decks fd ON fdi.deck_id = fd.id
+                JOIN vocab.defined d ON fdi.word_id = d.id
+                LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+                LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
+                LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id
+                LEFT JOIN vocab.user_flashcard_progress ufp
                     ON d.id = ufp.word_id AND ufp.user_id = %s
                 WHERE fdi.deck_id = %s AND fd.user_id = %s
                 ORDER BY 
@@ -1704,11 +2474,11 @@ class FlashcardDatabase:
                        COALESCE(ufp.mastery_level, 'learning') as mastery_level,
                        ufp.last_studied, ufp.study_count,
                        COALESCE(ufp.correct_count * 100.0 / NULLIF(ufp.study_count, 0), 0) as success_rate
-                FROM defined d
-                LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-                LEFT JOIN word_domains wd ON d.id = wd.word_id
-                LEFT JOIN word_phonetics wp ON d.id = wp.word_id
-                LEFT JOIN user_flashcard_progress ufp ON d.id = ufp.word_id AND ufp.user_id = %s
+                FROM vocab.defined d
+                LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+                LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
+                LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id
+                LEFT JOIN vocab.user_flashcard_progress ufp ON d.id = ufp.word_id AND ufp.user_id = %s
                 WHERE d.definition IS NOT NULL AND d.definition <> ''
                 ORDER BY RANDOM()
                 LIMIT %s
@@ -1926,7 +2696,7 @@ async def get_word_definition(word_id: int):
         with database_cursor() as cursor:
             cursor.execute("""
                 SELECT term, definition, part_of_speech
-                FROM defined
+                FROM vocab.defined
                 WHERE id = %s
             """, (word_id,))
 
@@ -1955,7 +2725,7 @@ async def guest_random_flashcards(request: Request, limit: int = 20):
             cursor.execute(
                 """
                 SELECT id, term, definition, part_of_speech, frequency
-                FROM defined
+                FROM vocab.defined
                 ORDER BY RANDOM()
                 LIMIT %s
                 """,
@@ -2071,7 +2841,7 @@ async def admin_list_candidates(request: Request,
     """List candidate words for review"""
     try:
         with db_manager.get_cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM candidate_words WHERE review_status = %s", (status,))
+            cursor.execute("SELECT COUNT(*) FROM vocab.candidate_words WHERE review_status = %s", (status,))
             total_count = cursor.fetchone()[0]
 
             total_pages = (total_count + per_page - 1) // per_page
@@ -2082,7 +2852,7 @@ async def admin_list_candidates(request: Request,
                        rarity_indicators, context_snippet, raw_definition,
                        etymology_preview, date_discovered, review_status,
                        EXTRACT(DAY FROM (CURRENT_DATE - date_discovered)) AS days_pending
-                FROM candidate_words
+                FROM vocab.candidate_words
                 WHERE review_status = %s
                 ORDER BY utility_score DESC, date_discovered ASC
                 LIMIT %s OFFSET %s
@@ -2107,7 +2877,7 @@ async def admin_list_candidates(request: Request,
 
             cursor.execute("""
                 SELECT review_status, COUNT(*)
-                FROM candidate_words
+                FROM vocab.candidate_words
                 GROUP BY review_status
                 """)
             status_counts = {row[0]: row[1] for row in cursor.fetchall()}
@@ -2139,7 +2909,7 @@ async def admin_view_candidate(request: Request, candidate_id: int,
                        utility_score, rarity_indicators, context_snippet, raw_definition,
                        etymology_preview, date_discovered, review_status, rejection_reason,
                        notes, created_at, updated_at
-                FROM candidate_words
+                FROM vocab.candidate_words
                 WHERE id = %s
             """, (candidate_id,))
             row = cursor.fetchone()

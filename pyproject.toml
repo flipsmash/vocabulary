@@ -58,6 +58,10 @@ dependencies = [
     "sqlglot>=27.19.0",
     "gtts>=2.5.0",
     "pydub>=0.25.0",
+    "sentence-transformers>=5.1.1",
+    "scikit-learn>=1.7.2",
+    "regex>=2025.7.34",
+    "pyyaml>=6.0.2",
 ]
 
 [project.optional-dependencies]

@@ -20,7 +20,7 @@ def create_test_admin():
     try:
         # Check if user already exists
         existing = db.execute_query(
-            "SELECT id FROM users WHERE username = %s",
+            "SELECT id FROM vocab.users WHERE username = %s",
             (username,)
         )
 
@@ -29,7 +29,7 @@ def create_test_admin():
             # Update password
             hashed_password = pwd_context.hash(password)
             db.execute_query(
-                "UPDATE users SET password_hash = %s WHERE username = %s",
+                "UPDATE vocab.users SET password_hash = %s WHERE username = %s",
                 (hashed_password, username)
             )
             print(f"✓ Updated password for {username}")
@@ -37,7 +37,7 @@ def create_test_admin():
             # Create new user
             hashed_password = pwd_context.hash(password)
             db.execute_query(
-                """INSERT INTO users (username, email, password_hash, is_admin, is_active)
+                """INSERT INTO vocab.users (username, email, password_hash, is_admin, is_active)
                    VALUES (%s, %s, %s, 1, 1)""",
                 (username, email, hashed_password)
             )

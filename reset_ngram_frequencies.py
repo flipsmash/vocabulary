@@ -17,21 +17,21 @@ def reset_ngram_frequencies():
 
     try:
         # First, check current status
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE ngram_freq IS NOT NULL")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE ngram_freq IS NOT NULL")
         current_count = cursor.fetchone()[0]
         print(f"Currently {current_count:,} records have ngram_freq values")
 
         # Reset all to NULL
-        cursor.execute("UPDATE defined SET ngram_freq = NULL")
+        cursor.execute("UPDATE vocab.defined SET ngram_freq = NULL")
         updated_count = cursor.rowcount
 
         conn.commit()
         print(f"Reset {updated_count:,} records to ngram_freq = NULL")
 
         # Verify the reset
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE ngram_freq IS NULL")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE ngram_freq IS NULL")
         null_count = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM defined")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined")
         total_count = cursor.fetchone()[0]
 
         print(f"Verification: {null_count:,} records now have ngram_freq = NULL out of {total_count:,} total")

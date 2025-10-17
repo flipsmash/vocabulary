@@ -229,7 +229,7 @@ class PronunciationLibraryBuilder:
                 # Store as /pronunciation/filename for web serving
                 web_path = f"/pronunciation/{local_path.name}"
                 cursor.execute(
-                    "UPDATE defined SET wav_url = %s WHERE id = %s",
+                    "UPDATE vocab.defined SET wav_url = %s WHERE id = %s",
                     (web_path, word_id)
                 )
                 conn.commit()
@@ -255,7 +255,7 @@ class PronunciationLibraryBuilder:
             # Get ALL words, regardless of wav_url status
             sql = """
             SELECT id, term, wav_url
-            FROM defined
+            FROM vocab.defined
             ORDER BY id
             """
             if limit:

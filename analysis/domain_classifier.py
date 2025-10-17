@@ -284,7 +284,7 @@ class DomainClassifier:
             cursor.execute(create_table_sql)
             
             # Clear existing data
-            cursor.execute("DELETE FROM word_domains")
+            cursor.execute("DELETE FROM vocab.word_domains")
             conn.commit()
             
             logger.info("Domain table created successfully")
@@ -321,7 +321,7 @@ class DomainClassifier:
             cursor = conn.cursor()
             
             insert_sql = """
-            INSERT INTO word_domains 
+            INSERT INTO vocab.word_domains 
             (word_id, term, primary_domain, all_domains, cluster_id, confidence_scores)
             VALUES (%s, %s, %s, %s, %s, %s)
             """
@@ -352,7 +352,7 @@ class DomainClassifier:
             # Primary domain distribution
             cursor.execute("""
                 SELECT primary_domain, COUNT(*) as count 
-                FROM word_domains 
+                FROM vocab.word_domains 
                 GROUP BY primary_domain 
                 ORDER BY count DESC
             """)
@@ -374,7 +374,7 @@ class DomainClassifier:
             # Sample words from major domains
             for domain, count in primary_dist[:8]:  # Top 8 domains
                 cursor.execute("""
-                    SELECT term FROM word_domains 
+                    SELECT term FROM vocab.word_domains 
                     WHERE primary_domain = %s 
                     ORDER BY RAND() 
                     LIMIT 8

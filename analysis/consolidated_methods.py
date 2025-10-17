@@ -20,9 +20,9 @@ def search_words_consolidated(self, query: Optional[str] = None, limit: int = 50
                AVG(wfi.rarity_percentile) as avg_rarity_percentile,
                wd.primary_domain,
                MIN(d.id) as representative_id
-        FROM defined d
-        LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-        LEFT JOIN word_domains wd ON d.id = wd.word_id
+        FROM vocab.defined d
+        LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+        LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
         WHERE d.term LIKE %s
         GROUP BY d.term, wd.primary_domain
         ORDER BY COALESCE(MIN(wfi.frequency_rank), 999999) ASC 
@@ -40,9 +40,9 @@ def search_words_consolidated(self, query: Optional[str] = None, limit: int = 50
                AVG(wfi.rarity_percentile) as avg_rarity_percentile,
                wd.primary_domain,
                MIN(d.id) as representative_id
-        FROM defined d
-        LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-        LEFT JOIN word_domains wd ON d.id = wd.word_id
+        FROM vocab.defined d
+        LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+        LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
         GROUP BY d.term, wd.primary_domain
         ORDER BY COALESCE(MIN(wfi.frequency_rank), 999999) ASC 
         LIMIT %s OFFSET %s
@@ -86,9 +86,9 @@ def browse_words_enhanced_consolidated(self, letter: Optional[str] = None, domai
            AVG(wfi.rarity_percentile) as avg_rarity_percentile,
            wd.primary_domain,
            MIN(d.id) as representative_id
-    FROM defined d
-    LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-    LEFT JOIN word_domains wd ON d.id = wd.word_id
+    FROM vocab.defined d
+    LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+    LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
     WHERE 1=1
     """
     params = []
@@ -152,7 +152,7 @@ def get_letter_counts_consolidated(self):
     
     sql = """
     SELECT SUBSTRING(UPPER(term), 1, 1) as letter, COUNT(DISTINCT term) as count
-    FROM defined
+    FROM vocab.defined
     WHERE term REGEXP '^[A-Za-z]'
     GROUP BY SUBSTRING(UPPER(term), 1, 1)
     ORDER BY letter
@@ -184,9 +184,9 @@ def get_word_details_consolidated(self, term: str):
            AVG(wfi.rarity_percentile) as avg_rarity_percentile,
            wd.primary_domain,
            MIN(d.id) as representative_id
-    FROM defined d
-    LEFT JOIN word_frequencies_independent wfi ON d.id = wfi.word_id
-    LEFT JOIN word_domains wd ON d.id = wd.word_id
+    FROM vocab.defined d
+    LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+    LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
     WHERE d.term = %s
     GROUP BY d.term, wd.primary_domain
     """

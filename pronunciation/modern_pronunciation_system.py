@@ -663,7 +663,7 @@ class DatabaseManager:
             cursor = conn.cursor()
 
             insert_query = """
-                           INSERT INTO word_phonetics
+                           INSERT INTO vocab.word_phonetics
                            (word_id, word, ipa_transcription, arpabet_transcription,
                             syllable_count, stress_pattern, phonemes_json, transcription_source)
                            VALUES (%(word_id)s, %(word)s, %(ipa)s, %(arpabet)s,
@@ -704,7 +704,7 @@ class DatabaseManager:
             cursor = conn.cursor()
 
             insert_query = """
-                           INSERT INTO pronunciation_similarity
+                           INSERT INTO vocab.pronunciation_similarity
                            (word1_id, word2_id, overall_similarity, phonetic_distance,
                             stress_similarity, rhyme_score, syllable_similarity)
                            VALUES (%(word1_id)s, %(word2_id)s, %(overall_similarity)s, %(phonetic_distance)s,
@@ -802,8 +802,8 @@ class ModernPronunciationSimilaritySystem:
             query = """
                     SELECT transcription_source, \
                            COUNT(*) as count,
-                COUNT(*) * 100.0 / (SELECT COUNT(*) FROM word_phonetics) as percentage
-                    FROM word_phonetics
+                COUNT(*) * 100.0 / (SELECT COUNT(*) FROM vocab.word_phonetics) as percentage
+                    FROM vocab.word_phonetics
                     GROUP BY transcription_source
                     ORDER BY count DESC \
                     """
@@ -999,7 +999,7 @@ class ModernPronunciationSimilaritySystem:
                            syllable_count, \
                            stress_pattern, \
                            phonemes_json
-                    FROM word_phonetics
+                    FROM vocab.word_phonetics
                     WHERE ipa_transcription != '' \
                     """
             df = pd.read_sql(query, conn)
@@ -1066,8 +1066,8 @@ class ModernPronunciationSimilaritySystem:
             query = """
                     SELECT transcription_source, \
                            COUNT(*) as count,
-                COUNT(*) * 100.0 / (SELECT COUNT(*) FROM word_phonetics) as percentage
-                    FROM word_phonetics
+                COUNT(*) * 100.0 / (SELECT COUNT(*) FROM vocab.word_phonetics) as percentage
+                    FROM vocab.word_phonetics
                     GROUP BY transcription_source
                     ORDER BY count DESC \
                     """
@@ -1101,7 +1101,7 @@ class ModernPronunciationSimilaritySystem:
                            syllable_count, \
                            stress_pattern, \
                            phonemes_json
-                    FROM word_phonetics
+                    FROM vocab.word_phonetics
                     WHERE word_id != %s \
                       AND ipa_transcription != '' \
                     """
@@ -1153,22 +1153,22 @@ class SimilarityAnalyzer:
             cursor = conn.cursor()
 
             # Basic statistics
-            cursor.execute("SELECT COUNT(*) FROM word_phonetics")
+            cursor.execute("SELECT COUNT(*) FROM vocab.word_phonetics")
             total_words = cursor.fetchone()[0]
 
-            cursor.execute("SELECT COUNT(*) FROM pronunciation_similarity")
+            cursor.execute("SELECT COUNT(*) FROM vocab.pronunciation_similarity")
             total_similarities = cursor.fetchone()[0]
 
-            cursor.execute("SELECT AVG(overall_similarity) FROM pronunciation_similarity")
+            cursor.execute("SELECT AVG(overall_similarity) FROM vocab.pronunciation_similarity")
             avg_similarity = cursor.fetchone()[0]
 
-            cursor.execute("SELECT MAX(overall_similarity) FROM pronunciation_similarity")
+            cursor.execute("SELECT MAX(overall_similarity) FROM vocab.pronunciation_similarity")
             max_similarity = cursor.fetchone()[0]
 
             # Source breakdown
             cursor.execute("""
                            SELECT transcription_source, COUNT(*) as count
-                           FROM word_phonetics
+                           FROM vocab.word_phonetics
                            GROUP BY transcription_source
                            ORDER BY count DESC
                            """)
@@ -1184,7 +1184,7 @@ class SimilarityAnalyzer:
                                       ELSE 'Very Low (0.0-0.2)'
                                       END as similarity_range,
                                   COUNT(*) as count
-                           FROM pronunciation_similarity
+                           FROM vocab.pronunciation_similarity
                            GROUP BY similarity_range
                            ORDER BY MIN (overall_similarity) DESC
                            """)
@@ -1219,9 +1219,9 @@ class SimilarityAnalyzer:
                                WHEN ps.word1_id = %s THEN wp2.transcription_source \
                                ELSE wp1.transcription_source \
                                END as source
-                    FROM pronunciation_similarity ps
-                             JOIN word_phonetics wp1 ON ps.word1_id = wp1.word_id
-                             JOIN word_phonetics wp2 ON ps.word2_id = wp2.word_id
+                    FROM vocab.pronunciation_similarity ps
+                             JOIN vocab.word_phonetics wp1 ON ps.word1_id = wp1.word_id
+                             JOIN vocab.word_phonetics wp2 ON ps.word2_id = wp2.word_id
                     WHERE (ps.word1_id = %s OR ps.word2_id = %s)
                       AND ps.overall_similarity BETWEEN %s AND %s
                     ORDER BY ps.overall_similarity DESC, ps.rhyme_score DESC

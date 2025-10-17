@@ -360,12 +360,12 @@ class AutonomousVocabularySpider:
         
         try:
             # Check defined table
-            cursor.execute("SELECT id FROM defined WHERE LOWER(term) = %s LIMIT 1", (singular_term,))
+            cursor.execute("SELECT id FROM vocab.defined WHERE LOWER(term) = %s LIMIT 1", (singular_term,))
             if cursor.fetchone():
                 return True
             
             # Check candidate_words table
-            cursor.execute("SELECT id FROM candidate_words WHERE LOWER(term) = %s LIMIT 1", (singular_term,))
+            cursor.execute("SELECT id FROM vocab.candidate_words WHERE LOWER(term) = %s LIMIT 1", (singular_term,))
             if cursor.fetchone():
                 return True
             
@@ -783,7 +783,7 @@ class AutonomousVocabularySpider:
         
         try:
             insert_query = """
-                INSERT INTO candidate_words 
+                INSERT INTO vocab.candidate_words 
                 (term, source_type, source_reference, part_of_speech, utility_score, rarity_indicators,
                  context_snippet, raw_definition, etymology_preview, date_discovered)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)

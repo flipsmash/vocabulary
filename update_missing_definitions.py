@@ -24,7 +24,7 @@ def get_terms_with_missing_definitions() -> List[Tuple[int, str, Optional[str]]]
     try:
         cursor.execute("""
             SELECT id, term, part_of_speech
-            FROM defined
+            FROM vocab.defined
             WHERE definition IS NULL OR definition = '' OR definition = ' '
             ORDER BY id
         """)
@@ -46,7 +46,7 @@ def update_term_definition(term_id: int, definition: str, part_of_speech: str,
         # Update the definition and part of speech if needed
         if part_of_speech and part_of_speech != 'unknown':
             cursor.execute("""
-                UPDATE defined
+                UPDATE vocab.defined
                 SET definition = %s, part_of_speech = %s,
                     definition_source = %s, definition_reliability = %s,
                     definition_updated = NOW()
@@ -54,7 +54,7 @@ def update_term_definition(term_id: int, definition: str, part_of_speech: str,
             """, (definition, part_of_speech, source, reliability, term_id))
         else:
             cursor.execute("""
-                UPDATE defined
+                UPDATE vocab.defined
                 SET definition = %s,
                     definition_source = %s, definition_reliability = %s,
                     definition_updated = NOW()
@@ -80,13 +80,13 @@ def add_definition_columns_if_needed():
 
     try:
         # Check if columns exist
-        cursor.execute("SHOW COLUMNS FROM defined LIKE 'definition_source'")
+        cursor.execute("SHOW COLUMNS FROM vocab.defined LIKE 'definition_source'")
         source_exists = cursor.fetchone() is not None
 
-        cursor.execute("SHOW COLUMNS FROM defined LIKE 'definition_reliability'")
+        cursor.execute("SHOW COLUMNS FROM vocab.defined LIKE 'definition_reliability'")
         reliability_exists = cursor.fetchone() is not None
 
-        cursor.execute("SHOW COLUMNS FROM defined LIKE 'definition_updated'")
+        cursor.execute("SHOW COLUMNS FROM vocab.defined LIKE 'definition_updated'")
         updated_exists = cursor.fetchone() is not None
 
         # Add missing columns
@@ -225,15 +225,15 @@ async def check_missing_definitions_status():
 
     try:
         # Total terms
-        cursor.execute("SELECT COUNT(*) FROM defined")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined")
         total_terms = cursor.fetchone()[0]
 
         # Terms with definitions
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE definition IS NOT NULL AND definition != '' AND definition != ' '")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE definition IS NOT NULL AND definition != '' AND definition != ' '")
         with_definitions = cursor.fetchone()[0]
 
         # Terms without definitions
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE definition IS NULL OR definition = '' OR definition = ' '")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE definition IS NULL OR definition = '' OR definition = ' '")
         without_definitions = cursor.fetchone()[0]
 
         print(f"Definition Status:")
@@ -243,11 +243,11 @@ async def check_missing_definitions_status():
         print(f"  Coverage: {with_definitions/total_terms*100:.1f}%")
 
         # Check if tracking columns exist
-        cursor.execute("SHOW COLUMNS FROM defined LIKE 'definition_source'")
+        cursor.execute("SHOW COLUMNS FROM vocab.defined LIKE 'definition_source'")
         has_source = cursor.fetchone() is not None
 
         if has_source:
-            cursor.execute("SELECT COUNT(*) FROM defined WHERE definition_source IS NOT NULL")
+            cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE definition_source IS NOT NULL")
             with_source = cursor.fetchone()[0]
             print(f"  With source tracking: {with_source:,}")
 

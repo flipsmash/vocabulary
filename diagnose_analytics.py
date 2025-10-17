@@ -30,7 +30,7 @@ safe_print("=== ANALYTICS DIAGNOSIS ===")
 # Check which users have quiz data
 cursor.execute("""
     SELECT DISTINCT user_id, COUNT(*) as sessions
-    FROM quiz_sessions
+    FROM vocab.quiz_sessions
     GROUP BY user_id
     ORDER BY sessions DESC
 """)
@@ -77,8 +77,8 @@ safe_print("=== RAW DATA CHECKS ===")
 cursor.execute("""
     SELECT qs.id, qs.correct_answers, COUNT(uqr.id) as result_count,
            SUM(CASE WHEN uqr.is_correct = 1 THEN 1 ELSE 0 END) as actual_correct
-    FROM quiz_sessions qs
-    LEFT JOIN user_quiz_results uqr ON qs.id = uqr.session_id
+    FROM vocab.quiz_sessions qs
+    LEFT JOIN vocab.user_quiz_results uqr ON qs.id = uqr.session_id
     WHERE qs.completed_at IS NOT NULL
     GROUP BY qs.id, qs.correct_answers
     LIMIT 10
@@ -100,8 +100,8 @@ cursor.execute("""
     SELECT uwm.user_id, uwm.word_id, uwm.total_attempts, uwm.correct_attempts,
            COUNT(uqr.id) as quiz_attempts,
            SUM(CASE WHEN uqr.is_correct = 1 THEN 1 ELSE 0 END) as quiz_correct
-    FROM user_word_mastery uwm
-    LEFT JOIN user_quiz_results uqr ON uwm.user_id = uqr.user_id AND uwm.word_id = uqr.word_id
+    FROM vocab.user_word_mastery uwm
+    LEFT JOIN vocab.user_quiz_results uqr ON uwm.user_id = uqr.user_id AND uwm.word_id = uqr.word_id
     WHERE uwm.total_attempts > 0
     GROUP BY uwm.user_id, uwm.word_id, uwm.total_attempts, uwm.correct_attempts
     HAVING (quiz_attempts != uwm.total_attempts OR quiz_correct != uwm.correct_attempts)

@@ -80,7 +80,7 @@ class UserManager:
             cursor.execute(
                 """
                 SELECT id, username, email, full_name, role, is_active, created_at, last_login_at
-                FROM users
+                FROM vocab.users
                 WHERE username = %s AND is_active = TRUE
                 """,
                 (username,),
@@ -92,7 +92,7 @@ class UserManager:
             cursor.execute(
                 """
                 SELECT id, username, email, full_name, role, is_active, created_at, last_login_at
-                FROM users
+                FROM vocab.users
                 WHERE email = %s AND is_active = TRUE
                 """,
                 (email,),
@@ -104,7 +104,7 @@ class UserManager:
             cursor.execute(
                 """
                 SELECT id, username, email, full_name, role, is_active, created_at, last_login_at
-                FROM users
+                FROM vocab.users
                 WHERE id = %s AND is_active = TRUE
                 """,
                 (user_id,),
@@ -117,7 +117,7 @@ class UserManager:
                 """
                 SELECT id, username, email, full_name, role, is_active, created_at,
                        last_login_at, password_hash
-                FROM users
+                FROM vocab.users
                 WHERE username = %s AND is_active = TRUE
                 """,
                 (username,),
@@ -128,7 +128,7 @@ class UserManager:
 
         with self._cursor(autocommit=True) as cursor:
             cursor.execute(
-                "UPDATE users SET last_login_at = %s WHERE id = %s",
+                "UPDATE vocab.users SET last_login_at = %s WHERE id = %s",
                 (datetime.now(), row["id"]),
             )
         row["last_login_at"] = datetime.now()
@@ -145,7 +145,7 @@ class UserManager:
         password_hash = self.get_password_hash(password)
         with self._cursor(dictionary=True) as cursor:
             cursor.execute(
-                "SELECT 1 FROM users WHERE username = %s OR email = %s",
+                "SELECT 1 FROM vocab.users WHERE username = %s OR email = %s",
                 (username, email),
             )
             if cursor.fetchone():
@@ -154,7 +154,7 @@ class UserManager:
         with self._cursor(dictionary=True) as cursor:
             cursor.execute(
                 """
-                INSERT INTO users (username, email, full_name, password_hash, role, is_active, created_at, last_login_at)
+                INSERT INTO vocab.users (username, email, full_name, password_hash, role, is_active, created_at, last_login_at)
                 VALUES (%s, %s, %s, %s, %s, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING id, username, email, full_name, role, is_active, created_at, last_login_at
                 """,
@@ -184,7 +184,7 @@ class UserManager:
 
         with self._cursor(dictionary=True, autocommit=True) as cursor:
             cursor.execute(
-                f"UPDATE users SET {', '.join(updates)} WHERE id = %s",
+                f"UPDATE vocab.users SET {', '.join(updates)} WHERE id = %s",
                 values,
             )
 

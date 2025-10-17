@@ -27,7 +27,7 @@ def examine_specific_terms():
             cursor.execute("""
                 SELECT id, term, definition, part_of_speech, frequency, 
                        word_source, definition_source, bad, python_wordfreq
-                FROM defined 
+                FROM vocab.defined 
                 WHERE term = %s
             """, (term,))
             
@@ -130,7 +130,7 @@ def find_similar_problematic_patterns():
         print("1. Terms ending in 'ee' (similar to 'placee'):")
         cursor.execute("""
             SELECT term, definition, frequency
-            FROM defined 
+            FROM vocab.defined 
             WHERE term LIKE '%ee' 
             AND LENGTH(term) > 4
             AND term NOT IN ('employee', 'committee', 'guarantee', 'refugee', 'trustee', 'nominee', 'degree', 'agree')
@@ -147,7 +147,7 @@ def find_similar_problematic_patterns():
         print("2. Other obsolete/archaic terms:")
         cursor.execute("""
             SELECT term, definition, frequency
-            FROM defined 
+            FROM vocab.defined 
             WHERE definition LIKE '%obsolete%' 
             OR definition LIKE '%archaic%'
             OR definition LIKE '%rare%'
@@ -164,7 +164,7 @@ def find_similar_problematic_patterns():
         print("3. Terms ending in 'ey' (similar to 'sometimey'):")
         cursor.execute("""
             SELECT term, definition, frequency
-            FROM defined 
+            FROM vocab.defined 
             WHERE term LIKE '%ey' 
             AND LENGTH(term) > 6
             AND term NOT IN ('journey', 'money', 'honey', 'survey', 'turkey', 'hockey', 'whiskey', 'kidney', 'chimney', 'attorney')
@@ -195,7 +195,7 @@ def check_data_sources():
         # Check word sources
         cursor.execute("""
             SELECT word_source, COUNT(*) as count
-            FROM defined 
+            FROM vocab.defined 
             WHERE word_source IS NOT NULL
             GROUP BY word_source
             ORDER BY count DESC
@@ -210,7 +210,7 @@ def check_data_sources():
         # Check definition sources
         cursor.execute("""
             SELECT definition_source, COUNT(*) as count
-            FROM defined 
+            FROM vocab.defined 
             WHERE definition_source IS NOT NULL
             GROUP BY definition_source
             ORDER BY count DESC
@@ -225,7 +225,7 @@ def check_data_sources():
         # Check if problematic terms have specific source patterns
         cursor.execute("""
             SELECT term, word_source, definition_source
-            FROM defined 
+            FROM vocab.defined 
             WHERE term IN ('placee', 'oecodomic', 'sometimey')
         """)
         

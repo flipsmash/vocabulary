@@ -15,7 +15,7 @@ def check_admin_users():
     try:
         cursor.execute("""
             SELECT username, email, role, is_active, created_at 
-            FROM users 
+            FROM vocab.users 
             WHERE role = 'admin' OR username = 'admin'
             ORDER BY created_at
         """)

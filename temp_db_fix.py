@@ -39,7 +39,7 @@ def test_connection_alternatives():
         try:
             conn = mysql.connector.connect(**config)
             cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM defined")
+            cursor.execute("SELECT COUNT(*) FROM vocab.defined")
             count = cursor.fetchone()[0]
 
             print(f"  ✓ SUCCESS: {count:,} words found")

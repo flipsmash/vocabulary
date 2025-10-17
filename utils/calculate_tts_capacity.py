@@ -13,8 +13,8 @@ def main():
 
     # Get sample of words missing audio to calculate average word length
     cursor.execute("""
-    SELECT d.term FROM defined d 
-    LEFT JOIN word_phonetics wp ON d.id = wp.word_id 
+    SELECT d.term FROM vocab.defined d 
+    LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id 
     WHERE (d.wav_url IS NULL OR d.wav_url = '')
     AND (wp.ipa_transcription IS NOT NULL AND wp.ipa_transcription != '')
     LIMIT 1000

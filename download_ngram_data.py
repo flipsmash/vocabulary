@@ -169,7 +169,7 @@ def main():
     try:
         cursor.execute("""
             SELECT DISTINCT LOWER(term)
-            FROM defined
+            FROM vocab.defined
             WHERE ngram_freq IS NULL
             AND (phrase IS NULL OR phrase = 0)
             AND term NOT LIKE '% %'
@@ -213,7 +213,7 @@ def main():
                 found_count += 1
 
             cursor.execute("""
-                UPDATE defined
+                UPDATE vocab.defined
                 SET ngram_freq = %s
                 WHERE LOWER(term) = %s AND ngram_freq IS NULL
             """, (final_score, word))

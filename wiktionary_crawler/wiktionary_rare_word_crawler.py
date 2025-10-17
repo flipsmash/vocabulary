@@ -599,11 +599,11 @@ class CandidateDatabase:
         try:
             with conn.cursor() as cursor:
                 # Load from defined table
-                cursor.execute("SELECT LOWER(term) FROM defined")
+                cursor.execute("SELECT LOWER(term) FROM vocab.defined")
                 defined_terms = {row[0] for row in cursor.fetchall()}
 
                 # Load from vocabulary_candidates table
-                cursor.execute("SELECT LOWER(term) FROM vocabulary_candidates")
+                cursor.execute("SELECT LOWER(term) FROM vocab.vocabulary_candidates")
                 candidate_terms = {row[0] for row in cursor.fetchall()}
 
                 self.existing_terms = defined_terms | candidate_terms
@@ -637,7 +637,7 @@ class CandidateDatabase:
                 # Disable automatic prepared statements to avoid name conflicts
                 # Insert records one at a time (still reasonably fast for 500 record batches)
                 insert_sql = """
-                INSERT INTO vocabulary_candidates
+                INSERT INTO vocab.vocabulary_candidates
                     (term, zipf_score, definition, part_of_speech, etymology,
                      obsolete_or_archaic, source_dump_date)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -883,7 +883,7 @@ class WiktionaryRareWordCrawler:
         logger.info("=" * 70)
         logger.info("")
         logger.info("Review candidates in vocabulary_candidates table:")
-        logger.info("  SELECT * FROM vocabulary_candidates ORDER BY zipf_score ASC LIMIT 20;")
+        logger.info("  SELECT * FROM vocab.vocabulary_candidates ORDER BY zipf_score ASC LIMIT 20;")
 
 
 # ============================================================================

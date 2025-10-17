@@ -31,7 +31,7 @@ def fetch_data() -> pd.DataFrame:
     try:
         query = (
             "SELECT id, final_rarity, python_wordfreq, ngram_freq, commoncrawl_freq "
-            "FROM defined"
+            "FROM vocab.defined"
         )
         df = pd.read_sql(query, conn)
     finally:

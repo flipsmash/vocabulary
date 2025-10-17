@@ -24,7 +24,7 @@ def analyze_word_patterns():
         # Get sample of words with their details
         cursor.execute("""
             SELECT id, term, definition, part_of_speech, frequency, domain 
-            FROM defined 
+            FROM vocab.defined 
             ORDER BY id 
             LIMIT 100
         """)
@@ -72,21 +72,21 @@ def check_data_statistics():
     
     try:
         # Total word count
-        cursor.execute("SELECT COUNT(*) FROM defined")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined")
         total_words = cursor.fetchone()[0]
         
         # Words without definitions
-        cursor.execute("SELECT COUNT(*) FROM defined WHERE definition IS NULL OR definition = ''")
+        cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE definition IS NULL OR definition = ''")
         no_definition = cursor.fetchone()[0]
         
         # Average word length
-        cursor.execute("SELECT AVG(LENGTH(term)) FROM defined WHERE term IS NOT NULL")
+        cursor.execute("SELECT AVG(LENGTH(term)) FROM vocab.defined WHERE term IS NOT NULL")
         avg_length = cursor.fetchone()[0]
         
         # Most common parts of speech
         cursor.execute("""
             SELECT part_of_speech, COUNT(*) as count 
-            FROM defined 
+            FROM vocab.defined 
             WHERE part_of_speech IS NOT NULL 
             GROUP BY part_of_speech 
             ORDER BY count DESC 
@@ -97,7 +97,7 @@ def check_data_statistics():
         # Most common domains
         cursor.execute("""
             SELECT domain, COUNT(*) as count 
-            FROM defined 
+            FROM vocab.defined 
             WHERE domain IS NOT NULL 
             GROUP BY domain 
             ORDER BY count DESC 
@@ -112,7 +112,7 @@ def check_data_statistics():
                 MIN(frequency) as min_freq,
                 MAX(frequency) as max_freq,
                 AVG(frequency) as avg_freq
-            FROM defined 
+            FROM vocab.defined 
             WHERE frequency IS NOT NULL
         """)
         freq_stats = cursor.fetchone()
@@ -166,7 +166,7 @@ def find_problematic_entries():
         found_issues = []
         
         for term in problematic_terms:
-            cursor.execute("SELECT id, term, definition, part_of_speech, frequency FROM defined WHERE term = %s", (term,))
+            cursor.execute("SELECT id, term, definition, part_of_speech, frequency FROM vocab.defined WHERE term = %s", (term,))
             result = cursor.fetchone()
             
             if result:
@@ -187,7 +187,7 @@ def find_problematic_entries():
         # Words ending in 'y' that might be corrupted
         cursor.execute("""
             SELECT id, term, definition, part_of_speech 
-            FROM defined 
+            FROM vocab.defined 
             WHERE term LIKE '%y' 
             AND LENGTH(term) > 6
             AND term NOT IN ('vocabulary', 'necessary', 'temporary', 'dictionary', 'ordinary', 'primary', 'secondary', 'military', 'category', 'history', 'mystery', 'victory', 'factory', 'memory', 'battery', 'grocery', 'summary', 'territory')
@@ -204,7 +204,7 @@ def find_problematic_entries():
         # Very short words (might be fragments)
         cursor.execute("""
             SELECT id, term, definition, part_of_speech 
-            FROM defined 
+            FROM vocab.defined 
             WHERE LENGTH(term) <= 2
             AND term NOT IN ('a', 'an', 'at', 'be', 'by', 'do', 'go', 'he', 'if', 'in', 'is', 'it', 'me', 'my', 'no', 'of', 'on', 'or', 'so', 'to', 'up', 'us', 'we')
             LIMIT 20
@@ -232,7 +232,7 @@ def check_browse_page_data():
         # Get the first page of browse results (mimicking the web app query)
         cursor.execute("""
             SELECT id, term, definition, part_of_speech, frequency, domain
-            FROM defined 
+            FROM vocab.defined 
             ORDER BY term 
             LIMIT 25
         """)

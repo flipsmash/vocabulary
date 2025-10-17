@@ -55,7 +55,7 @@ def update_frequencies_batch():
         # Get all terms without frequency data
         cursor.execute("""
             SELECT id, term
-            FROM defined
+            FROM vocab.defined
             WHERE frequency IS NULL
             ORDER BY id
         """)
@@ -78,7 +78,7 @@ def update_frequencies_batch():
             if frequency is not None:
                 # Update with Datamuse frequency
                 cursor.execute("""
-                    UPDATE defined
+                    UPDATE vocab.defined
                     SET frequency = %s
                     WHERE id = %s
                 """, (frequency, term_id))
@@ -87,7 +87,7 @@ def update_frequencies_batch():
             else:
                 # Set to -999 if no frequency available
                 cursor.execute("""
-                    UPDATE defined
+                    UPDATE vocab.defined
                     SET frequency = -999
                     WHERE id = %s
                 """, (term_id,))
@@ -132,16 +132,16 @@ def verify_updates():
 
     try:
         # Check updated statistics
-        cursor.execute('SELECT COUNT(*) as total FROM defined')
+        cursor.execute('SELECT COUNT(*) as total FROM vocab.defined')
         total = cursor.fetchone()[0]
 
-        cursor.execute('SELECT COUNT(*) as null_freq FROM defined WHERE frequency IS NULL')
+        cursor.execute('SELECT COUNT(*) as null_freq FROM vocab.defined WHERE frequency IS NULL')
         null_freq = cursor.fetchone()[0]
 
-        cursor.execute('SELECT COUNT(*) as has_freq FROM defined WHERE frequency IS NOT NULL AND frequency != -999')
+        cursor.execute('SELECT COUNT(*) as has_freq FROM vocab.defined WHERE frequency IS NOT NULL AND frequency != -999')
         has_freq = cursor.fetchone()[0]
 
-        cursor.execute('SELECT COUNT(*) as not_found FROM defined WHERE frequency = -999')
+        cursor.execute('SELECT COUNT(*) as not_found FROM vocab.defined WHERE frequency = -999')
         not_found = cursor.fetchone()[0]
 
         print(f"\nVerification Results:")
@@ -153,7 +153,7 @@ def verify_updates():
         # Sample of recently updated terms
         cursor.execute("""
             SELECT term, frequency
-            FROM defined
+            FROM vocab.defined
             WHERE frequency IS NOT NULL
             ORDER BY id DESC
             LIMIT 10

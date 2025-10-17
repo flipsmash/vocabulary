@@ -33,7 +33,7 @@ class ChunkedSimilarityInserter:
         """Check how many similarities are already stored"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM definition_similarity")
+            cursor.execute("SELECT COUNT(*) FROM vocab.definition_similarity")
             return cursor.fetchone()[0]
     
     def store_similarities_chunked(self, similarities, start_idx=0):
@@ -70,7 +70,7 @@ class ChunkedSimilarityInserter:
                     
                     # Prepare insert query
                     insert_query = """
-                    INSERT IGNORE INTO definition_similarity 
+                    INSERT IGNORE INTO vocab.definition_similarity 
                     (word1_id, word2_id, cosine_similarity, embedding_model)
                     VALUES (%s, %s, %s, %s)
                     """
