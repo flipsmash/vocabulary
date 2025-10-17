@@ -108,10 +108,10 @@
       .nodeLabel(() => '')
       .nodeColor(node => node.__vizColor || '#2563eb')
       .nodeVal(node => {
-        // Size based on rarity: rarer words (higher rarity) get bigger nodes
-        // Scale from 4 (common) to 12 (rare)
+        // Size based on rarity: common words (lower rarity) get bigger nodes
+        // Scale from 4 (rare) to 12 (common)
         const rarity = node.final_rarity ?? 0.5;
-        return 4 + (rarity * 8);
+        return 4 + ((1 - rarity) * 8);
       })
       .linkWidth(link => Math.max(0.6, (link.value || 0) * 2))
       .linkColor(link => {
@@ -163,9 +163,9 @@
     // 3D force configuration will be applied when graph is first created
 
     Graph2D.nodeCanvasObjectMode(() => 'replace').nodeCanvasObject((node, ctx, globalScale) => {
-      // Size based on rarity: rarer words get bigger nodes
+      // Size based on rarity: common words (lower rarity) get bigger nodes
       const rarity = node.final_rarity ?? 0.5;
-      const radius = 4 + (rarity * 8); // Range from 4 to 12
+      const radius = 4 + ((1 - rarity) * 8); // Range from 4 (rare) to 12 (common)
 
       ctx.save();
       ctx.beginPath();
