@@ -5,110 +5,124 @@
 {% block extra_head %}
 <style>
     .viz-page {
-        padding: var(--space-10) 0;
+        padding: var(--space-6) 0;
     }
 
     .viz-header {
         display: grid;
-        gap: var(--space-5);
-        margin-bottom: var(--space-6);
+        gap: var(--space-2);
+        margin-bottom: var(--space-4);
     }
 
     .viz-controls {
-        display: grid;
-        gap: var(--space-5) var(--space-4);
-        grid-template-columns: repeat(12, 1fr);
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-3) var(--space-4);
+        align-items: flex-end;
     }
 
-    /* Control items with specific column spans */
+    /* Control items - intrinsic sizing */
     .viz-control-item {
         display: flex;
         flex-direction: column;
-        gap: var(--space-2);
+        gap: 0.25rem;
     }
 
-    .viz-control-item.span-3 {
-        grid-column: span 3;
+    /* Specific width constraints for different control types */
+    .viz-control-item.input-sm {
+        width: 100px;
     }
 
-    .viz-control-item.span-4 {
-        grid-column: span 4;
+    .viz-control-item.input-md {
+        width: 140px;
     }
 
-    .viz-control-item.span-6 {
-        grid-column: span 6;
+    .viz-control-item.input-lg {
+        width: 180px;
     }
 
-    .viz-control-item.span-12 {
-        grid-column: span 12;
+    .viz-control-item.select-md {
+        width: 200px;
     }
 
-    /* Form controls consistent height */
+    .viz-control-item.slider-compact {
+        width: 240px;
+    }
+
+    .viz-control-item.btn-inline {
+        width: auto;
+        min-width: 110px;
+    }
+
+    .viz-control-item.toggle-inline {
+        width: 130px;
+    }
+
+    /* Full width section dividers */
+    .viz-control-item.full-width {
+        width: 100%;
+    }
+
+    /* Form controls consistent height - more compact */
     .viz-controls .form-control,
     .viz-controls .form-select,
     .viz-controls .btn {
-        height: 42px;
+        height: 34px;
+        font-size: 0.85rem;
+        padding: 0 0.65rem;
+    }
+
+    .viz-controls .btn {
+        white-space: nowrap;
     }
 
     .viz-controls .form-label {
-        font-size: var(--font-size-sm);
+        font-size: 0.75rem;
         font-weight: var(--font-weight-medium);
         color: var(--text-primary);
-        margin-bottom: var(--space-2);
+        margin-bottom: 0.25rem;
     }
 
     .viz-controls .form-text {
-        font-size: var(--font-size-xs);
+        font-size: 0.7rem;
         color: var(--text-secondary);
-        margin-top: var(--space-1);
-        line-height: var(--line-height-snug);
+        margin-top: 0.125rem;
+        line-height: 1.2;
     }
 
     /* Responsive breakpoints */
-    @media (max-width: 1200px) {
-        .viz-control-item.span-3 {
-            grid-column: span 4;
-        }
-    }
-
-    @media (max-width: 992px) {
-        .viz-controls {
-            grid-template-columns: repeat(8, 1fr);
-        }
-
-        .viz-control-item.span-3,
-        .viz-control-item.span-4 {
-            grid-column: span 4;
-        }
-
-        .viz-control-item.span-6 {
-            grid-column: span 8;
-        }
-    }
-
     @media (max-width: 768px) {
         .viz-controls {
-            grid-template-columns: repeat(4, 1fr);
+            gap: var(--space-2) var(--space-3);
         }
 
-        .viz-control-item.span-3,
-        .viz-control-item.span-4,
-        .viz-control-item.span-6 {
-            grid-column: span 4;
+        .viz-control-item.input-sm,
+        .viz-control-item.input-md,
+        .viz-control-item.input-lg,
+        .viz-control-item.select-md {
+            width: 48%;
+            min-width: 0;
+        }
+
+        .viz-control-item.slider-compact {
+            width: 100%;
+        }
+
+        .viz-control-item.btn-inline,
+        .viz-control-item.toggle-inline {
+            width: 48%;
+            min-width: 0;
         }
     }
 
-    @media (max-width: 576px) {
-        .viz-controls {
-            grid-template-columns: 1fr;
-            gap: var(--space-4);
-        }
-
-        .viz-control-item.span-3,
-        .viz-control-item.span-4,
-        .viz-control-item.span-6,
-        .viz-control-item.span-12 {
-            grid-column: span 1;
+    @media (max-width: 480px) {
+        .viz-control-item.input-sm,
+        .viz-control-item.input-md,
+        .viz-control-item.input-lg,
+        .viz-control-item.select-md,
+        .viz-control-item.btn-inline,
+        .viz-control-item.toggle-inline {
+            width: 100%;
         }
     }
 
@@ -116,13 +130,13 @@
         background: var(--bg-secondary);
         border-radius: var(--border-radius-lg);
         box-shadow: var(--shadow-md);
-        padding: var(--space-6);
+        padding: var(--space-4);
     }
 
     .viz-toggle {
         display: flex;
         width: 100%;
-        height: 42px;
+        height: 34px;
         border: 1px solid var(--border-primary);
         border-radius: var(--border-radius-md);
         overflow: hidden;
@@ -133,8 +147,8 @@
         flex: 1;
         border: none;
         background: transparent;
-        padding: 0 var(--space-4);
-        font-size: var(--font-size-sm);
+        padding: 0 var(--space-2);
+        font-size: 0.85rem;
         font-weight: var(--font-weight-medium);
         cursor: pointer;
         transition: all var(--transition-fast);
@@ -299,53 +313,39 @@
     .viz-slider-group {
         display: flex;
         flex-direction: column;
-        gap: var(--space-2);
+        gap: 0.25rem;
     }
 
     .viz-slider-wrapper {
         display: flex;
-        gap: var(--space-3);
+        gap: var(--space-2);
         align-items: center;
     }
 
     .viz-slider-wrapper input[type="range"] {
         flex: 1;
+        min-width: 160px;
     }
 
     .viz-slider-value {
         font-variant-numeric: tabular-nums;
-        min-width: 50px;
+        min-width: 42px;
         text-align: right;
         color: var(--text-secondary);
-        font-size: var(--font-size-sm);
+        font-size: 0.75rem;
         font-weight: var(--font-weight-medium);
     }
 
-    /* Button group styling */
-    .viz-button-group {
-        display: flex;
-        gap: var(--space-2);
-    }
-
-    .viz-button-group .btn {
-        flex: 1;
-    }
-
-    /* Section divider for visual grouping */
+    /* Section divider for visual grouping - more compact */
     .viz-section-divider {
-        grid-column: 1 / -1;
-        height: 1px;
-        background: linear-gradient(
-            to right,
-            transparent,
-            var(--border-primary) 10%,
-            var(--border-primary) 90%,
-            transparent
-        );
-        margin: var(--space-2) 0;
+        width: 100%;
+        height: 0;
+        border-top: 1px solid var(--border-primary);
+        margin: -0.25rem 0 0.25rem 0;
+        opacity: 0.4;
     }
 
-    @media (max-width: 576px) {
+    @media (max-width: 480px) {
         .viz-section-divider {
             display: none;
         }
@@ -478,26 +478,23 @@
         </div>
 
         <form id="semantic-graph-form" class="viz-controls">
-            <!-- Row 1: Main Input Controls (4 columns each) -->
-            <div class="viz-control-item span-3">
+            <!-- Row 1: Main Input Controls - Compact inline layout -->
+            <div class="viz-control-item input-lg">
                 <label for="semantic-term" class="form-label">Focal term</label>
                 <input type="text" id="semantic-term" class="form-control" placeholder="e.g. abaca" value="abaca" autocomplete="off">
-                <div class="form-text">Leave blank to keep the current word or get a random suggestion.</div>
             </div>
 
-            <div class="viz-control-item span-3">
+            <div class="viz-control-item input-md">
                 <label for="semantic-similarity" class="form-label">Similarity floor</label>
                 <input type="number" id="semantic-similarity" class="form-control" step="0.05" min="0" max="1" value="0.45">
-                <div class="form-text">Higher values tighten the cluster.</div>
             </div>
 
-            <div class="viz-control-item span-3">
+            <div class="viz-control-item input-sm">
                 <label for="semantic-max-nodes" class="form-label">Max nodes</label>
                 <input type="number" id="semantic-max-nodes" class="form-control" min="5" max="150" value="32">
-                <div class="form-text">Upper bound on graph size.</div>
             </div>
 
-            <div class="viz-control-item span-3">
+            <div class="viz-control-item select-md">
                 <label for="semantic-embedding" class="form-label">Embedding model</label>
                 <select id="semantic-embedding" class="form-select">
                     <option value="">Auto-select best</option>
@@ -508,10 +505,10 @@
             </div>
 
             <!-- Visual divider -->
-            <div class="viz-section-divider"></div>
+            <div class="viz-section-divider full-width"></div>
 
-            <!-- Row 2: Force Strength Slider (6 columns) + Graph Mode + Actions (6 columns) -->
-            <div class="viz-control-item viz-slider-group span-6">
+            <!-- Row 2: Force Strength Slider + Graph Mode + Fullscreen -->
+            <div class="viz-control-item viz-slider-group slider-compact">
                 <label for="force-strength" class="form-label">Force strength</label>
                 <div class="viz-slider-wrapper">
                     <input type="range" class="form-range" id="force-strength" min="-400" max="-40" step="10" value="-160">
@@ -519,7 +516,7 @@
                 </div>
             </div>
 
-            <div class="viz-control-item span-3">
+            <div class="viz-control-item toggle-inline">
                 <label class="form-label">Graph mode</label>
                 <div class="viz-toggle" role="group" aria-label="Graph mode toggle">
                     <button type="button" class="active" data-graph-mode="2d">2D</button>
@@ -527,18 +524,18 @@
                 </div>
             </div>
 
-            <div class="viz-control-item span-3">
+            <div class="viz-control-item btn-inline">
                 <label class="form-label">&nbsp;</label>
                 <button type="button" class="btn btn-outline-secondary" id="fullscreen-btn">
-                    <span id="fullscreen-icon">⛶</span> Full Screen
+                    <span id="fullscreen-icon">⛶</span> Fullscreen
                 </button>
             </div>
 
             <!-- Visual divider -->
-            <div class="viz-section-divider"></div>
+            <div class="viz-section-divider full-width"></div>
 
-            <!-- Row 3: Rotation Controls (6 columns each) -->
-            <div class="viz-control-item viz-slider-group span-6">
+            <!-- Row 3: Rotation Controls - side by side -->
+            <div class="viz-control-item viz-slider-group slider-compact">
                 <label for="rotate-x" class="form-label">Rotate X axis</label>
                 <div class="viz-slider-wrapper">
                     <input type="range" class="form-range" id="rotate-x" min="-180" max="180" step="1" value="0">
@@ -546,7 +543,7 @@
                 </div>
             </div>
 
-            <div class="viz-control-item viz-slider-group span-6">
+            <div class="viz-control-item viz-slider-group slider-compact">
                 <label for="rotate-y" class="form-label">Rotate Y axis</label>
                 <div class="viz-slider-wrapper">
                     <input type="range" class="form-range" id="rotate-y" min="-180" max="180" step="1" value="0">
@@ -555,15 +552,15 @@
             </div>
 
             <!-- Visual divider -->
-            <div class="viz-section-divider"></div>
+            <div class="viz-section-divider full-width"></div>
 
-            <!-- Row 4: Action Buttons (6 columns each) -->
-            <div class="viz-control-item span-6">
+            <!-- Row 4: Action Buttons - inline, content-sized -->
+            <div class="viz-control-item btn-inline">
                 <label class="form-label">&nbsp;</label>
                 <button type="submit" class="btn btn-primary">Load graph</button>
             </div>
 
-            <div class="viz-control-item span-6">
+            <div class="viz-control-item btn-inline">
                 <label class="form-label">&nbsp;</label>
                 <button type="button" class="btn btn-outline-secondary" id="semantic-random">Surprise me</button>
             </div>
