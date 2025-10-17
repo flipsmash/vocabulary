@@ -371,6 +371,19 @@
 
     Graph2D.onNodeHover(handleHover);
 
+    // Add click handler to make clicked node the new center
+    Graph2D.onNodeClick((node) => {
+      if (node && node.term && !node.is_center) {
+        hideTooltip();
+        termInput.value = node.term;
+        state.currentTerm = node.term;
+        fetchGraph({ term: node.term }).catch(error => {
+          console.error('[Viz] Error recentering on node:', error);
+          alert('Error loading graph: ' + error.message);
+        });
+      }
+    });
+
     if (rotateXInput && rotateYInput) {
       const onRotationChange = () => {
         state.rotationX = (Number(rotateXInput.value) * Math.PI) / 180;
@@ -630,6 +643,19 @@
             }
           });
           graph3D.onNodeHover(handleHover);
+
+          // Add click handler for 3D graph too
+          graph3D.onNodeClick((node) => {
+            if (node && node.term && !node.is_center) {
+              hideTooltip();
+              termInput.value = node.term;
+              state.currentTerm = node.term;
+              fetchGraph({ term: node.term }).catch(error => {
+                console.error('[Viz] Error recentering on node:', error);
+                alert('Error loading graph: ' + error.message);
+              });
+            }
+          });
 
           // Copy current data to 3D graph
           const currentData = Graph2D.graphData();
