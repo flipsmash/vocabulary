@@ -821,7 +821,8 @@ class VocabularyDatabase:
             if available_models and selected_model not in available_models:
                 raise ValueError(f"Embedding model '{selected_model}' is not available")
         else:
-            preferred_default = "all-MiniLM-L6-v2"
+            # Prefer mpnet for higher quality (768 dims vs 384)
+            preferred_default = "sentence-transformers/all-mpnet-base-v2"
             if preferred_default in available_models:
                 selected_model = preferred_default
             elif available_models:
@@ -1072,7 +1073,22 @@ class VocabularyDatabase:
             "metadata": metadata_summary,
         }
 
-    def get_similar_words(self, word_id: int, limit: int = 10) -> List[tuple]:
+    def get_similar_words(self, word_id: int, limit: int = 10, embedding_model: str = None) -> List[tuple]:
+        """
+        Get semantically similar words based on definition embeddings.
+
+        Args:
+            word_id: ID of the word to find similarities for
+            limit: Maximum number of similar words to return
+            embedding_model: Which embedding model to use (default: mpnet for higher quality)
+
+        Returns:
+            List of tuples: (word_id, term, cosine_similarity)
+        """
+        if embedding_model is None:
+            # Default to mpnet for higher quality semantic similarity
+            embedding_model = "sentence-transformers/all-mpnet-base-v2"
+
         sql = """
         SELECT d.id, d.term, ds.cosine_similarity
         FROM vocab.definition_similarity ds
@@ -1080,13 +1096,14 @@ class VocabularyDatabase:
             CASE WHEN ds.word1_id = %s THEN ds.word2_id ELSE ds.word1_id END = d.id
         )
         WHERE (ds.word1_id = %s OR ds.word2_id = %s)
+          AND ds.embedding_model = %s
         ORDER BY ds.cosine_similarity DESC
         LIMIT %s
         """
 
         with db_manager.get_cursor() as cursor:
             try:
-                cursor.execute(sql, (word_id, word_id, word_id, limit))
+                cursor.execute(sql, (word_id, word_id, word_id, embedding_model, limit))
                 return cursor.fetchall()
             except Exception as exc:
                 logger.warning(f"Could not fetch similar words: {exc}")
