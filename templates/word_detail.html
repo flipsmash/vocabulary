@@ -27,13 +27,19 @@
                             <div class="mt-3">
                                 <div class="d-flex align-items-center flex-wrap gap-2">
                                     <!-- Always show pronunciation button -->
+                                    {% if word.wav_url %}
                                     <button id="pronunciation-btn" class="btn btn-outline-primary btn-sm" onclick="playPronunciation()">
                                         <span id="play-icon">🔊</span> Play Pronunciation
                                     </button>
                                     <audio id="pronunciation-audio" preload="none" style="display: none;">
-                                        <source src="/pronunciation/{{ word.term }}" type="audio/wav">
+                                        <source src="{{ word.wav_url }}" type="audio/wav">
                                         Your browser does not support the audio element.
                                     </audio>
+                                    {% else %}
+                                    <button id="pronunciation-btn" class="btn btn-outline-secondary btn-sm" disabled>
+                                        <span id="play-icon">🔇</span> Pronunciation Unavailable
+                                    </button>
+                                    {% endif %}
                                     
                                     {% if word.ipa_transcription %}
                                     <span class="badge bg-info text-dark fs-6" title="IPA Transcription">
@@ -120,28 +126,43 @@
                     </div>
                     {% endif %}
                     
-                    {% if word.independent_frequency %}
+                    {% if word.frequency_rank or word.final_rarity %}
                     <div class="mb-4">
-                        <h6 class="text-muted mb-2">Frequency Analysis</h6>
+                        <h6 class="text-muted mb-2">Frequency & Rarity Analysis</h6>
                         <div class="row">
-                            <div class="col-md-6">
-                                <small class="text-muted">Independent Frequency Score</small>
-                                <div class="fw-bold">{{ "%.2e"|format(word.independent_frequency) }}</div>
-                            </div>
                             {% if word.frequency_rank %}
                             <div class="col-md-6">
                                 <small class="text-muted">Frequency Ranking</small>
-                                <div class="fw-bold">{{ "{:,}".format(word.frequency_rank) }} / 22,094</div>
+                                <div class="fw-bold">
+                                    {{ "{:,}".format(word.frequency_rank) }} / 23,148
+                                    {% if word.rarity_category %}
+                                    <span class="badge bg-{% if word.rarity_category == 'common' %}success{% elif word.rarity_category == 'somewhat common' %}info{% elif word.rarity_category == 'somewhat rare' %}warning{% elif word.rarity_category == 'rare' %}orange{% else %}danger{% endif %} ms-2">
+                                        {{ word.rarity_category }}
+                                    </span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endif %}
+                            {% if word.final_rarity %}
+                            <div class="col-md-6">
+                                <small class="text-muted">Raw Rarity Score</small>
+                                <div class="fw-bold">{{ "%.4f"|format(word.final_rarity) }}</div>
+                                <small class="text-muted">(0 = common, 1 = ultra-rare)</small>
                             </div>
                             {% endif %}
                         </div>
                         {% if word.rarity_percentile %}
-                        <div class="mt-2">
+                        <div class="mt-3">
                             <small class="text-muted">Rarity Level</small>
-                            <div class="progress mt-1" style="height: 8px;">
-                                <div class="progress-bar bg-warning" style="width: {{ word.rarity_percentile }}%"></div>
+                            <div class="progress mt-1" style="height: 10px;">
+                                <div class="progress-bar {% if word.rarity_percentile < 20 %}bg-success{% elif word.rarity_percentile < 40 %}bg-info{% elif word.rarity_percentile < 60 %}bg-warning{% elif word.rarity_percentile < 80 %}bg-orange{% else %}bg-danger{% endif %}" style="width: {{ word.rarity_percentile }}%"></div>
                             </div>
-                            <small class="text-muted">{{ "%.1f"|format(word.rarity_percentile) }}% of words are rarer</small>
+                            <small class="text-muted">{{ "%.1f"|format(100 - word.rarity_percentile) }}% of words are more common</small>
+                        </div>
+                        {% endif %}
+                        {% if word.num_sources %}
+                        <div class="mt-2">
+                            <small class="text-muted">Data Quality: {{ word.num_sources }} frequency source{{ word.num_sources != 1 and 's' or '' }}</small>
                         </div>
                         {% endif %}
                     </div>

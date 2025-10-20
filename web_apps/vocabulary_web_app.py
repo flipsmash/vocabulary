@@ -54,11 +54,10 @@ class Word:
     term: str
     definition: str
     part_of_speech: Optional[str] = None
-    frequency_rank: Optional[int] = None
-    independent_frequency: Optional[float] = None
-    rarity_percentile: Optional[float] = None
+    final_rarity: Optional[float] = None  # Core rarity score (0-1, from materialized view)
+    num_sources: Optional[int] = None  # Number of frequency sources contributing to rarity
     primary_domain: Optional[str] = None
-    frequency: Optional[float] = None
+    frequency: Optional[float] = None  # Deprecated - kept for backward compatibility
     wav_url: Optional[str] = None
     ipa_transcription: Optional[str] = None
     arpabet_transcription: Optional[str] = None
@@ -66,23 +65,69 @@ class Word:
     stress_pattern: Optional[str] = None
     obsolete_or_archaic: Optional[bool] = None
 
+    # Computed properties (not stored, calculated on-demand)
+    @property
+    def rarity_percentile(self) -> Optional[float]:
+        """Convert 0-1 rarity to 0-100 percentile for display."""
+        return self.final_rarity * 100.0 if self.final_rarity is not None else None
+
+    @property
+    def frequency_rank(self) -> Optional[int]:
+        """Frequency rank is computed in queries when needed, not stored here."""
+        # This will be set dynamically by queries that need ranking
+        return getattr(self, '_frequency_rank', None)
+
+    @frequency_rank.setter
+    def frequency_rank(self, value: Optional[int]):
+        self._frequency_rank = value
+
+    @property
+    def rarity_category(self) -> Optional[str]:
+        """
+        Categorize rarity into human-readable categories.
+
+        Categories based on final_rarity (0-1 scale, where 1 = most rare):
+        - common: 0.0 - 0.2 (top 20% most common words)
+        - somewhat common: 0.2 - 0.4
+        - somewhat rare: 0.4 - 0.6
+        - rare: 0.6 - 0.8
+        - ultra-rare: 0.8 - 1.0 (top 20% rarest words)
+        """
+        if self.final_rarity is None:
+            return None
+
+        if self.final_rarity < 0.2:
+            return "common"
+        elif self.final_rarity < 0.4:
+            return "somewhat common"
+        elif self.final_rarity < 0.6:
+            return "somewhat rare"
+        elif self.final_rarity < 0.8:
+            return "rare"
+        else:
+            return "ultra-rare"
+
 
 class WordQueryBuilder:
     """
     Helper class for building consistent word queries with all joins.
     Eliminates repetition and ensures all queries have the same column order.
+
+    Uses the word_rarity_metrics materialized view for optimized rarity lookups.
     """
 
     # Standard SELECT columns - define once, use everywhere
     WORD_COLUMNS = """d.id, d.term, d.definition, d.part_of_speech,
-        wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
+        wrm.final_rarity,
+        wrm.num_sources,
         wd.primary_domain, d.wav_url,
         wp.ipa_transcription, wp.arpabet_transcription, wp.syllable_count,
         wp.stress_pattern, d.obsolete_or_archaic"""
 
     # Standard JOINs - define once, use everywhere
+    # Uses materialized view for pre-calculated rarity scores
     WORD_JOINS = """FROM vocab.defined d
-        LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+        LEFT JOIN word_rarity_metrics wrm ON d.id = wrm.id
         LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
         LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id"""
 
@@ -109,7 +154,7 @@ class WordQueryBuilder:
         Ensures consistent mapping across all queries.
 
         Args:
-            result: Tuple from database query (14 columns)
+            result: Tuple from database query (12 columns)
 
         Returns:
             Word object with all fields populated
@@ -126,16 +171,15 @@ class WordQueryBuilder:
             term=result[1],
             definition=result[2],
             part_of_speech=result[3],
-            frequency_rank=result[4],
-            independent_frequency=result[5],
-            rarity_percentile=result[6],
-            primary_domain=result[7],
-            wav_url=result[8],
-            ipa_transcription=result[9],
-            arpabet_transcription=result[10],
-            syllable_count=result[11],
-            stress_pattern=result[12],
-            obsolete_or_archaic=result[13],
+            final_rarity=result[4],
+            num_sources=result[5],
+            primary_domain=result[6],
+            wav_url=result[7],
+            ipa_transcription=result[8],
+            arpabet_transcription=result[9],
+            syllable_count=result[10],
+            stress_pattern=result[11],
+            obsolete_or_archaic=result[12],
         )
 
     @staticmethod
@@ -200,9 +244,13 @@ class VocabularyDatabase:
         min_frequency: Optional[int] = None,
         max_frequency: Optional[int] = None,
     ) -> int:
-        """Count words matching search filters"""
+        """Count words matching search filters.
+
+        Note: min_frequency/max_frequency are legacy params that filter by frequency rank.
+        These are computed on-the-fly when needed for backward compatibility.
+        """
         sql = """SELECT COUNT(*) FROM vocab.defined d
-            LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+            LEFT JOIN word_rarity_metrics wrm ON d.id = wrm.id
             LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
             WHERE 1=1"""
         params: List[Any] = []
@@ -226,13 +274,26 @@ class VocabularyDatabase:
             sql += " AND d.part_of_speech = %s"
             params.append(part_of_speech)
 
-        if min_frequency is not None:
-            sql += " AND wfi.frequency_rank >= %s"
-            params.append(min_frequency)
+        # For frequency filters, we need to compute rank on-the-fly
+        # This is kept for backward compatibility but should ideally use rarity ranges
+        if min_frequency is not None or max_frequency is not None:
+            # Wrap in subquery to filter by computed rank
+            sql = f"""SELECT COUNT(*) FROM (
+                SELECT d.id,
+                    RANK() OVER (ORDER BY wrm.final_rarity ASC NULLS LAST) AS frequency_rank
+                FROM vocab.defined d
+                LEFT JOIN word_rarity_metrics wrm ON d.id = wrm.id
+                LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
+                WHERE wrm.final_rarity IS NOT NULL
+            """ + sql[sql.index("WHERE 1=1") + 9:] + ") ranked WHERE 1=1"
 
-        if max_frequency is not None:
-            sql += " AND wfi.frequency_rank <= %s"
-            params.append(max_frequency)
+            if min_frequency is not None:
+                sql += " AND ranked.frequency_rank >= %s"
+                params.append(min_frequency)
+
+            if max_frequency is not None:
+                sql += " AND ranked.frequency_rank <= %s"
+                params.append(max_frequency)
 
         with db_manager.get_cursor() as cursor:
             cursor.execute(sql, params)
@@ -248,57 +309,85 @@ class VocabularyDatabase:
         limit: int = 50,
         offset: int = 0,
     ) -> List[Word]:
-        """Search words with optional filters"""
-        # Use helper for base query
-        sql = WordQueryBuilder.base_query()
+        """Search words with optional filters.
+
+        Note: Always computes frequency_rank for display purposes.
+        """
+        # ALWAYS compute rank for display (templates expect it)
+        sql = f"""
+            SELECT * FROM (
+                SELECT {WordQueryBuilder.WORD_COLUMNS},
+                       RANK() OVER (ORDER BY wrm.final_rarity ASC NULLS LAST) AS frequency_rank
+                {WordQueryBuilder.WORD_JOINS}
+                WHERE wrm.final_rarity IS NOT NULL
+            ) ranked
+            WHERE 1=1
+        """
         params: List[Any] = []
 
-        # Add search filters
         if query:
-            # Single letter search = starts with that letter
-            # Multi-character search = contains the query
             if len(query) == 1:
-                sql += " AND d.term ILIKE %s"
+                sql += " AND ranked.term ILIKE %s"
                 params.append(f"{query}%")
             else:
-                sql += " AND d.term ILIKE %s"
+                sql += " AND ranked.term ILIKE %s"
                 params.append(f"%{query}%")
 
         if domain:
-            sql += " AND wd.primary_domain = %s"
+            sql += " AND ranked.primary_domain = %s"
             params.append(domain)
 
         if part_of_speech:
-            sql += " AND d.part_of_speech = %s"
+            sql += " AND ranked.part_of_speech = %s"
             params.append(part_of_speech)
 
         if min_frequency is not None:
-            sql += " AND wfi.frequency_rank >= %s"
+            sql += " AND ranked.frequency_rank >= %s"
             params.append(min_frequency)
 
         if max_frequency is not None:
-            sql += " AND wfi.frequency_rank <= %s"
+            sql += " AND ranked.frequency_rank <= %s"
             params.append(max_frequency)
 
-        sql += " ORDER BY LOWER(d.term) ASC LIMIT %s OFFSET %s"
+        sql += " ORDER BY LOWER(ranked.term) ASC LIMIT %s OFFSET %s"
         params.extend([limit, offset])
 
         with db_manager.get_cursor() as cursor:
             cursor.execute(sql, params)
             rows = cursor.fetchall()
 
-        # Convert using helper
-        return [WordQueryBuilder.tuple_to_word(row) for row in rows]
+        # Convert rows to Word objects and set frequency_rank
+        words = []
+        for row in rows:
+            word = WordQueryBuilder.tuple_to_word(row[:-1])  # Exclude the extra frequency_rank column
+            word.frequency_rank = row[-1]  # Set the computed rank
+            words.append(word)
+
+        return words
 
     def get_word_by_id(self, word_id: int) -> Optional[Word]:
         """Get word by ID using standard query builder"""
-        query = WordQueryBuilder.base_query("WHERE d.id = %s")
+        # Include frequency_rank for display
+        query = f"""
+            SELECT * FROM (
+                SELECT {WordQueryBuilder.WORD_COLUMNS},
+                       RANK() OVER (ORDER BY wrm.final_rarity ASC NULLS LAST) AS frequency_rank
+                {WordQueryBuilder.WORD_JOINS}
+                WHERE wrm.final_rarity IS NOT NULL
+            ) ranked
+            WHERE ranked.id = %s
+        """
 
         with db_manager.get_cursor() as cursor:
             cursor.execute(query, (word_id,))
             result = cursor.fetchone()
 
-        return WordQueryBuilder.tuple_to_word(result)
+        if not result:
+            return None
+
+        word = WordQueryBuilder.tuple_to_word(result[:-1])
+        word.frequency_rank = result[-1]
+        return word
 
     def get_word_by_term(self, term: str) -> Optional[Word]:
         """Resolve a word by its textual term (case insensitive)."""
@@ -456,18 +545,17 @@ class VocabularyDatabase:
                 wd.primary_domain,
                 dom.name AS domain_name,
                 dom.description,
-                COALESCE(
-                    d.final_rarity::double precision,
-                    CASE
-                        WHEN wfi.rarity_percentile IS NOT NULL THEN wfi.rarity_percentile::double precision / 100.0
-                        ELSE NULL
-                    END
-                ) AS rarity_value
+                rarity.final_rarity AS rarity_value
             FROM vocab.defined d
             JOIN vocab.word_domains wd ON d.id = wd.word_id
             LEFT JOIN vocab.domains dom ON wd.domain_id = dom.id
-            LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
-            WHERE COALESCE(d.final_rarity, wfi.rarity_percentile) IS NOT NULL
+            LEFT JOIN (
+                SELECT
+                    d_inner.id,
+                    d_inner.final_rarity::double precision AS final_rarity
+                FROM vocab.defined d_inner
+            ) rarity ON d.id = rarity.id
+            WHERE rarity.final_rarity IS NOT NULL
             """
 
             summary_sql = f"""
@@ -490,17 +578,16 @@ class VocabularyDatabase:
             base_sql = """
             SELECT
                 wd.primary_domain,
-                COALESCE(
-                    d.final_rarity::double precision,
-                    CASE
-                        WHEN wfi.rarity_percentile IS NOT NULL THEN wfi.rarity_percentile::double precision / 100.0
-                        ELSE NULL
-                    END
-                ) AS rarity_value
+                rarity.final_rarity AS rarity_value
             FROM vocab.defined d
             JOIN vocab.word_domains wd ON d.id = wd.word_id
-            LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
-            WHERE COALESCE(d.final_rarity, wfi.rarity_percentile) IS NOT NULL
+            LEFT JOIN (
+                SELECT
+                    d_inner.id,
+                    d_inner.final_rarity::double precision AS final_rarity
+                FROM vocab.defined d_inner
+            ) rarity ON d.id = rarity.id
+            WHERE rarity.final_rarity IS NOT NULL
             """
 
             summary_sql = f"""
@@ -1006,7 +1093,7 @@ class VocabularyDatabase:
                 return []
 
     def get_random_word(self) -> Optional[Word]:
-        """Get random word using standard query builder"""
+        """Get random word using standard query builder with frequency_rank"""
         with db_manager.get_cursor() as cursor:
             cursor.execute("SELECT COUNT(*) FROM vocab.defined")
             total_count = cursor.fetchone()[0]
@@ -1014,12 +1101,27 @@ class VocabularyDatabase:
                 return None
 
             random_offset = random.randint(0, max(total_count - 1, 0))
-            query = WordQueryBuilder.base_query() + " LIMIT 1 OFFSET %s"
+
+            # Include frequency_rank for display
+            query = f"""
+                SELECT * FROM (
+                    SELECT {WordQueryBuilder.WORD_COLUMNS},
+                           RANK() OVER (ORDER BY wrm.final_rarity ASC NULLS LAST) AS frequency_rank
+                    {WordQueryBuilder.WORD_JOINS}
+                    WHERE wrm.final_rarity IS NOT NULL
+                ) ranked
+                LIMIT 1 OFFSET %s
+            """
 
             cursor.execute(query, (random_offset,))
             result = cursor.fetchone()
 
-        return WordQueryBuilder.tuple_to_word(result)
+        if not result:
+            return None
+
+        word = WordQueryBuilder.tuple_to_word(result[:-1])
+        word.frequency_rank = result[-1]
+        return word
 
     def get_domains(self) -> List[str]:
         sql = """
@@ -1139,15 +1241,29 @@ async def browse(request: Request,
             available_letters = sorted({val[len(letters)] for val in raw_letters if len(val) > len(letters)})
 
     offset = (page - 1) * per_page
-    words_query = f"{base_query} ORDER BY LOWER(d.term) ASC LIMIT %s OFFSET %s"
+
+    # Build query with frequency_rank for display
+    words_query = f"""
+        SELECT * FROM (
+            SELECT {WordQueryBuilder.WORD_COLUMNS},
+                   RANK() OVER (ORDER BY wrm.final_rarity ASC NULLS LAST) AS frequency_rank
+            {WordQueryBuilder.WORD_JOINS}
+            {filter_conditions}
+        ) ranked
+        ORDER BY LOWER(ranked.term) ASC LIMIT %s OFFSET %s
+    """
     words_params = params + [per_page, offset]
 
     with db_manager.get_cursor() as cursor:
         cursor.execute(words_query, words_params)
         results = cursor.fetchall()
 
-    # Convert results to Word objects using helper
-    words = [WordQueryBuilder.tuple_to_word(row) for row in results]
+    # Convert results to Word objects and set frequency_rank
+    words = []
+    for row in results:
+        word = WordQueryBuilder.tuple_to_word(row[:-1])
+        word.frequency_rank = row[-1]
+        words.append(word)
     
     # Generate letter path breadcrumb
     letter_path = []
@@ -1291,8 +1407,8 @@ async def get_stats():
             total_words = cursor.fetchone()[0]
 
             # Get max frequency rank
-            cursor.execute("SELECT MAX(frequency_rank) FROM vocab.word_frequencies_independent WHERE frequency_rank IS NOT NULL")
-            max_frequency_rank = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM vocab.defined WHERE final_rarity IS NOT NULL")
+            max_frequency_rank = cursor.fetchone()[0] or total_words
 
             # Round max frequency rank up to nearest 1000
             import math
@@ -2369,28 +2485,29 @@ class FlashcardDatabase:
             cursor.execute(
                 """
                 SELECT fdi.word_id, fd.id as deck_id,
-                       d.id, d.term, d.definition, d.part_of_speech, d.frequency,
-                       wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
+                       d.id, d.term, d.definition, d.part_of_speech,
+                       wrm.final_rarity, wrm.num_sources,
                        wd.primary_domain, d.wav_url,
                        wp.ipa_transcription, wp.arpabet_transcription, wp.syllable_count, wp.stress_pattern,
+                       d.obsolete_or_archaic,
                        COALESCE(ufp.mastery_level, 'learning') as mastery_level,
                        ufp.last_studied, ufp.study_count,
                        COALESCE(ufp.correct_count * 100.0 / NULLIF(ufp.study_count, 0), 0) as success_rate
-                FROM vocab.flashcard_deck_items fdi
-                JOIN vocab.flashcard_decks fd ON fdi.deck_id = fd.id
-                JOIN vocab.defined d ON fdi.word_id = d.id
-                LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+               FROM vocab.flashcard_deck_items fdi
+               JOIN vocab.flashcard_decks fd ON fdi.deck_id = fd.id
+               JOIN vocab.defined d ON fdi.word_id = d.id
+                LEFT JOIN word_rarity_metrics wrm ON d.id = wrm.id
                 LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
                 LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id
                 LEFT JOIN vocab.user_flashcard_progress ufp
                     ON d.id = ufp.word_id AND ufp.user_id = %s
                 WHERE fdi.deck_id = %s AND fd.user_id = %s
-                ORDER BY 
+                ORDER BY
                     CASE COALESCE(ufp.mastery_level, 'learning')
-                        WHEN 'learning' THEN 1 
-                        WHEN 'reviewing' THEN 2 
-                        WHEN 'mastered' THEN 3 
-                        ELSE 0 
+                        WHEN 'learning' THEN 1
+                        WHEN 'reviewing' THEN 2
+                        WHEN 'mastered' THEN 3
+                        ELSE 0
                     END,
                     COALESCE(ufp.next_review, NOW())
                 LIMIT %s
@@ -2404,17 +2521,15 @@ class FlashcardDatabase:
                     term=row[3],
                     definition=row[4],
                     part_of_speech=row[5],
-                    frequency=row[6],
-                    frequency_rank=row[7],
-                    independent_frequency=row[8],
-                    rarity_percentile=row[9],
-                    primary_domain=row[10],
-                    wav_url=row[11],
-                    ipa_transcription=row[12],
-                    arpabet_transcription=row[13],
-                    syllable_count=row[14],
-                    stress_pattern=row[15],
-                    obsolete_or_archaic=row[16],
+                    final_rarity=row[6],
+                    num_sources=row[7],
+                    primary_domain=row[8],
+                    wav_url=row[9],
+                    ipa_transcription=row[10],
+                    arpabet_transcription=row[11],
+                    syllable_count=row[12],
+                    stress_pattern=row[13],
+                    obsolete_or_archaic=row[14],
                 )
                 cards.append(
                     Flashcard(
@@ -2422,10 +2537,10 @@ class FlashcardDatabase:
                         word_id=row[0],
                         deck_id=row[1],
                         word=word,
-                        mastery_level=row[16],
-                        last_studied=row[17].isoformat() if row[17] else None,
-                        study_count=row[18] or 0,
-                        success_rate=float(row[19] or 0.0),
+                        mastery_level=row[15],
+                        last_studied=row[16].isoformat() if row[16] else None,
+                        study_count=row[17] or 0,
+                        success_rate=float(row[18] or 0.0),
                     )
                 )
             return cards
@@ -2467,15 +2582,16 @@ class FlashcardDatabase:
             cursor.execute(
                 """
                 SELECT d.id, 0 as deck_id,
-                       d.id, d.term, d.definition, d.part_of_speech, d.frequency,
-                       wfi.frequency_rank, wfi.independent_frequency, wfi.rarity_percentile,
+                       d.id, d.term, d.definition, d.part_of_speech,
+                       wrm.final_rarity, wrm.num_sources,
                        wd.primary_domain, d.wav_url,
                        wp.ipa_transcription, wp.arpabet_transcription, wp.syllable_count, wp.stress_pattern,
+                       d.obsolete_or_archaic,
                        COALESCE(ufp.mastery_level, 'learning') as mastery_level,
                        ufp.last_studied, ufp.study_count,
                        COALESCE(ufp.correct_count * 100.0 / NULLIF(ufp.study_count, 0), 0) as success_rate
                 FROM vocab.defined d
-                LEFT JOIN vocab.word_frequencies_independent wfi ON d.id = wfi.word_id
+                LEFT JOIN word_rarity_metrics wrm ON d.id = wrm.id
                 LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
                 LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id
                 LEFT JOIN vocab.user_flashcard_progress ufp ON d.id = ufp.word_id AND ufp.user_id = %s
@@ -2492,17 +2608,15 @@ class FlashcardDatabase:
                     term=row[3],
                     definition=row[4],
                     part_of_speech=row[5],
-                    frequency=row[6],
-                    frequency_rank=row[7],
-                    independent_frequency=row[8],
-                    rarity_percentile=row[9],
-                    primary_domain=row[10],
-                    wav_url=row[11],
-                    ipa_transcription=row[12],
-                    arpabet_transcription=row[13],
-                    syllable_count=row[14],
-                    stress_pattern=row[15],
-                    obsolete_or_archaic=row[16],
+                    final_rarity=row[6],
+                    num_sources=row[7],
+                    primary_domain=row[8],
+                    wav_url=row[9],
+                    ipa_transcription=row[10],
+                    arpabet_transcription=row[11],
+                    syllable_count=row[12],
+                    stress_pattern=row[13],
+                    obsolete_or_archaic=row[14],
                 )
                 cards.append(
                     Flashcard(
@@ -2510,10 +2624,10 @@ class FlashcardDatabase:
                         word_id=row[0],
                         deck_id=row[1],
                         word=word,
-                        mastery_level=row[16],
-                        last_studied=row[17].isoformat() if row[17] else None,
-                        study_count=row[18] or 0,
-                        success_rate=float(row[19] or 0.0),
+                        mastery_level=row[15],
+                        last_studied=row[16].isoformat() if row[16] else None,
+                        study_count=row[17] or 0,
+                        success_rate=float(row[18] or 0.0),
                     )
                 )
             return cards
@@ -2663,10 +2777,9 @@ async def study_random_cards(request: Request,
                     "term": card.word.term,
                     "definition": card.word.definition,
                     "part_of_speech": card.word.part_of_speech,
-                    "frequency": float(card.word.frequency) if card.word.frequency is not None else None,
-                    "frequency_rank": card.word.frequency_rank,
-                    "independent_frequency": float(card.word.independent_frequency) if card.word.independent_frequency is not None else None,
+                    "final_rarity": float(card.word.final_rarity) if card.word.final_rarity is not None else None,
                     "rarity_percentile": float(card.word.rarity_percentile) if card.word.rarity_percentile is not None else None,
+                    "num_sources": card.word.num_sources,
                     "primary_domain": card.word.primary_domain,
                     "wav_url": card.word.wav_url,
                     "ipa_transcription": card.word.ipa_transcription,
@@ -2741,10 +2854,9 @@ async def guest_random_flashcards(request: Request, limit: int = 20):
                 "term": row[1],
                 "definition": row[2],
                 "part_of_speech": row[3],
-                "frequency": float(row[4]) if row[4] is not None else None,
-                "frequency_rank": None,
-                "independent_frequency": None,
+                "final_rarity": None,
                 "rarity_percentile": None,
+                "num_sources": None,
                 "primary_domain": None,
                 "wav_url": None,
                 "ipa_transcription": None,
@@ -2807,10 +2919,9 @@ async def study_deck(request: Request, deck_id: int,
                     "term": card.word.term,
                     "definition": card.word.definition,
                     "part_of_speech": card.word.part_of_speech,
-                    "frequency": float(card.word.frequency) if card.word.frequency is not None else None,
-                    "frequency_rank": card.word.frequency_rank,
-                    "independent_frequency": float(card.word.independent_frequency) if card.word.independent_frequency is not None else None,
+                    "final_rarity": float(card.word.final_rarity) if card.word.final_rarity is not None else None,
                     "rarity_percentile": float(card.word.rarity_percentile) if card.word.rarity_percentile is not None else None,
+                    "num_sources": card.word.num_sources,
                     "primary_domain": card.word.primary_domain,
                     "wav_url": card.word.wav_url,
                     "ipa_transcription": card.word.ipa_transcription,
