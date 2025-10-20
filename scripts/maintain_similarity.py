@@ -44,8 +44,8 @@ def main():
     parser.add_argument(
         '--batch-size',
         type=int,
-        default=1000,
-        help='Batch size for similarity calculations (default: 1000)'
+        default=5000,
+        help='Batch size for similarity calculations (default: 5000, GPU efficient at >=5000)'
     )
     parser.add_argument(
         '--dry-run',

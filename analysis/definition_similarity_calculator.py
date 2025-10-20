@@ -41,7 +41,13 @@ except ImportError:
 
 try:
     import cupy as cp
-    CUPY_AVAILABLE = True
+    # Test if CuPy can actually perform GPU operations
+    try:
+        _ = cp.array([1.0])  # Simple GPU allocation test
+        CUPY_AVAILABLE = True
+    except Exception as e:
+        logger.warning(f"CuPy installed but GPU operations failed: {e}")
+        CUPY_AVAILABLE = False
 except ImportError:
     CUPY_AVAILABLE = False
 
@@ -257,10 +263,26 @@ class DefinitionSimilarityCalculator:
         return definitions
 
     def calculate_cosine_similarity_matrix(self, embeddings1: np.ndarray, embeddings2: np.ndarray) -> np.ndarray:
-        """Calculate cosine similarity matrix between two sets of embeddings"""
-        if self.use_gpu_similarity:
+        """Calculate cosine similarity matrix between two sets of embeddings
+
+        Automatically chooses CPU or GPU based on matrix size for optimal performance.
+        GPU has significant overhead, only beneficial for larger matrices (>= 5000 items).
+        """
+        # GPU only beneficial for large matrices due to transfer overhead
+        GPU_THRESHOLD = 5000
+        matrix_size = min(embeddings1.shape[0], embeddings2.shape[0])
+
+        if self.use_gpu_similarity and matrix_size >= GPU_THRESHOLD:
+            # Only log GPU usage on first large batch (to avoid spam)
+            if not hasattr(self, '_logged_gpu_usage'):
+                logger.info(f"🚀 Using GPU for similarity calculations (batch size: {matrix_size} >= {GPU_THRESHOLD})")
+                self._logged_gpu_usage = True
             return self._calculate_similarity_gpu(embeddings1, embeddings2)
         else:
+            # Only log CPU usage once if we have GPU available
+            if self.use_gpu_similarity and not hasattr(self, '_logged_cpu_usage'):
+                logger.info(f"Using CPU for similarity calculations (batch size: {matrix_size} < {GPU_THRESHOLD} threshold)")
+                self._logged_cpu_usage = True
             return self._calculate_similarity_cpu(embeddings1, embeddings2)
     
     def _calculate_similarity_gpu(self, embeddings1: np.ndarray, embeddings2: np.ndarray) -> np.ndarray:
