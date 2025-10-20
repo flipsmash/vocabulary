@@ -32,10 +32,18 @@ except ImportError:
     logger.warning("sentence-transformers not available. Install with: pip install sentence-transformers")
 
 try:
-    import cupy as cp
-    CUDA_AVAILABLE = True
+    import torch
+    TORCH_AVAILABLE = True
+    TORCH_CUDA_AVAILABLE = torch.cuda.is_available()
 except ImportError:
-    CUDA_AVAILABLE = False
+    TORCH_AVAILABLE = False
+    TORCH_CUDA_AVAILABLE = False
+
+try:
+    import cupy as cp
+    CUPY_AVAILABLE = True
+except ImportError:
+    CUPY_AVAILABLE = False
 
 @dataclass
 class DefinitionData:
@@ -59,19 +67,29 @@ class DefinitionSimilarityCalculator:
     def __init__(self, db_config=None, model_name="all-MiniLM-L6-v2"):
         # db_config kept for backward compatibility; connections now use shared pool
         self.model_name = model_name
-        
+
         if not SENTENCE_TRANSFORMERS_AVAILABLE:
             raise ImportError("sentence-transformers required. Install with: pip install sentence-transformers")
-            
-        logger.info(f"Loading SentenceTransformer model: {model_name}")
-        self.model = SentenceTransformer(model_name)
-        logger.info("Model loaded successfully")
 
-        # GPU detection
-        if CUDA_AVAILABLE:
-            logger.info("CUDA available for accelerated similarity calculations")
+        # Determine device for embedding model
+        if TORCH_CUDA_AVAILABLE:
+            device = 'cuda'
+            logger.info("🚀 GPU detected - using CUDA for embedding generation")
         else:
-            logger.info("Using CPU for similarity calculations")
+            device = 'cpu'
+            logger.info("Using CPU for embedding generation")
+
+        logger.info(f"Loading SentenceTransformer model: {model_name}")
+        self.model = SentenceTransformer(model_name, device=device)
+        logger.info(f"Model loaded successfully on device: {device}")
+
+        # GPU detection for similarity calculations
+        if CUPY_AVAILABLE:
+            logger.info("🚀 CuPy detected - using CUDA for similarity calculations")
+            self.use_gpu_similarity = True
+        else:
+            logger.info("CuPy not available - using CPU for similarity calculations")
+            self.use_gpu_similarity = False
 
     def _cursor(self, autocommit: bool = False):
         return db_manager.get_cursor(autocommit=autocommit)
@@ -240,7 +258,7 @@ class DefinitionSimilarityCalculator:
 
     def calculate_cosine_similarity_matrix(self, embeddings1: np.ndarray, embeddings2: np.ndarray) -> np.ndarray:
         """Calculate cosine similarity matrix between two sets of embeddings"""
-        if CUDA_AVAILABLE:
+        if self.use_gpu_similarity:
             return self._calculate_similarity_gpu(embeddings1, embeddings2)
         else:
             return self._calculate_similarity_cpu(embeddings1, embeddings2)
