@@ -21,6 +21,11 @@
                             {% if word.part_of_speech %}
                             <span class="badge bg-secondary fs-6">{{ word.part_of_speech }}</span>
                             {% endif %}
+                            {% if word.obsolete_or_archaic %}
+                            <span class="badge bg-warning text-dark fs-6" title="This word is archaic or obsolete">
+                                <i class="fas fa-history"></i> Archaic/Obsolete
+                            </span>
+                            {% endif %}
                             
                             <!-- Pronunciation Section -->
                             {% if word.ipa_transcription or word.arpabet_transcription %}
