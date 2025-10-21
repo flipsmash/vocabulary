@@ -211,14 +211,23 @@
                         <p class="card-text small text-muted">
                             Practice and reinforce your vocabulary knowledge
                         </p>
-                        <div class="d-flex gap-2 justify-content-center">
-                            <a href="/quiz" class="btn btn-primary btn-sm">
-                                <i class="fas fa-question-circle"></i> Take Quiz
+                        {% if current_user %}
+                            <div class="d-flex gap-2 justify-content-center">
+                                <a href="/quiz" class="btn btn-primary btn-sm">
+                                    <i class="fas fa-question-circle"></i> Take Quiz
+                                </a>
+                                <a href="/flashcards" class="btn btn-success btn-sm">
+                                    <i class="fas fa-layer-group"></i> Flashcards
+                                </a>
+                            </div>
+                        {% else %}
+                            <p class="text-muted small mb-2">
+                                <i class="fas fa-info-circle"></i> Sign in to practice with quizzes and flashcards
+                            </p>
+                            <a href="/login?next={{ request.url.path }}" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-sign-in-alt"></i> Sign In to Practice
                             </a>
-                            <a href="/flashcards" class="btn btn-success btn-sm">
-                                <i class="fas fa-layer-group"></i> Flashcards
-                            </a>
-                        </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
