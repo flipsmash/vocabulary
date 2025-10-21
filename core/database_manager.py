@@ -102,7 +102,10 @@ class DatabaseManager:
                     connection.rollback()
                 raise
             finally:
-                connection.autocommit = False
+                # Only reset autocommit if not in a transaction
+                # Check transaction status before attempting to change autocommit
+                if connection.info.transaction_status == connection.TransactionStatus.IDLE:
+                    connection.autocommit = False
 
     @contextmanager
     def get_cursor(self, dictionary: bool = False, autocommit: bool = False):
