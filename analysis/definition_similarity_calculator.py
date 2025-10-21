@@ -203,19 +203,6 @@ class DefinitionSimilarityCalculator:
     def store_embeddings(self, definitions: List[DefinitionData]):
         """Store embeddings in database"""
         logger.info(f"Storing {len(definitions)} embeddings in database")
-        
-        insert_query = """
-            INSERT INTO vocab.definition_embeddings
-            (word_id, word, definition_text, embedding_json, embedding_model)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (word_id)
-            DO UPDATE SET
-                word = EXCLUDED.word,
-                definition_text = EXCLUDED.definition_text,
-                embedding_json = EXCLUDED.embedding_json,
-                embedding_model = EXCLUDED.embedding_model,
-                created_at = CURRENT_TIMESTAMP
-        """
 
         data = []
         for def_data in definitions:
@@ -233,8 +220,27 @@ class DefinitionSimilarityCalculator:
             logger.info("No embeddings to store")
             return
 
+        # Use multi-row VALUES to avoid prepared statement issues with executemany
+        # Build a single INSERT with all rows
+        placeholders = ','.join(['(%s,%s,%s,%s,%s)'] * len(data))
+        insert_query = f"""
+            INSERT INTO vocab.definition_embeddings
+            (word_id, word, definition_text, embedding_json, embedding_model)
+            VALUES {placeholders}
+            ON CONFLICT (word_id)
+            DO UPDATE SET
+                word = EXCLUDED.word,
+                definition_text = EXCLUDED.definition_text,
+                embedding_json = EXCLUDED.embedding_json,
+                embedding_model = EXCLUDED.embedding_model,
+                created_at = CURRENT_TIMESTAMP
+        """
+
+        # Flatten the data for the query
+        flattened = [item for row in data for item in row]
+
         with self._cursor(autocommit=True) as cursor:
-            cursor.executemany(insert_query, data)
+            cursor.execute(insert_query, flattened)
         logger.info(f"Stored {len(data)} embeddings")
     
     def load_embeddings(self) -> List[DefinitionData]:
