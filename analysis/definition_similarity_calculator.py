@@ -220,28 +220,41 @@ class DefinitionSimilarityCalculator:
             logger.info("No embeddings to store")
             return
 
-        # Use multi-row VALUES to avoid prepared statement issues with executemany
-        # Build a single INSERT with all rows
-        placeholders = ','.join(['(%s,%s,%s,%s,%s)'] * len(data))
-        insert_query = f"""
-            INSERT INTO vocab.definition_embeddings
-            (word_id, word, definition_text, embedding_json, embedding_model)
-            VALUES {placeholders}
-            ON CONFLICT (word_id)
-            DO UPDATE SET
-                word = EXCLUDED.word,
-                definition_text = EXCLUDED.definition_text,
-                embedding_json = EXCLUDED.embedding_json,
-                embedding_model = EXCLUDED.embedding_model,
-                created_at = CURRENT_TIMESTAMP
-        """
+        # PostgreSQL has a limit of 65535 parameters per query
+        # With 5 parameters per row, we can insert up to 13,107 rows at once
+        # Use a conservative batch size of 10,000 to stay well under the limit
+        batch_size = 10000
+        total_stored = 0
 
-        # Flatten the data for the query
-        flattened = [item for row in data for item in row]
+        for i in range(0, len(data), batch_size):
+            batch = data[i:i + batch_size]
 
-        with self._cursor(autocommit=True) as cursor:
-            cursor.execute(insert_query, flattened)
-        logger.info(f"Stored {len(data)} embeddings")
+            # Build multi-row INSERT for this batch
+            placeholders = ','.join(['(%s,%s,%s,%s,%s)'] * len(batch))
+            insert_query = f"""
+                INSERT INTO vocab.definition_embeddings
+                (word_id, word, definition_text, embedding_json, embedding_model)
+                VALUES {placeholders}
+                ON CONFLICT (word_id)
+                DO UPDATE SET
+                    word = EXCLUDED.word,
+                    definition_text = EXCLUDED.definition_text,
+                    embedding_json = EXCLUDED.embedding_json,
+                    embedding_model = EXCLUDED.embedding_model,
+                    created_at = CURRENT_TIMESTAMP
+            """
+
+            # Flatten the batch data for the query
+            flattened = [item for row in batch for item in row]
+
+            with self._cursor(autocommit=True) as cursor:
+                cursor.execute(insert_query, flattened)
+
+            total_stored += len(batch)
+            if len(data) > batch_size:
+                logger.info(f"Stored {total_stored}/{len(data)} embeddings...")
+
+        logger.info(f"Stored {total_stored} embeddings total")
     
     def load_embeddings(self) -> List[DefinitionData]:
         """Load embeddings from database"""
