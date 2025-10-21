@@ -9,6 +9,7 @@ from threading import Lock
 import psycopg
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
+from psycopg.pq import TransactionStatus
 
 try:
     from .secure_config import get_database_config
@@ -104,7 +105,7 @@ class DatabaseManager:
             finally:
                 # Only reset autocommit if not in a transaction
                 # Check transaction status before attempting to change autocommit
-                if connection.info.transaction_status == connection.TransactionStatus.IDLE:
+                if connection.info.transaction_status == TransactionStatus.IDLE:
                     connection.autocommit = False
 
     @contextmanager
