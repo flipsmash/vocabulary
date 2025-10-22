@@ -679,29 +679,29 @@ class ComprehensiveDefinitionLookup:
                 if current_element.name == 'h2':
                     break
                 
-                # Handle wrapped h2/h3 elements in divs (new Wiktionary structure)
+                # Handle wrapped h2/h3/h4 elements in divs (new Wiktionary structure)
                 if current_element.name == 'div' and 'mw-heading' in current_element.get('class', []):
                     if 'mw-heading2' in current_element.get('class', []):
                         # Another language section
                         h2_in_div = current_element.find('h2')
                         if h2_in_div and h2_in_div.get('id') != 'English':
                             break
-                    elif 'mw-heading3' in current_element.get('class', []):
-                        # Part of speech section
-                        h3_in_div = current_element.find('h3')
-                        if h3_in_div:
-                            pos_text = h3_in_div.get_text().strip().lower()
-                            if any(pos in pos_text for pos in ['noun', 'verb', 'adjective', 'adverb', 'preposition', 'interjection']):
-                                for pos_type in ['noun', 'verb', 'adjective', 'adverb', 'preposition', 'interjection']:
+                    elif 'mw-heading3' in current_element.get('class', []) or 'mw-heading4' in current_element.get('class', []):
+                        # Part of speech section (can be h3 or h4)
+                        header_in_div = current_element.find(['h3', 'h4'])
+                        if header_in_div:
+                            pos_text = header_in_div.get_text().strip().lower()
+                            if any(pos in pos_text for pos in ['noun', 'verb', 'adjective', 'adverb', 'preposition', 'interjection', 'conjunction', 'pronoun']):
+                                for pos_type in ['noun', 'verb', 'adjective', 'adverb', 'preposition', 'interjection', 'conjunction', 'pronoun']:
                                     if pos_type in pos_text:
                                         current_pos = pos_type
                                         break
                 
-                # Check for part of speech headers (h3) - legacy structure
-                if current_element.name == 'h3':
+                # Check for part of speech headers (h3 or h4) - legacy structure
+                if current_element.name in ['h3', 'h4']:
                     pos_text = current_element.get_text().strip().lower()
-                    if any(pos in pos_text for pos in ['noun', 'verb', 'adjective', 'adverb', 'preposition', 'interjection']):
-                        for pos_type in ['noun', 'verb', 'adjective', 'adverb', 'preposition', 'interjection']:
+                    if any(pos in pos_text for pos in ['noun', 'verb', 'adjective', 'adverb', 'preposition', 'interjection', 'conjunction', 'pronoun']):
+                        for pos_type in ['noun', 'verb', 'adjective', 'adverb', 'preposition', 'interjection', 'conjunction', 'pronoun']:
                             if pos_type in pos_text:
                                 current_pos = pos_type
                                 break

@@ -2,11 +2,14 @@
 """
 Update vocab.defined table entries with missing definitions.
 
-Fetches definitions from dictionaryapi.dev API for words that have:
-- NULL definitions
-- Empty string definitions
+Uses ComprehensiveDefinitionLookup to fetch from multiple sources:
+- Wiktionary (web scraping)
+- Free Dictionary API
+- Cambridge Dictionary
+- Merriam-Webster
+- And more...
 
-Matches both term AND part_of_speech when updating from API data.
+Matches both term AND part_of_speech when updating from lookup data.
 """
 
 import sys
@@ -14,16 +17,15 @@ import logging
 import argparse
 import asyncio
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from datetime import datetime
-
-import httpx
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.database_manager import db_manager
+from core.comprehensive_definition_lookup import ComprehensiveDefinitionLookup
 
 # Configure logging
 logging.basicConfig(
@@ -34,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 class DefinitionUpdater:
-    """Updates missing definitions from dictionaryapi.dev API."""
+    """Updates missing definitions using comprehensive multi-source lookup."""
 
     def __init__(self, dry_run: bool = False):
         self.dry_run = dry_run
@@ -45,6 +47,7 @@ class DefinitionUpdater:
             'errors': 0,
             'skipped_already_processed': 0
         }
+        self.lookup = None  # Will be initialized in async context
         self._ensure_no_definition_table()
 
     def _ensure_no_definition_table(self):
@@ -94,31 +97,24 @@ class DefinitionUpdater:
         logger.info(f"Found {len(results)} words with missing definitions")
         return results
 
-    async def fetch_from_api(self, term: str, http_client: httpx.AsyncClient) -> Optional[List[Dict]]:
-        """Fetch word data from dictionaryapi.dev API."""
-        url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{term}"
-
+    async def lookup_from_comprehensive_sources(self, term: str) -> Optional[Any]:
+        """Fetch word data from comprehensive multi-source lookup."""
         try:
-            response = await http_client.get(url, timeout=20.0)
-            response.raise_for_status()
-            data = response.json()
-            return data
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                logger.debug(f"Word not found in API: {term}")
-                return None
-            logger.error(f"HTTP error for {term}: {e}")
-            return None
+            result = await self.lookup.lookup_term(term, use_cache=True)
+            return result
         except Exception as e:
-            logger.error(f"Error fetching {term}: {e}")
+            logger.error(f"Error looking up {term}: {e}")
             return None
 
-    def extract_definition_for_pos(self, api_data: List[Dict], target_pos: str) -> Optional[str]:
+    def extract_definition_for_pos(self, lookup_result: Any, target_pos: str) -> Optional[str]:
         """
-        Extract definition matching the target part of speech.
+        Extract definition matching the target part of speech from LookupResult.
 
-        Returns the first definition that matches the POS, or None if no match.
+        Returns the highest reliability definition that matches the POS, or None if no match.
         """
+        if not lookup_result or not hasattr(lookup_result, 'definitions_by_pos'):
+            return None
+
         # Normalize POS for comparison
         target_pos_lower = target_pos.lower().strip()
 
@@ -137,17 +133,14 @@ class DefinitionUpdater:
         # Expand target POS if abbreviated
         normalized_target = pos_mappings.get(target_pos_lower, target_pos_lower)
 
-        for entry in api_data:
-            meanings = entry.get('meanings', [])
-            for meaning in meanings:
-                api_pos = meaning.get('partOfSpeech', '').lower().strip()
-
-                # Check for exact match or if target matches the full form
-                if api_pos == normalized_target or api_pos == target_pos_lower:
-                    definitions = meaning.get('definitions', [])
-                    if definitions:
-                        # Return the first definition
-                        return definitions[0].get('definition', '').strip()
+        # Try exact match first
+        for pos_key in lookup_result.definitions_by_pos:
+            if pos_key.lower() == normalized_target or pos_key.lower() == target_pos_lower:
+                definitions = lookup_result.definitions_by_pos[pos_key]
+                if definitions:
+                    # Return the highest reliability definition
+                    best_def = max(definitions, key=lambda d: d.reliability_score)
+                    return best_def.text
 
         return None
 
@@ -199,11 +192,11 @@ class DefinitionUpdater:
         self,
         word_id: int,
         term: str,
-        pos: str,
-        http_client: httpx.AsyncClient
+        pos: str
     ) -> bool:
         """
-        Update a single word's definition from API, or move to no_definition if not found.
+        Update a single word's definition from comprehensive multi-source lookup,
+        or move to no_definition if not found.
 
         Returns True if processed (updated or moved), False if error.
         """
@@ -215,25 +208,28 @@ class DefinitionUpdater:
             logger.debug(f"  Skipping: already in no_definition table")
             return True
 
-        # Fetch from API
-        api_data = await self.fetch_from_api(term, http_client)
+        # Fetch from comprehensive multi-source lookup
+        lookup_result = await self.lookup_from_comprehensive_sources(term)
 
-        if not api_data:
-            # No API data - move to no_definition
-            logger.warning(f"  No API data found for: {term}")
-            return self.move_to_no_definition(word_id, term, pos, "not_found_in_api")
+        if not lookup_result:
+            # No lookup data - move to no_definition
+            logger.warning(f"  No lookup data found for: {term}")
+            return self.move_to_no_definition(word_id, term, pos, "not_found_in_sources")
 
         # Extract definition matching POS
-        definition = self.extract_definition_for_pos(api_data, pos)
+        definition = self.extract_definition_for_pos(lookup_result, pos)
 
         if not definition:
-            # API has data but not for this POS - move to no_definition
-            logger.warning(f"  No matching POS '{pos}' found in API data for: {term}")
+            # Sources have data but not for this POS - move to no_definition
+            logger.warning(f"  No matching POS '{pos}' found in lookup data for: {term}")
+            sources = ', '.join(lookup_result.sources_consulted) if hasattr(lookup_result, 'sources_consulted') else 'unknown'
+            logger.info(f"  Sources consulted: {sources}")
             return self.move_to_no_definition(word_id, term, pos, "no_matching_pos")
 
         # Update database
         if self.dry_run:
-            logger.info(f"  DRY RUN - Would update '{term}' ({pos}): {definition[:100]}...")
+            sources = ', '.join(lookup_result.sources_consulted) if hasattr(lookup_result, 'sources_consulted') else 'unknown'
+            logger.info(f"  DRY RUN - Would update '{term}' ({pos}) from [{sources}]: {definition[:100]}...")
             self.stats['updated'] += 1
             return True
 
@@ -249,7 +245,8 @@ class DefinitionUpdater:
                 cursor.execute(update_query, (definition, word_id))
 
             self.stats['updated'] += 1
-            logger.info(f"  ✓ Updated: {definition[:100]}...")
+            sources = ', '.join(lookup_result.sources_consulted) if hasattr(lookup_result, 'sources_consulted') else 'unknown'
+            logger.info(f"  ✓ Updated from [{sources}]: {definition[:100]}...")
             return True
 
         except Exception as e:
@@ -269,8 +266,11 @@ class DefinitionUpdater:
         if self.dry_run:
             logger.info("DRY RUN MODE - No changes will be made")
 
-        async with httpx.AsyncClient() as client:
-            # Process in batches to avoid overwhelming the API
+        # Initialize comprehensive lookup with async context manager
+        async with ComprehensiveDefinitionLookup() as lookup:
+            self.lookup = lookup
+
+            # Process in batches to respect rate limits
             for i in range(0, len(words), batch_size):
                 batch = words[i:i + batch_size]
 
@@ -280,8 +280,7 @@ class DefinitionUpdater:
                     task = self.update_word(
                         word['id'],
                         word['term'],
-                        word['part_of_speech'],
-                        client
+                        word['part_of_speech']
                     )
                     tasks.append(task)
 
