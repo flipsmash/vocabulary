@@ -163,26 +163,28 @@ class DefinitionUpdater:
             return True
 
         try:
+            # Use a single transaction for both operations
             with db_manager.get_connection() as conn:
-                # Start transaction (connection context manager handles this)
+                with conn.cursor() as cursor:
+                    # Insert into no_definition
+                    cursor.execute(
+                        """
+                        INSERT INTO vocab.no_definition (term, part_of_speech, reason)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (term, part_of_speech) DO NOTHING
+                        """,
+                        (term, pos, reason)
+                    )
 
-                # Insert into no_definition
-                insert_query = """
-                    INSERT INTO vocab.no_definition (term, part_of_speech, reason)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (term, part_of_speech) DO NOTHING
-                """
-                cursor = conn.cursor()
-                cursor.execute(insert_query, (term, pos, reason))
-
-                # Delete from defined (with CASCADE to handle foreign keys)
-                delete_query = """
-                    DELETE FROM vocab.defined
-                    WHERE id = %s
-                """
-                cursor.execute(delete_query, (word_id,))
-
-                # Transaction commits automatically on context exit
+                    # Delete from defined (with CASCADE to handle foreign keys)
+                    cursor.execute(
+                        """
+                        DELETE FROM vocab.defined
+                        WHERE id = %s
+                        """,
+                        (word_id,)
+                    )
+                # Transaction commits automatically when connection context exits
 
             self.stats['moved_to_no_definition'] += 1
             logger.info(f"  ✓ Moved to no_definition: {reason}")
