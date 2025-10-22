@@ -41,10 +41,42 @@ class DefinitionUpdater:
         self.stats = {
             'found': 0,
             'updated': 0,
-            'not_found': 0,
+            'moved_to_no_definition': 0,
             'errors': 0,
-            'no_match': 0
+            'skipped_already_processed': 0
         }
+        self._ensure_no_definition_table()
+
+    def _ensure_no_definition_table(self):
+        """Ensure the no_definition table exists."""
+        create_table_sql = """
+            CREATE TABLE IF NOT EXISTS vocab.no_definition (
+                id SERIAL PRIMARY KEY,
+                term VARCHAR(255) NOT NULL,
+                part_of_speech VARCHAR(50) NOT NULL,
+                reason TEXT NOT NULL,
+                date_moved TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(term, part_of_speech)
+            );
+            CREATE INDEX IF NOT EXISTS idx_no_definition_term ON vocab.no_definition(term);
+        """
+        try:
+            with db_manager.get_connection() as conn:
+                conn.execute(create_table_sql)
+            logger.debug("Ensured vocab.no_definition table exists")
+        except Exception as e:
+            logger.warning(f"Could not ensure no_definition table: {e}")
+
+    def is_already_processed(self, term: str, pos: str) -> bool:
+        """Check if term+POS already exists in no_definition table (idempotency)."""
+        query = """
+            SELECT COUNT(*) FROM vocab.no_definition
+            WHERE term = %s AND part_of_speech = %s
+        """
+        with db_manager.get_cursor() as cursor:
+            cursor.execute(query, (term, pos))
+            count = cursor.fetchone()[0]
+            return count > 0
 
     def get_words_missing_definitions(self) -> List[Dict]:
         """Find all words with NULL or empty definitions."""
@@ -119,6 +151,48 @@ class DefinitionUpdater:
 
         return None
 
+    def move_to_no_definition(self, word_id: int, term: str, pos: str, reason: str) -> bool:
+        """
+        Move a word from vocab.defined to vocab.no_definition.
+
+        Uses a transaction to ensure atomicity - either both operations succeed or neither does.
+        """
+        if self.dry_run:
+            logger.info(f"  DRY RUN - Would move '{term}' ({pos}) to no_definition: {reason}")
+            self.stats['moved_to_no_definition'] += 1
+            return True
+
+        try:
+            with db_manager.get_connection() as conn:
+                # Start transaction (connection context manager handles this)
+
+                # Insert into no_definition
+                insert_query = """
+                    INSERT INTO vocab.no_definition (term, part_of_speech, reason)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (term, part_of_speech) DO NOTHING
+                """
+                cursor = conn.cursor()
+                cursor.execute(insert_query, (term, pos, reason))
+
+                # Delete from defined (with CASCADE to handle foreign keys)
+                delete_query = """
+                    DELETE FROM vocab.defined
+                    WHERE id = %s
+                """
+                cursor.execute(delete_query, (word_id,))
+
+                # Transaction commits automatically on context exit
+
+            self.stats['moved_to_no_definition'] += 1
+            logger.info(f"  ✓ Moved to no_definition: {reason}")
+            return True
+
+        except Exception as e:
+            self.stats['errors'] += 1
+            logger.error(f"  Error moving {term} to no_definition: {e}")
+            return False
+
     async def update_word(
         self,
         word_id: int,
@@ -127,27 +201,33 @@ class DefinitionUpdater:
         http_client: httpx.AsyncClient
     ) -> bool:
         """
-        Update a single word's definition from API.
+        Update a single word's definition from API, or move to no_definition if not found.
 
-        Returns True if updated, False otherwise.
+        Returns True if processed (updated or moved), False if error.
         """
         logger.info(f"Processing: {term} ({pos})")
+
+        # Check if already processed (idempotency)
+        if self.is_already_processed(term, pos):
+            self.stats['skipped_already_processed'] += 1
+            logger.debug(f"  Skipping: already in no_definition table")
+            return True
 
         # Fetch from API
         api_data = await self.fetch_from_api(term, http_client)
 
         if not api_data:
-            self.stats['not_found'] += 1
+            # No API data - move to no_definition
             logger.warning(f"  No API data found for: {term}")
-            return False
+            return self.move_to_no_definition(word_id, term, pos, "not_found_in_api")
 
         # Extract definition matching POS
         definition = self.extract_definition_for_pos(api_data, pos)
 
         if not definition:
-            self.stats['no_match'] += 1
+            # API has data but not for this POS - move to no_definition
             logger.warning(f"  No matching POS '{pos}' found in API data for: {term}")
-            return False
+            return self.move_to_no_definition(word_id, term, pos, "no_matching_pos")
 
         # Update database
         if self.dry_run:
@@ -175,7 +255,7 @@ class DefinitionUpdater:
             logger.error(f"  Error updating {term}: {e}")
             return False
 
-    async def process_all(self, batch_size: int = 10, delay: float = 0.5):
+    async def process_all(self, batch_size: int = 5, delay: float = 2.0):
         """Process all words with missing definitions."""
         words = self.get_words_missing_definitions()
 
@@ -219,11 +299,10 @@ class DefinitionUpdater:
         logger.info("=" * 60)
         logger.info("SUMMARY")
         logger.info("=" * 60)
-        logger.info(f"Total processed:    {self.stats['found']}")
-        logger.info(f"Successfully updated: {self.stats['updated']}")
-        logger.info(f"Not found in API:    {self.stats['not_found']}")
-        logger.info(f"No POS match:        {self.stats['no_match']}")
-        logger.info(f"Errors:              {self.stats['errors']}")
+        logger.info(f"Successfully updated:          {self.stats['updated']}")
+        logger.info(f"Moved to no_definition:        {self.stats['moved_to_no_definition']}")
+        logger.info(f"Skipped (already processed):   {self.stats['skipped_already_processed']}")
+        logger.info(f"Errors:                        {self.stats['errors']}")
         logger.info("=" * 60)
 
 
@@ -239,14 +318,14 @@ def main():
     parser.add_argument(
         '--batch-size',
         type=int,
-        default=10,
-        help='Number of words to process concurrently (default: 10)'
+        default=5,
+        help='Number of words to process concurrently (default: 5)'
     )
     parser.add_argument(
         '--delay',
         type=float,
-        default=0.5,
-        help='Delay in seconds between batches (default: 0.5)'
+        default=2.0,
+        help='Delay in seconds between batches (default: 2.0)'
     )
     parser.add_argument(
         '--verbose',
