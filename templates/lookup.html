@@ -129,7 +129,6 @@
     </div>
     
     <!-- Features info -->
-    {% if not term %}
     <div class="row mt-5">
         <div class="col-md-10 mx-auto">
             <div class="row text-center">
@@ -163,7 +162,6 @@
             </div>
         </div>
     </div>
-    {% endif %}
 </div>
 
 <style>
@@ -197,19 +195,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const input = document.getElementById('term-input');
     const button = document.getElementById('lookup-btn');
 
-    // Handle Enter key press - allow default form submission
-    input.addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            if (input.value.trim()) {
-                showLoadingState();
-                // Let the default form submission happen
-            } else {
-                e.preventDefault();
-                input.focus();
-            }
-        }
-    });
-
     // Handle form submission
     form.addEventListener('submit', function(e) {
         const term = input.value.trim();
@@ -227,26 +212,6 @@ document.addEventListener('DOMContentLoaded', function() {
         button.disabled = true;
         form.classList.add('lookup-loading');
     }
-
-    // Clear previous results when user starts typing a new word
-    input.addEventListener('input', function() {
-        // Reset button state
-        button.innerHTML = '🔍 Look Up';
-        button.disabled = false;
-        form.classList.remove('lookup-loading');
-
-        // Clear any existing results when user modifies the search term
-        const existingResults = document.querySelector('.card');
-        const existingAlert = document.querySelector('.alert-warning');
-        if (existingResults || existingAlert) {
-            // Only clear if the input value differs from the current displayed term
-            const currentTerm = "{% if term %}{{ term }}{% endif %}";
-            if (input.value.trim() !== currentTerm) {
-                if (existingResults) existingResults.style.display = 'none';
-                if (existingAlert) existingAlert.style.display = 'none';
-            }
-        }
-    });
 
     // Focus the input on page load
     input.focus();

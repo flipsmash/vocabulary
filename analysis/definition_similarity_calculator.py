@@ -343,7 +343,7 @@ class DefinitionSimilarityCalculator:
         definitions = self.load_embeddings()
         if not definitions:
             logger.error("No embeddings found. Run generate_embeddings first.")
-            return
+            return 0
 
         embeddings = np.array([d.embedding for d in definitions])
         word_ids = [d.word_id for d in definitions]

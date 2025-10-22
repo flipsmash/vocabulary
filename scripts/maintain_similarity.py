@@ -156,13 +156,16 @@ def main():
                 if not args.silent:
                     logger.info("This may take significant time for large vocabularies...")
 
-                similarities = calculator.calculate_all_similarities(
+                num_similarities = calculator.calculate_all_similarities(
                     similarity_threshold=args.threshold,
                     batch_size=args.batch_size
                 )
 
                 if not args.silent:
-                    logger.info(f"✓ Calculated and stored {len(similarities) if similarities else 0:,} similarity pairs")
+                    if num_similarities is not None:
+                        logger.info(f"✓ Calculated and stored {num_similarities:,} similarity pairs")
+                    else:
+                        logger.warning("No embeddings found - unable to calculate similarities")
         else:
             if not args.silent:
                 logger.info("\nStep 3: Skipped (--skip-similarities)")
