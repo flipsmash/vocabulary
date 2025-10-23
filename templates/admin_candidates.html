@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Vocabulary Candidate Evaluation</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .candidate-table {
+            font-size: 0.9rem;
+        }
+        .definition-cell {
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .action-buttons {
+            white-space: nowrap;
+        }
+        .btn-action {
+            padding: 0.2rem 0.5rem;
+            font-size: 0.8rem;
+            margin: 0.1rem;
+        }
+        .table-container {
+            position: relative;
+        }
+        .stats-bar {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .keyboard-hint {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            z-index: 1000;
+            max-width: 300px;
+        }
+        .keyboard-hint kbd {
+            background: #333;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .selected-row {
+            outline: 3px solid #0d6efd;
+            background-color: #e7f3ff;
+        }
+        .processed-row {
+            opacity: 0.3;
+            transition: opacity 0.3s;
+        }
+        .zipf-badge {
+            font-size: 0.75rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-book"></i> Vocabulary Explorer
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/admin">
+                    <i class="bi bi-speedometer2"></i> Admin Dashboard
+                </a>
+                <a class="nav-link" href="/admin/definitions">
+                    <i class="bi bi-pencil-square"></i> Definitions
+                </a>
+                <a class="nav-link" href="/">
+                    <i class="bi bi-house"></i> Home
+                </a>
+                <a class="nav-link" href="/logout">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2><i class="bi bi-check-square"></i> Vocabulary Candidate Evaluation</h2>
+                    <div class="stats-bar">
+                        <strong>Total Candidates:</strong> {{ total_count }} |
+                        <strong>Page:</strong> {{ current_page }} / {{ total_pages }} |
+                        <strong>Showing:</strong> {{ candidates|length }} items
+                    </div>
+                </div>
+
+                {% if candidates %}
+                <div class="table-container">
+                    <table class="table table-striped table-hover candidate-table">
+                        <thead class="table-dark">
+                            <tr>
+                                <th style="width: 5%;">#</th>
+                                <th style="width: 15%;">Term</th>
+                                <th style="width: 45%;">Definition</th>
+                                <th style="width: 10%;">Part of Speech</th>
+                                <th style="width: 8%;">Zipf Score</th>
+                                <th style="width: 17%;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for candidate in candidates %}
+                            <tr data-candidate-id="{{ candidate.id }}" data-row-index="{{ loop.index0 }}">
+                                <td>{{ candidate.id }}</td>
+                                <td><strong>{{ candidate.term }}</strong></td>
+                                <td class="definition-cell">{{ candidate.definition }}</td>
+                                <td>{{ candidate.part_of_speech or 'N/A' }}</td>
+                                <td>
+                                    {% if candidate.zipf_score %}
+                                    <span class="badge zipf-badge bg-info">{{ "%.2f"|format(candidate.zipf_score) }}</span>
+                                    {% else %}
+                                    <span class="badge zipf-badge bg-secondary">N/A</span>
+                                    {% endif %}
+                                </td>
+                                <td class="action-buttons">
+                                    <button class="btn btn-secondary btn-action btn-skip" data-action="skip">
+                                        <i class="bi bi-skip-forward"></i> Skip [1]
+                                    </button>
+                                    <button class="btn btn-success btn-action btn-move" data-action="move">
+                                        <i class="bi bi-check-circle"></i> Move [2]
+                                    </button>
+                                    <button class="btn btn-warning btn-action btn-move-exclude" data-action="move-exclude">
+                                        <i class="bi bi-person-x"></i> Move+Exclude [3]
+                                    </button>
+                                    <button class="btn btn-danger btn-action btn-delete" data-action="delete">
+                                        <i class="bi bi-trash"></i> Delete [4]
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination -->
+                <nav aria-label="Candidate pagination">
+                    <ul class="pagination justify-content-center">
+                        {% if current_page > 1 %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ current_page - 1 }}">&laquo; Previous</a>
+                        </li>
+                        {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">&laquo; Previous</span>
+                        </li>
+                        {% endif %}
+
+                        {% for page_num in range(1, total_pages + 1) %}
+                            {% if page_num == current_page %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ page_num }}</span>
+                            </li>
+                            {% elif page_num >= current_page - 2 and page_num <= current_page + 2 %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_num }}">{{ page_num }}</a>
+                            </li>
+                            {% elif page_num == 1 or page_num == total_pages %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_num }}">{{ page_num }}</a>
+                            </li>
+                            {% endif %}
+                        {% endfor %}
+
+                        {% if current_page < total_pages %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ current_page + 1 }}">Next &raquo;</a>
+                        </li>
+                        {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">Next &raquo;</span>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+
+                {% else %}
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> No vocabulary candidates found. All candidates have been evaluated!
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Keyboard shortcuts hint -->
+    <div class="keyboard-hint">
+        <strong>Keyboard Shortcuts:</strong><br>
+        <kbd>1</kbd> Skip to next<br>
+        <kbd>2</kbd> Move to defined<br>
+        <kbd>3</kbd> Move + Exclude for Brian<br>
+        <kbd>4</kbd> Delete candidate<br>
+        <kbd>↑</kbd>/<kbd>↓</kbd> Navigate rows<br>
+        <kbd>Enter</kbd> Confirm action
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentRowIndex = 0;
+        const rows = document.querySelectorAll('tbody tr');
+
+        // Highlight current row
+        function selectRow(index) {
+            rows.forEach(row => row.classList.remove('selected-row'));
+            if (rows[index]) {
+                rows[index].classList.add('selected-row');
+                rows[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                currentRowIndex = index;
+            }
+        }
+
+        // Initial selection
+        if (rows.length > 0) {
+            selectRow(0);
+        }
+
+        // Keyboard navigation
+        document.addEventListener('keydown', function(e) {
+            // Ignore if user is typing in an input field
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                return;
+            }
+
+            const currentRow = rows[currentRowIndex];
+            if (!currentRow) return;
+
+            const candidateId = currentRow.dataset.candidateId;
+
+            switch(e.key) {
+                case '1':
+                    e.preventDefault();
+                    handleSkip(currentRow);
+                    break;
+                case '2':
+                    e.preventDefault();
+                    handleMove(candidateId, currentRow, false);
+                    break;
+                case '3':
+                    e.preventDefault();
+                    handleMove(candidateId, currentRow, true);
+                    break;
+                case '4':
+                    e.preventDefault();
+                    handleDelete(candidateId, currentRow);
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    if (currentRowIndex > 0) {
+                        selectRow(currentRowIndex - 1);
+                    }
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    if (currentRowIndex < rows.length - 1) {
+                        selectRow(currentRowIndex + 1);
+                    }
+                    break;
+            }
+        });
+
+        // Button click handlers
+        document.querySelectorAll('.btn-skip').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const row = this.closest('tr');
+                handleSkip(row);
+            });
+        });
+
+        document.querySelectorAll('.btn-move').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const row = this.closest('tr');
+                const candidateId = row.dataset.candidateId;
+                handleMove(candidateId, row, false);
+            });
+        });
+
+        document.querySelectorAll('.btn-move-exclude').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const row = this.closest('tr');
+                const candidateId = row.dataset.candidateId;
+                handleMove(candidateId, row, true);
+            });
+        });
+
+        document.querySelectorAll('.btn-delete').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const row = this.closest('tr');
+                const candidateId = row.dataset.candidateId;
+                handleDelete(candidateId, row);
+            });
+        });
+
+        // Action handlers
+        function handleSkip(row) {
+            // Just move to next row
+            const nextIndex = currentRowIndex + 1;
+            if (nextIndex < rows.length) {
+                selectRow(nextIndex);
+            } else {
+                // Load next page
+                window.location.href = '?page={{ current_page + 1 }}';
+            }
+        }
+
+        async function handleMove(candidateId, row, excludeForBrian) {
+            const term = row.querySelector('td:nth-child(2)').textContent.trim();
+            const action = excludeForBrian ? 'Move to defined and exclude for Brian' : 'Move to defined';
+
+            if (!confirm(`${action}: "${term}"?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/admin/vocab-candidates/${candidateId}/move-to-defined?exclude_for_brian=${excludeForBrian}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    row.classList.add('processed-row');
+                    setTimeout(() => {
+                        row.remove();
+                        if (currentRowIndex < rows.length - 1) {
+                            selectRow(currentRowIndex);
+                        } else if (rows.length === 0) {
+                            location.reload();
+                        }
+                    }, 300);
+                } else {
+                    alert('Error moving candidate. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error moving candidate. Please try again.');
+            }
+        }
+
+        async function handleDelete(candidateId, row) {
+            const term = row.querySelector('td:nth-child(2)').textContent.trim();
+
+            if (!confirm(`Delete candidate: "${term}"?\n\nThis action cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/admin/vocab-candidates/${candidateId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    row.classList.add('processed-row');
+                    setTimeout(() => {
+                        row.remove();
+                        if (currentRowIndex < rows.length - 1) {
+                            selectRow(currentRowIndex);
+                        } else if (rows.length === 0) {
+                            location.reload();
+                        }
+                    }, 300);
+                } else {
+                    alert('Error deleting candidate. Please try again.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error deleting candidate. Please try again.');
+            }
+        }
+    </script>
+</body>
+</html>

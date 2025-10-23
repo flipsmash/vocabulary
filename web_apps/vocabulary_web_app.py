@@ -29,6 +29,7 @@ from core.auth import (
 )
 from core.quiz_tracking import quiz_tracker, QuestionType, DifficultyLevel
 from core.analytics import analytics
+from core.user_word_exclusions import UserWordExclusions
 import re
 from core.comprehensive_definition_lookup import ComprehensiveDefinitionLookup
 import asyncio
@@ -308,10 +309,12 @@ class VocabularyDatabase:
         max_frequency: Optional[int] = None,
         limit: int = 50,
         offset: int = 0,
+        user_id: Optional[int] = None,
     ) -> List[Word]:
         """Search words with optional filters.
 
         Note: Always computes frequency_rank for display purposes.
+        If user_id is provided, excludes words that the user has excluded.
         """
         # ALWAYS compute rank for display (templates expect it)
         sql = f"""
@@ -324,6 +327,14 @@ class VocabularyDatabase:
             WHERE 1=1
         """
         params: List[Any] = []
+
+        # Filter out user-excluded words if user_id is provided
+        if user_id is not None:
+            exclusion_filter, exclusion_params = UserWordExclusions.get_exclusion_sql_filter(
+                user_id, word_table_alias='ranked'
+            )
+            sql += exclusion_filter
+            params.extend(exclusion_params)
 
         if query:
             if len(query) == 1:
@@ -1379,14 +1390,16 @@ async def search_words(
     min_frequency: Optional[int] = Query(None, description="Minimum frequency rank"),
     max_frequency: Optional[int] = Query(None, description="Maximum frequency rank"),
     limit: int = Query(50, description="Number of results"),
-    offset: int = Query(0, description="Offset for pagination")
+    offset: int = Query(0, description="Offset for pagination"),
+    current_user: Optional[User] = Depends(get_optional_current_user)
 ):
-    """Search words with filters"""
+    """Search words with filters (excludes user-excluded words if logged in)"""
     try:
+        user_id = current_user.id if current_user else None
         # Get total count of matching words
         total = db.count_search_words(q, domain, part_of_speech, min_frequency, max_frequency)
         # Get the current page of words
-        words = db.search_words(q, domain, part_of_speech, min_frequency, max_frequency, limit, offset)
+        words = db.search_words(q, domain, part_of_speech, min_frequency, max_frequency, limit, offset, user_id=user_id)
         return {"words": words, "total": total, "limit": limit, "offset": offset}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1903,10 +1916,10 @@ async def start_quiz(request: Request,
     
     # Use topic_domain parameter and handle empty string as None
     domain = topic_domain if topic_domain and topic_domain != "all" and topic_domain.strip() != "" else None
-    words = db.search_words(domain=domain, limit=required_words)
+    words = db.search_words(domain=domain, limit=required_words, user_id=current_user.id)
     if len(words) < num_questions * 4:  # Need at least 4 words per question
         # Fallback to all words if domain doesn't have enough
-        words = db.search_words(limit=required_words)
+        words = db.search_words(limit=required_words, user_id=current_user.id)
     
     if len(words) < num_questions * 4:
         raise HTTPException(status_code=400, detail=f"Not enough words available. Need {num_questions * 4} words, found {len(words)}")
@@ -2613,10 +2626,15 @@ class FlashcardDatabase:
                 LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id
                 LEFT JOIN vocab.user_flashcard_progress ufp ON d.id = ufp.word_id AND ufp.user_id = %s
                 WHERE d.definition IS NOT NULL AND d.definition <> ''
+                  AND d.id NOT IN (
+                      SELECT word_id
+                      FROM vocab.user_excluded_words
+                      WHERE user_id = %s
+                  )
                 ORDER BY RANDOM()
                 LIMIT %s
                 """,
-                (user_id, limit),
+                (user_id, user_id, limit),
             )
             cards = []
             for row in cursor.fetchall():
@@ -2761,6 +2779,70 @@ async def study_flashcard(request: Request,
     except Exception as e:
         logger.error(f"Error updating flashcard progress: {e}")
         raise HTTPException(status_code=500, detail="Failed to update progress")
+
+# ==========================================
+# WORD EXCLUSION API ENDPOINTS
+# ==========================================
+
+@app.get("/api/excluded-words")
+async def get_excluded_words(
+    limit: int = Query(100, description="Number of results"),
+    offset: int = Query(0, description="Offset for pagination"),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get list of words the user has excluded"""
+    try:
+        words = UserWordExclusions.get_excluded_words(current_user.id, limit=limit, offset=offset)
+        total = UserWordExclusions.get_exclusion_count(current_user.id)
+        return {"words": words, "total": total, "limit": limit, "offset": offset}
+    except Exception as e:
+        logger.error(f"Error getting excluded words: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get excluded words")
+
+@app.post("/api/excluded-words/{word_id}")
+async def exclude_word(
+    word_id: int,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Exclude a word for the current user"""
+    try:
+        was_excluded = UserWordExclusions.exclude_word(current_user.id, word_id)
+        if was_excluded:
+            return {"success": True, "message": "Word excluded successfully"}
+        else:
+            return {"success": True, "message": "Word was already excluded"}
+    except Exception as e:
+        logger.error(f"Error excluding word {word_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to exclude word")
+
+@app.delete("/api/excluded-words/{word_id}")
+async def include_word(
+    word_id: int,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Re-include a previously excluded word"""
+    try:
+        was_included = UserWordExclusions.include_word(current_user.id, word_id)
+        if was_included:
+            return {"success": True, "message": "Word re-included successfully"}
+        else:
+            return {"success": True, "message": "Word was not excluded"}
+    except Exception as e:
+        logger.error(f"Error re-including word {word_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to re-include word")
+
+@app.get("/api/excluded-words/{word_id}/status")
+async def check_word_exclusion_status(
+    word_id: int,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Check if a word is excluded for the current user"""
+    try:
+        is_excluded = UserWordExclusions.is_word_excluded(current_user.id, word_id)
+        return {"word_id": word_id, "is_excluded": is_excluded}
+    except Exception as e:
+        logger.error(f"Error checking exclusion status for word {word_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to check exclusion status")
 
 @app.get("/flashcards/random/study", response_class=HTMLResponse)
 async def study_random_cards(request: Request, 
@@ -3255,6 +3337,133 @@ async def update_definition(
     except Exception as e:
         logger.error(f"Error updating definition: {e}")
         raise HTTPException(status_code=500, detail="Failed to update definition")
+
+# ==========================================
+# VOCABULARY CANDIDATE EVALUATION ENDPOINTS
+# ==========================================
+
+@app.get("/admin/vocab-candidates", response_class=HTMLResponse)
+async def vocab_candidate_evaluation_page(
+    request: Request,
+    page: int = Query(1, ge=1, description="Page number"),
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Admin UI for evaluating vocabulary_candidates table entries"""
+    per_page = 100
+    offset = (page - 1) * per_page
+
+    try:
+        with db_manager.get_cursor(dictionary=True) as cursor:
+            # Get total count
+            cursor.execute("SELECT COUNT(*) as count FROM vocab.vocabulary_candidates")
+            total_count = cursor.fetchone()['count']
+
+            # Get candidates for current page
+            cursor.execute("""
+                SELECT id, term, definition, zipf_score, part_of_speech
+                FROM vocab.vocabulary_candidates
+                ORDER BY id
+                LIMIT %s OFFSET %s
+            """, (per_page, offset))
+            candidates = cursor.fetchall()
+
+        # Calculate pagination
+        total_pages = (total_count + per_page - 1) // per_page if total_count > 0 else 1
+
+        return templates.TemplateResponse("admin_candidates.html", {
+            "request": request,
+            "current_user": current_user,
+            "candidates": candidates,
+            "current_page": page,
+            "per_page": per_page,
+            "total_count": total_count,
+            "total_pages": total_pages
+        })
+
+    except Exception as e:
+        logger.error(f"Error loading vocabulary candidates: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load vocabulary candidates")
+
+@app.post("/admin/vocab-candidates/{candidate_id}/move-to-defined")
+async def move_vocab_candidate_to_defined(
+    candidate_id: int,
+    exclude_for_brian: bool = False,
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Move a vocabulary_candidates entry to the defined table"""
+    try:
+        with db_manager.get_cursor() as cursor:
+            # Get candidate data
+            cursor.execute("""
+                SELECT term, definition, part_of_speech
+                FROM vocab.vocabulary_candidates
+                WHERE id = %s
+            """, (candidate_id,))
+            candidate = cursor.fetchone()
+
+            if not candidate:
+                raise HTTPException(status_code=404, detail="Candidate not found")
+
+            term, definition, part_of_speech = candidate
+
+            # Insert into defined table (only fields that exist in defined)
+            # Use DEFAULT for id to let the sequence handle it properly
+            cursor.execute("""
+                INSERT INTO vocab.defined (id, term, definition, part_of_speech)
+                VALUES (DEFAULT, %s, %s, %s)
+                RETURNING id
+            """, (term, definition, part_of_speech))
+
+            new_word_id = cursor.fetchone()[0]
+
+            # If exclude_for_brian, add to user_excluded_words
+            if exclude_for_brian:
+                cursor.execute("""
+                    INSERT INTO vocab.user_excluded_words (user_id, word_id)
+                    VALUES (2, %s)
+                    ON CONFLICT (user_id, word_id) DO NOTHING
+                """, (new_word_id,))
+
+            # Delete from vocabulary_candidates
+            cursor.execute("""
+                DELETE FROM vocab.vocabulary_candidates
+                WHERE id = %s
+            """, (candidate_id,))
+
+        return {"success": True, "message": "Candidate moved to defined", "word_id": new_word_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error moving candidate to defined: {e}")
+        raise HTTPException(status_code=500, detail="Failed to move candidate")
+
+@app.delete("/admin/vocab-candidates/{candidate_id}")
+async def delete_vocab_candidate(
+    candidate_id: int,
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Delete a vocabulary_candidates entry"""
+    try:
+        with db_manager.get_cursor() as cursor:
+            cursor.execute("""
+                DELETE FROM vocab.vocabulary_candidates
+                WHERE id = %s
+                RETURNING id
+            """, (candidate_id,))
+
+            result = cursor.fetchone()
+
+            if not result:
+                raise HTTPException(status_code=404, detail="Candidate not found")
+
+        return {"success": True, "message": "Candidate deleted"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting candidate: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete candidate")
 
 # Initialize flashcard tables on startup
 try:
