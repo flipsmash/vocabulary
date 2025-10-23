@@ -1628,9 +1628,12 @@ async def register(request: Request, username: str = Form(...), email: str = For
         })
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_form(request: Request):
+async def login_form(request: Request, message: Optional[str] = Query(None)):
     """Login form"""
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse("login.html", {
+        "request": request,
+        "error": message  # Display message as an error alert
+    })
 
 @app.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...), 
@@ -3345,10 +3348,26 @@ async def update_definition(
 @app.get("/admin/vocab-candidates", response_class=HTMLResponse)
 async def vocab_candidate_evaluation_page(
     request: Request,
-    page: int = Query(1, ge=1, description="Page number"),
-    current_user: User = Depends(get_current_admin_user)
+    page: int = Query(1, ge=1, description="Page number")
 ):
     """Admin UI for evaluating vocabulary_candidates table entries"""
+    # Check authentication and admin role, redirect to login if needed
+    try:
+        current_user = await get_current_admin_user(request)
+    except HTTPException as e:
+        # Redirect to login with appropriate message
+        if e.status_code == 401:
+            return RedirectResponse(
+                url=f"/login?next=/admin/vocab-candidates&message=Please login to access the vocabulary candidate evaluation page",
+                status_code=303
+            )
+        elif e.status_code == 403:
+            return RedirectResponse(
+                url=f"/login?next=/admin/vocab-candidates&message=Admin access required to evaluate vocabulary candidates",
+                status_code=303
+            )
+        raise
+
     per_page = 100
     offset = (page - 1) * per_page
 
