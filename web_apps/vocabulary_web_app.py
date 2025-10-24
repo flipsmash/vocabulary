@@ -3348,7 +3348,8 @@ async def update_definition(
 @app.get("/admin/vocab-candidates", response_class=HTMLResponse)
 async def vocab_candidate_evaluation_page(
     request: Request,
-    page: int = Query(1, ge=1, description="Page number")
+    page: int = Query(1, ge=1, description="Page number"),
+    refresh: bool = Query(False, description="Force new random order")
 ):
     """Admin UI for evaluating vocabulary_candidates table entries"""
     # Check authentication and admin role, redirect to login if needed
@@ -3371,25 +3372,35 @@ async def vocab_candidate_evaluation_page(
     per_page = 100
     offset = (page - 1) * per_page
 
+    # Use daily seed for consistent random ordering (changes once per day)
+    # This gives random order without requiring sessions
+    from datetime import date
+    if refresh:
+        import random
+        random_seed = random.randint(1, 1000000)
+    else:
+        # Use current date as seed so order is consistent for the day
+        random_seed = int(date.today().strftime("%Y%m%d"))
+
     try:
         with db_manager.get_cursor(dictionary=True) as cursor:
             # Get total count
             cursor.execute("SELECT COUNT(*) as count FROM vocab.vocabulary_candidates")
             total_count = cursor.fetchone()['count']
 
-            # Get candidates for current page
+            # Get candidates for current page (consistent random order using seed)
             cursor.execute("""
                 SELECT id, term, definition, zipf_score, part_of_speech
                 FROM vocab.vocabulary_candidates
-                ORDER BY id
+                ORDER BY MD5(id::TEXT || %s::TEXT)
                 LIMIT %s OFFSET %s
-            """, (per_page, offset))
+            """, (str(random_seed), per_page, offset))
             candidates = cursor.fetchall()
 
         # Calculate pagination
         total_pages = (total_count + per_page - 1) // per_page if total_count > 0 else 1
 
-        return templates.TemplateResponse("admin_candidates.html", {
+        response = templates.TemplateResponse("admin_candidates.html", {
             "request": request,
             "current_user": current_user,
             "candidates": candidates,
@@ -3399,9 +3410,13 @@ async def vocab_candidate_evaluation_page(
             "total_pages": total_pages
         })
 
+        return response
+
     except Exception as e:
+        import traceback
         logger.error(f"Error loading vocabulary candidates: {e}")
-        raise HTTPException(status_code=500, detail="Failed to load vocabulary candidates")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to load vocabulary candidates: {str(e)}")
 
 @app.post("/admin/vocab-candidates/{candidate_id}/move-to-defined")
 async def move_vocab_candidate_to_defined(
