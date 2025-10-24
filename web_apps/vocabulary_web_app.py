@@ -3418,6 +3418,173 @@ async def vocab_candidate_evaluation_page(
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to load vocabulary candidates: {str(e)}")
 
+@app.get("/admin/vocab-candidates-batch", response_class=HTMLResponse)
+async def vocab_candidate_batch_page(
+    request: Request,
+    page: int = Query(1, ge=1, description="Page number"),
+    refresh: bool = Query(False, description="Force new random order"),
+    success: str = Query(None, description="Success message")
+):
+    """Batch processing UI for vocabulary candidates (20 at a time)"""
+    # Check authentication and admin role
+    try:
+        current_user = await get_current_admin_user(request)
+    except HTTPException as e:
+        if e.status_code == 401:
+            return RedirectResponse(
+                url=f"/login?next=/admin/vocab-candidates-batch&message=Please login to access the batch evaluation page",
+                status_code=303
+            )
+        elif e.status_code == 403:
+            return RedirectResponse(
+                url=f"/login?next=/admin/vocab-candidates-batch&message=Admin access required for batch evaluation",
+                status_code=303
+            )
+        raise
+
+    per_page = 20
+    offset = (page - 1) * per_page
+
+    # Use daily seed for consistent random ordering
+    from datetime import date
+    if refresh:
+        import random
+        random_seed = random.randint(1, 1000000)
+    else:
+        random_seed = int(date.today().strftime("%Y%m%d"))
+
+    try:
+        with db_manager.get_cursor(dictionary=True) as cursor:
+            # Get total count
+            cursor.execute("SELECT COUNT(*) as count FROM vocab.vocabulary_candidates")
+            total_count = cursor.fetchone()['count']
+
+            # Get candidates for current page
+            cursor.execute("""
+                SELECT id, term, definition, zipf_score, part_of_speech
+                FROM vocab.vocabulary_candidates
+                ORDER BY MD5(id::TEXT || %s::TEXT)
+                LIMIT %s OFFSET %s
+            """, (str(random_seed), per_page, offset))
+            candidates = cursor.fetchall()
+
+        # Calculate pagination
+        total_pages = (total_count + per_page - 1) // per_page if total_count > 0 else 1
+
+        return templates.TemplateResponse("admin_candidates_batch.html", {
+            "request": request,
+            "current_user": current_user,
+            "candidates": candidates,
+            "current_page": page,
+            "per_page": per_page,
+            "total_count": total_count,
+            "total_pages": total_pages,
+            "success_message": success
+        })
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Error loading batch candidates: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to load batch candidates: {str(e)}")
+
+@app.post("/admin/vocab-candidates-batch/process")
+async def process_vocab_candidates_batch(
+    request: Request,
+    current_user: User = Depends(get_current_admin_user)
+):
+    """Process a batch of vocabulary candidates based on form selections"""
+    try:
+        form_data = await request.form()
+
+        processed_count = 0
+        moved_count = 0
+        deleted_count = 0
+        skipped_count = 0
+
+        with db_manager.get_cursor() as cursor:
+            # Get all candidate IDs from form
+            candidate_ids = [key.split('_')[1] for key in form_data.keys() if key.startswith('action_')]
+
+            for candidate_id in candidate_ids:
+                action = form_data.get(f'action_{candidate_id}')
+
+                if not action or action == 'skip':
+                    skipped_count += 1
+                    continue
+
+                processed_count += 1
+
+                if action in ['move_exclude', 'move_include']:
+                    # Get candidate data
+                    cursor.execute("""
+                        SELECT term, definition, part_of_speech
+                        FROM vocab.vocabulary_candidates
+                        WHERE id = %s
+                    """, (int(candidate_id),))
+                    candidate = cursor.fetchone()
+
+                    if candidate:
+                        term, definition, part_of_speech = candidate
+
+                        # Insert into defined table
+                        cursor.execute("""
+                            INSERT INTO vocab.defined (id, term, definition, part_of_speech)
+                            VALUES (DEFAULT, %s, %s, %s)
+                            RETURNING id
+                        """, (term, definition, part_of_speech))
+
+                        new_word_id = cursor.fetchone()[0]
+
+                        # If exclude for Brian, add to user_excluded_words
+                        if action == 'move_exclude':
+                            cursor.execute("""
+                                INSERT INTO vocab.user_excluded_words (user_id, word_id)
+                                VALUES (2, %s)
+                                ON CONFLICT (user_id, word_id) DO NOTHING
+                            """, (new_word_id,))
+
+                        # Delete from vocabulary_candidates
+                        cursor.execute("""
+                            DELETE FROM vocab.vocabulary_candidates
+                            WHERE id = %s
+                        """, (int(candidate_id),))
+
+                        moved_count += 1
+
+                elif action == 'delete':
+                    cursor.execute("""
+                        DELETE FROM vocab.vocabulary_candidates
+                        WHERE id = %s
+                    """, (int(candidate_id),))
+                    deleted_count += 1
+
+        # Build success message
+        success_parts = []
+        if moved_count > 0:
+            success_parts.append(f"{moved_count} moved to defined")
+        if deleted_count > 0:
+            success_parts.append(f"{deleted_count} deleted")
+        if skipped_count > 0:
+            success_parts.append(f"{skipped_count} skipped")
+
+        success_message = ", ".join(success_parts) if success_parts else "No actions taken"
+
+        # Get current page from form
+        current_page = int(form_data.get('current_page', 1))
+
+        # Redirect back to batch page with success message
+        return RedirectResponse(
+            url=f"/admin/vocab-candidates-batch?page={current_page}&success={success_message}",
+            status_code=303
+        )
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Error processing batch: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to process batch: {str(e)}")
+
 @app.post("/admin/vocab-candidates/{candidate_id}/move-to-defined")
 async def move_vocab_candidate_to_defined(
     candidate_id: int,

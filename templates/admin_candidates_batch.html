@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Batch Vocabulary Candidate Evaluation</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .candidate-table {
+            font-size: 0.9rem;
+        }
+        .definition-cell {
+            max-width: 400px;
+        }
+        .radio-group {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .radio-label {
+            font-size: 0.85rem;
+            white-space: nowrap;
+        }
+        .stats-bar {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .zipf-badge {
+            font-size: 0.75rem;
+        }
+        .submit-section {
+            position: sticky;
+            bottom: 0;
+            background: white;
+            padding: 1rem;
+            border-top: 3px solid #dee2e6;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+        .success-message {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 1050;
+            min-width: 300px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-book"></i> Vocabulary Explorer
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/admin">
+                    <i class="bi bi-speedometer2"></i> Admin Dashboard
+                </a>
+                <a class="nav-link" href="/admin/vocab-candidates">
+                    <i class="bi bi-list-check"></i> Single Mode
+                </a>
+                <a class="nav-link active" href="/admin/vocab-candidates-batch">
+                    <i class="bi bi-collection"></i> Batch Mode
+                </a>
+                <a class="nav-link" href="/">
+                    <i class="bi bi-house"></i> Home
+                </a>
+                <a class="nav-link" href="/logout">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        {% if success_message %}
+        <div class="success-message">
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <i class="bi bi-check-circle"></i> <strong>Batch Processed!</strong><br>
+                {{ success_message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="row">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2><i class="bi bi-collection"></i> Batch Vocabulary Candidate Evaluation</h2>
+                    <div class="stats-bar">
+                        <strong>Total Candidates:</strong> {{ total_count }} |
+                        <strong>Batch:</strong> {{ current_page }} / {{ total_pages }} |
+                        <strong>Showing:</strong> {{ candidates|length }} words
+                    </div>
+                </div>
+
+                <form method="POST" action="/admin/vocab-candidates-batch/process" id="batchForm">
+                    <input type="hidden" name="current_page" value="{{ current_page }}">
+
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover candidate-table">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th style="width: 5%">#</th>
+                                    <th style="width: 15%">Term</th>
+                                    <th style="width: 35%">Definition</th>
+                                    <th style="width: 8%">POS</th>
+                                    <th style="width: 8%">Zipf</th>
+                                    <th style="width: 29%">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for candidate in candidates %}
+                                <tr>
+                                    <td class="text-center">{{ loop.index }}</td>
+                                    <td>
+                                        <strong>{{ candidate.term }}</strong>
+                                    </td>
+                                    <td class="definition-cell">{{ candidate.definition }}</td>
+                                    <td>
+                                        {% if candidate.part_of_speech %}
+                                        <span class="badge bg-secondary">{{ candidate.part_of_speech }}</span>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if candidate.zipf_score %}
+                                        <span class="badge bg-info zipf-badge">{{ "%.2f"|format(candidate.zipf_score) }}</span>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="radio-group">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="radio"
+                                                       name="action_{{ candidate.id }}"
+                                                       value="move_exclude"
+                                                       id="move_exclude_{{ candidate.id }}">
+                                                <label class="form-check-label radio-label" for="move_exclude_{{ candidate.id }}">
+                                                    <i class="bi bi-check-circle text-success"></i> Define (Exclude Brian)
+                                                </label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="radio"
+                                                       name="action_{{ candidate.id }}"
+                                                       value="move_include"
+                                                       id="move_include_{{ candidate.id }}">
+                                                <label class="form-check-label radio-label" for="move_include_{{ candidate.id }}">
+                                                    <i class="bi bi-check-circle text-primary"></i> Define (Include)
+                                                </label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="radio"
+                                                       name="action_{{ candidate.id }}"
+                                                       value="delete"
+                                                       id="delete_{{ candidate.id }}">
+                                                <label class="form-check-label radio-label" for="delete_{{ candidate.id }}">
+                                                    <i class="bi bi-trash text-danger"></i> Delete
+                                                </label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="radio"
+                                                       name="action_{{ candidate.id }}"
+                                                       value="skip"
+                                                       id="skip_{{ candidate.id }}"
+                                                       checked>
+                                                <label class="form-check-label radio-label" for="skip_{{ candidate.id }}">
+                                                    <i class="bi bi-dash-circle text-secondary"></i> Skip
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="submit-section">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="text-muted">Review your selections and submit when ready</span>
+                            </div>
+                            <div class="btn-group">
+                                {% if current_page > 1 %}
+                                <a href="/admin/vocab-candidates-batch?page={{ current_page - 1 }}"
+                                   class="btn btn-outline-secondary">
+                                    <i class="bi bi-chevron-left"></i> Previous Batch
+                                </a>
+                                {% endif %}
+                                <button type="submit" class="btn btn-primary btn-lg">
+                                    <i class="bi bi-check-all"></i> Submit Batch
+                                </button>
+                                {% if current_page < total_pages %}
+                                <a href="/admin/vocab-candidates-batch?page={{ current_page + 1 }}"
+                                   class="btn btn-outline-secondary">
+                                    Next Batch <i class="bi bi-chevron-right"></i>
+                                </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </form>
+
+                <!-- Pagination Info -->
+                <div class="mt-4 text-center text-muted">
+                    <p>
+                        Viewing batch {{ current_page }} of {{ total_pages }}
+                        ({{ (current_page - 1) * per_page + 1 }} - {{ (current_page - 1) * per_page + candidates|length }} of {{ total_count }} total)
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Auto-dismiss success message after 5 seconds
+        setTimeout(function() {
+            const alert = document.querySelector('.success-message .alert');
+            if (alert) {
+                const bsAlert = new bootstrap.Alert(alert);
+                bsAlert.close();
+            }
+        }, 5000);
+
+        // Confirm before submitting if no actions selected
+        document.getElementById('batchForm').addEventListener('submit', function(e) {
+            const radios = document.querySelectorAll('input[type="radio"]:checked');
+            const hasNonSkip = Array.from(radios).some(r => r.value !== 'skip');
+
+            if (!hasNonSkip) {
+                if (!confirm('No actions selected (all words will be skipped). Continue?')) {
+                    e.preventDefault();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
