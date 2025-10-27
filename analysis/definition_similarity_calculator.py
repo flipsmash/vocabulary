@@ -335,7 +335,7 @@ class DefinitionSimilarityCalculator:
         # Calculate cosine similarity matrix
         return normalized_emb1 @ normalized_emb2.T
     
-    def calculate_all_similarities(self, similarity_threshold: float = 0.3, batch_size: int = 1000, store_batch_size: int = 100000):
+    def calculate_all_similarities(self, similarity_threshold: float = 0.3, batch_size: int = 1000, store_batch_size: int = 10000):
         """Calculate similarities between all definition pairs with incremental storage"""
         logger.info(f"Calculating definition similarities with threshold {similarity_threshold}")
 
@@ -407,7 +407,15 @@ class DefinitionSimilarityCalculator:
         return total_stored
     
     def store_similarities(self, similarities: List[DefinitionSimilarityScore], batch_size: int = 10000):
-        """Store similarity scores in database with batching for large datasets"""
+        """Store similarity scores in database with batching for large datasets.
+
+        Args:
+            similarities: List of similarity scores to store
+            batch_size: Number of rows per batch (default: 10000, limited by PostgreSQL's 65535 parameter limit)
+
+        Note: PostgreSQL has a limit of 65,535 parameters per query. Each row uses 4 parameters,
+              so max batch size is 65535 / 4 = 16,383. We use 10,000 for extra safety margin.
+        """
         logger.info(f"Storing {len(similarities)} similarity scores in batches of {batch_size}")
 
         data = [(s.word1_id, s.word2_id, s.cosine_similarity, s.model_name)

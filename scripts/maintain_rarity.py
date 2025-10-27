@@ -116,6 +116,11 @@ def parse_args() -> argparse.Namespace:
         action="store_false",
         help="Refresh view without CONCURRENTLY (locks the view)"
     )
+    parser.add_argument(
+        "--force-recheck",
+        action="store_true",
+        help="Recheck words with -999 (already checked but not found) in addition to NULL values"
+    )
     parser.set_defaults(concurrently=True)
     return parser.parse_args()
 
@@ -133,19 +138,22 @@ def log(message: str, silent: bool = False, is_error: bool = False):
         print(message)
 
 
-def count_missing_frequencies(conn: psycopg.Connection) -> tuple[int, int, int]:
-    """Count words missing each frequency metric."""
+def count_missing_frequencies(conn: psycopg.Connection) -> tuple[int, int, int, int, int, int]:
+    """Count words missing each frequency metric, separated by NULL (unchecked) vs -999 (checked, not found)."""
     with conn.cursor() as cur:
         cur.execute("""
             SELECT
-                COUNT(CASE WHEN python_wordfreq IS NULL OR python_wordfreq = -999 THEN 1 END) as missing_python,
-                COUNT(CASE WHEN ngram_freq IS NULL OR ngram_freq = -999 THEN 1 END) as missing_ngram,
-                COUNT(CASE WHEN commoncrawl_freq IS NULL OR commoncrawl_freq = -999 THEN 1 END) as missing_commoncrawl
+                COUNT(CASE WHEN python_wordfreq IS NULL THEN 1 END) as unchecked_python,
+                COUNT(CASE WHEN python_wordfreq = -999 THEN 1 END) as notfound_python,
+                COUNT(CASE WHEN ngram_freq IS NULL THEN 1 END) as unchecked_ngram,
+                COUNT(CASE WHEN ngram_freq = -999 THEN 1 END) as notfound_ngram,
+                COUNT(CASE WHEN commoncrawl_freq IS NULL THEN 1 END) as unchecked_commoncrawl,
+                COUNT(CASE WHEN commoncrawl_freq = -999 THEN 1 END) as notfound_commoncrawl
             FROM vocab.defined
             WHERE (phrase IS NULL OR phrase = 0) AND term NOT LIKE '% %'
         """)
         result = cur.fetchone()
-        return result[0], result[1], result[2]
+        return result[0], result[1], result[2], result[3], result[4], result[5]
 
 
 def count_missing_rarity(conn: psycopg.Connection) -> int:
@@ -160,15 +168,39 @@ def normalize_term(term: str) -> str:
     return term.strip().lower()
 
 
-def fetch_all_frequency_candidates(conn: psycopg.Connection) -> List[Dict]:
-    """Fetch ALL words that need any frequency data (not just those missing rarity)."""
+def fetch_all_frequency_candidates(conn: psycopg.Connection, force_recheck: bool = False) -> List[Dict]:
+    """
+    Fetch words that need any frequency data.
+
+    Args:
+        conn: Database connection
+        force_recheck: If True, include words with -999 (checked but not found).
+                      If False, only include words with NULL (not yet checked).
+
+    Returns:
+        List of candidate words with their current frequency values
+    """
+    # Build WHERE clause based on force_recheck flag
+    if force_recheck:
+        # Include both NULL and -999 (recheck everything)
+        freq_condition = """
+            (python_wordfreq IS NULL OR python_wordfreq = -999
+             OR ngram_freq IS NULL OR ngram_freq = -999
+             OR commoncrawl_freq IS NULL OR commoncrawl_freq = -999)
+        """
+    else:
+        # Only NULL (not yet checked) - skip -999 (already checked, not found)
+        freq_condition = """
+            (python_wordfreq IS NULL
+             OR ngram_freq IS NULL
+             OR commoncrawl_freq IS NULL)
+        """
+
     with conn.cursor() as cur:
-        cur.execute("""
+        cur.execute(f"""
             SELECT id, term, python_wordfreq, ngram_freq, commoncrawl_freq
             FROM vocab.defined
-            WHERE (python_wordfreq IS NULL OR python_wordfreq = -999
-                   OR ngram_freq IS NULL OR ngram_freq = -999
-                   OR commoncrawl_freq IS NULL OR commoncrawl_freq = -999)
+            WHERE {freq_condition}
               AND (phrase IS NULL OR phrase = 0)
               AND term NOT LIKE '% %'
             ORDER BY id
@@ -297,17 +329,37 @@ def update_frequencies(
     conn: psycopg.Connection,
     candidates: List[Dict],
     silent: bool = False,
-    dry_run: bool = False
+    dry_run: bool = False,
+    force_recheck: bool = False
 ) -> tuple[int, int, int, int, int, int]:
-    """Update missing frequency data and return stats."""
+    """
+    Update missing frequency data and return stats.
+
+    Args:
+        conn: Database connection
+        candidates: List of candidate words
+        silent: Suppress output
+        dry_run: Don't commit changes
+        force_recheck: If True, recheck words with -999. If False, only check NULL values.
+
+    Returns:
+        Tuple of (python_success, python_fail, ngram_success, ngram_fail, cc_success, cc_fail)
+    """
 
     # Separate candidates by what they need
-    python_terms = [c["term"] for c in candidates
-                   if c["python_wordfreq"] is None or c["python_wordfreq"] == SENTINEL]
-    ngram_terms = [c["term"] for c in candidates
-                  if c["ngram_freq"] is None or c["ngram_freq"] == SENTINEL]
-    commoncrawl_terms = [c["term"] for c in candidates
-                        if c["commoncrawl_freq"] is None or c["commoncrawl_freq"] == SENTINEL]
+    # If force_recheck=False, only process NULL values (skip -999)
+    if force_recheck:
+        python_terms = [c["term"] for c in candidates
+                       if c["python_wordfreq"] is None or c["python_wordfreq"] == SENTINEL]
+        ngram_terms = [c["term"] for c in candidates
+                      if c["ngram_freq"] is None or c["ngram_freq"] == SENTINEL]
+        commoncrawl_terms = [c["term"] for c in candidates
+                            if c["commoncrawl_freq"] is None or c["commoncrawl_freq"] == SENTINEL]
+    else:
+        # Only NULL values - skip -999 (already checked)
+        python_terms = [c["term"] for c in candidates if c["python_wordfreq"] is None]
+        ngram_terms = [c["term"] for c in candidates if c["ngram_freq"] is None]
+        commoncrawl_terms = [c["term"] for c in candidates if c["commoncrawl_freq"] is None]
 
     log(f"Computing frequencies for {len(python_terms)} python_wordfreq, {len(ngram_terms)} ngram, {len(commoncrawl_terms)} commoncrawl", silent)
 
@@ -328,7 +380,21 @@ def update_frequencies(
         norm = candidate["term_normalized"]
         word_id = candidate["id"]
 
-        if candidate["python_wordfreq"] is None or candidate["python_wordfreq"] == SENTINEL:
+        # Apply same logic: if force_recheck=False, only update NULL values
+        should_update_python = (
+            candidate["python_wordfreq"] is None or
+            (force_recheck and candidate["python_wordfreq"] == SENTINEL)
+        )
+        should_update_ngram = (
+            candidate["ngram_freq"] is None or
+            (force_recheck and candidate["ngram_freq"] == SENTINEL)
+        )
+        should_update_commoncrawl = (
+            candidate["commoncrawl_freq"] is None or
+            (force_recheck and candidate["commoncrawl_freq"] == SENTINEL)
+        )
+
+        if should_update_python:
             value = python_scores.get(norm, SENTINEL)
             python_updates.append((value, word_id))
             if value != SENTINEL:
@@ -336,7 +402,7 @@ def update_frequencies(
             else:
                 python_fail += 1
 
-        if candidate["ngram_freq"] is None or candidate["ngram_freq"] == SENTINEL:
+        if should_update_ngram:
             value = ngram_scores.get(norm, SENTINEL)
             ngram_updates.append((value, word_id))
             if value != SENTINEL:
@@ -344,7 +410,7 @@ def update_frequencies(
             else:
                 ngram_fail += 1
 
-        if candidate["commoncrawl_freq"] is None or candidate["commoncrawl_freq"] == SENTINEL:
+        if should_update_commoncrawl:
             value = commoncrawl_scores.get(norm, SENTINEL)
             commoncrawl_updates.append((value, word_id))
             if value != SENTINEL:
@@ -380,7 +446,7 @@ def refresh_materialized_view(concurrently: bool = True, silent: bool = False):
     refresh_sql = "REFRESH MATERIALIZED VIEW "
     if concurrently:
         refresh_sql += "CONCURRENTLY "
-    refresh_sql += "word_rarity_metrics;"
+    refresh_sql += "vocab.word_rarity_metrics;"
 
     log(f"Refreshing materialized view (concurrently={concurrently})...", silent)
 
@@ -398,7 +464,7 @@ def update_final_rarity(conn: psycopg.Connection, dry_run: bool = False) -> int:
         cur.execute("""
             UPDATE vocab.defined AS d
             SET final_rarity = wrm.final_rarity
-            FROM word_rarity_metrics AS wrm
+            FROM vocab.word_rarity_metrics AS wrm
             WHERE d.id = wrm.id
               AND d.final_rarity IS NULL
               AND wrm.final_rarity IS NOT NULL
@@ -426,32 +492,38 @@ def main():
 
     try:
         with get_db_connection() as conn:
-            # Get initial stats
-            py_missing, ng_missing, cc_missing = count_missing_frequencies(conn)
+            # Get initial stats (now returns 6 values: NULL and -999 counts for each frequency)
+            (py_null, py_notfound, ng_null, ng_notfound,
+             cc_null, cc_notfound) = count_missing_frequencies(conn)
             rarity_missing = count_missing_rarity(conn)
 
-            stats.python_wordfreq_before = py_missing
-            stats.ngram_freq_before = ng_missing
-            stats.commoncrawl_freq_before = cc_missing
+            # Store totals for backwards compatibility
+            stats.python_wordfreq_before = py_null + py_notfound
+            stats.ngram_freq_before = ng_null + ng_notfound
+            stats.commoncrawl_freq_before = cc_null + cc_notfound
             stats.final_rarity_before = rarity_missing
 
             log(f"Before maintenance:", args.silent)
-            log(f"  python_wordfreq missing: {py_missing:,}", args.silent)
-            log(f"  ngram_freq missing:      {ng_missing:,}", args.silent)
-            log(f"  commoncrawl_freq missing: {cc_missing:,}", args.silent)
+            log(f"  python_wordfreq:  {py_null:,} unchecked (NULL), {py_notfound:,} not found (-999)", args.silent)
+            log(f"  ngram_freq:       {ng_null:,} unchecked (NULL), {ng_notfound:,} not found (-999)", args.silent)
+            log(f"  commoncrawl_freq: {cc_null:,} unchecked (NULL), {cc_notfound:,} not found (-999)", args.silent)
             log(f"  final_rarity missing:    {rarity_missing:,}", args.silent)
+            if args.force_recheck:
+                log(f"  --force-recheck enabled: Will recheck -999 values", args.silent)
+            else:
+                log(f"  Normal mode: Skipping -999 values (use --force-recheck to recheck)", args.silent)
             log("", args.silent)
 
             # Update frequency data
             if not args.skip_frequency:
                 log("Phase 1: Updating frequency data...", args.silent)
-                candidates = fetch_all_frequency_candidates(conn)
+                candidates = fetch_all_frequency_candidates(conn, force_recheck=args.force_recheck)
                 log(f"Found {len(candidates):,} words needing frequency updates", args.silent)
 
                 if candidates:
                     (py_success, py_fail, ng_success, ng_fail,
                      cc_success, cc_fail) = update_frequencies(
-                        conn, candidates, args.silent, args.dry_run
+                        conn, candidates, args.silent, args.dry_run, force_recheck=args.force_recheck
                     )
 
                     stats.python_wordfreq_updated = py_success
