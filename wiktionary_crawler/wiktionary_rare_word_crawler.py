@@ -732,6 +732,8 @@ class WiktionaryRareWordCrawler:
             'in_stoplist': 0,
             'already_exists': 0,
             'too_common': 0,
+            'circular_definition': 0,
+            'derived_form_skipped': 0,
             'candidates_added': 0
         }
 
@@ -831,6 +833,7 @@ class WiktionaryRareWordCrawler:
         Process pending entries batch using simplified wordfreq approach:
         1. Look up wordfreq for each word
         2. If wordfreq < threshold OR missing, add to vocabulary_candidates
+        3. Filter out circular definitions and prefer root forms over derived forms
         """
         if not self.pending_entries:
             return
@@ -840,10 +843,32 @@ class WiktionaryRareWordCrawler:
             # Get wordfreq score
             wordfreq_score = self.frequency_lookup.get_python_wordfreq(entry.term)
 
-            # Check if rare enough (below threshold or missing)
-            if wordfreq_score > self.config.wordfreq_threshold and wordfreq_score != -999.0:
+            # FIX #1: Check if rare enough (below threshold or missing)
+            # Changed from > to >= to properly exclude words AT the threshold
+            if wordfreq_score >= self.config.wordfreq_threshold and wordfreq_score != -999.0:
                 self.stats['too_common'] += 1
                 continue
+
+            # FIX #2: Filter circular adverb definitions
+            if entry.term.endswith('ly') and entry.definitions:
+                definition = entry.definitions[0].lower()
+                # Pattern: "in a/an X manner/way/fashion"
+                if re.match(r'^in an? \w+ (manner|way|fashion|form)', definition):
+                    self.stats['circular_definition'] += 1
+                    continue
+
+            # FIX #3: Prefer root forms over -ly adverbs
+            if entry.term.endswith('ly') and len(entry.term) > 3:
+                # Remove 'ly' to get potential root
+                root = entry.term[:-2]
+                # Handle special cases like 'happily' -> 'happy'
+                if root.endswith('i'):
+                    root = root[:-1] + 'y'
+
+                # If root is already in database or pending, prefer root over adverb
+                if root in self.database.existing_terms:
+                    self.stats['derived_form_skipped'] += 1
+                    continue
 
             # Add to vocabulary_candidates batch
             self.database.add_to_batch(entry, wordfreq_score, self.source_dump_date)
@@ -878,6 +903,8 @@ class WiktionaryRareWordCrawler:
         logger.info(f"  In stoplist:         {self.stats['in_stoplist']:>10,}")
         logger.info(f"  Already exists:      {self.stats['already_exists']:>10,}")
         logger.info(f"  Too common:          {self.stats['too_common']:>10,}")
+        logger.info(f"  Circular definition: {self.stats['circular_definition']:>10,}")
+        logger.info(f"  Derived form skipped:{self.stats['derived_form_skipped']:>10,}")
         logger.info("")
         logger.info(f"Candidates added:      {self.stats['candidates_added']:>10,}")
         logger.info("=" * 70)
