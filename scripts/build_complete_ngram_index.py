@@ -51,22 +51,44 @@ def process_single_file(
                 if lines_processed % 5000000 == 0:
                     print(f"  {lines_processed:,} lines, {len(word_freqs):,} unique words in this file")
 
-                # Parse: word TAB year TAB match_count TAB volume_count
+                # Parse different formats:
+                # Version 2: word TAB year TAB match_count TAB volume_count
+                # Version 3: word TAB year,match_count,volume_count TAB year,match_count,volume_count ...
                 parts = line.strip().split('\t')
-                if len(parts) < 3:
+                if len(parts) < 2:
                     continue
 
                 word = parts[0].strip().lower()
                 if not word:
                     continue
 
-                try:
-                    count = int(parts[2])
-                except (ValueError, IndexError):
-                    continue
+                # Try Version 3 format first (year,match,volume)
+                total_count = 0
+                is_version3 = False
 
-                # Accumulate counts for this word
-                word_freqs[word] = word_freqs.get(word, 0) + count
+                for i in range(1, len(parts)):
+                    if ',' in parts[i]:
+                        # Version 3 format: year,match_count,volume_count
+                        is_version3 = True
+                        try:
+                            year_data = parts[i].split(',')
+                            if len(year_data) >= 2:
+                                match_count = int(year_data[1])
+                                total_count += match_count
+                        except (ValueError, IndexError):
+                            continue
+
+                # If not Version 3, try Version 2 format
+                if not is_version3 and len(parts) >= 3:
+                    try:
+                        count = int(parts[2])
+                        total_count = count
+                    except (ValueError, IndexError):
+                        continue
+
+                if total_count > 0:
+                    # Accumulate counts for this word
+                    word_freqs[word] = word_freqs.get(word, 0) + total_count
 
         print(f"  Completed: {lines_processed:,} lines, {len(word_freqs):,} unique words")
 
@@ -218,8 +240,11 @@ def sort_output_by_frequency(input_file: Path, output_file: Path) -> None:
             out.write(f"{word}\t{count}\n")
 
     print(f"Frequency-sorted output written to: {output_file}")
-    print(f"Most common: {word_freqs[0][1]} ({word_freqs[0][0]:,})")
-    print(f"Least common: {word_freqs[-1][1]} ({word_freqs[-1][0]:,})")
+    if word_freqs:
+        print(f"Most common: {word_freqs[0][1]} ({word_freqs[0][0]:,})")
+        print(f"Least common: {word_freqs[-1][1]} ({word_freqs[-1][0]:,})")
+    else:
+        print("WARNING: No words found in the dataset!")
     print()
 
 
@@ -246,8 +271,10 @@ def build_complete_index(
     print(f"Minimum frequency: {min_frequency}")
     print()
 
-    # Find all ngram files
-    ngram_files = sorted(ngram_dir.glob('googlebooks-eng-all-1gram-*.gz'))
+    # Find all ngram files (supports both Version 2 and Version 3 naming)
+    # Version 2: googlebooks-eng-all-1gram-*.gz
+    # Version 3: googlebooks-eng-1-ngrams-20200217-1-*-of-00024.gz
+    ngram_files = sorted(ngram_dir.glob('googlebooks-eng-*.gz'))
 
     if not ngram_files:
         print(f"ERROR: No ngram files found in {ngram_dir}")

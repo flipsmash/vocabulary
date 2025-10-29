@@ -13,15 +13,22 @@ MEDIUM CONFIDENCE markers (set to TRUE by default, use --high-only to exclude):
 - "dated", "formerly" (without high confidence markers)
 
 Usage:
-    python mark_obsolete_words.py                # Mark both high and medium confidence
-    python mark_obsolete_words.py --high-only    # Mark only high confidence
-    python mark_obsolete_words.py --dry-run      # Preview without updating
+    python scripts/mark_obsolete_words.py                # Mark both high and medium confidence
+    python scripts/mark_obsolete_words.py --high-only    # Mark only high confidence
+    python scripts/mark_obsolete_words.py --dry-run      # Preview without updating
 """
 
 import argparse
 import sys
 import re
+from pathlib import Path
 from typing import Tuple
+
+# Add project root to path
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 import psycopg
 from core.secure_config import get_database_config
 
@@ -262,10 +269,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python mark_obsolete_words.py                # Mark both high and medium confidence
-  python mark_obsolete_words.py --high-only    # Mark only high confidence
-  python mark_obsolete_words.py --dry-run      # Preview without updating
-  python mark_obsolete_words.py --high-only --dry-run
+  python scripts/mark_obsolete_words.py                # Mark both high and medium confidence
+  python scripts/mark_obsolete_words.py --high-only    # Mark only high confidence
+  python scripts/mark_obsolete_words.py --dry-run      # Preview without updating
+  python scripts/mark_obsolete_words.py --high-only --dry-run
         """
     )
 

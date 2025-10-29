@@ -150,14 +150,21 @@ class DefinitionSimilarityCalculator:
             )
         logger.info("Created definition similarity tables")
     
-    def get_definitions(self, limit: Optional[int] = None) -> List[DefinitionData]:
-        """Get word definitions from database"""
+    def get_definitions(self, limit: Optional[int] = None, load_embeddings: bool = True) -> List[DefinitionData]:
+        """Get word definitions from database
+
+        Args:
+            limit: Optional limit on number of definitions to retrieve
+            load_embeddings: If True, also load existing embeddings for this model
+
+        Returns:
+            List of DefinitionData objects with embeddings populated if they exist
+        """
         query = (
             "SELECT id, term, definition "
             "FROM vocab.defined "
             "WHERE definition IS NOT NULL "
             "AND TRIM(definition) <> '' "
-            "AND LENGTH(TRIM(definition)) > 10 "
             "ORDER BY id "
         )
         params = []
@@ -168,7 +175,7 @@ class DefinitionSimilarityCalculator:
         with self._cursor() as cursor:
             cursor.execute(query, params)
             results = cursor.fetchall()
-            
+
             definitions = []
             for word_id, word, definition in results:
                 # Clean up definition text
@@ -179,9 +186,52 @@ class DefinitionSimilarityCalculator:
                         word=word.lower(),
                         definition=clean_def
                     ))
-            
+
             logger.info(f"Retrieved {len(definitions)} definitions")
+
+            # Load existing embeddings if requested
+            if load_embeddings and definitions:
+                embeddings_map = self._load_embeddings_map([d.word_id for d in definitions])
+                for d in definitions:
+                    if d.word_id in embeddings_map:
+                        d.embedding = embeddings_map[d.word_id]
+
+                num_with_embeddings = sum(1 for d in definitions if d.embedding is not None)
+                logger.info(f"Loaded embeddings for {num_with_embeddings}/{len(definitions)} definitions")
+
             return definitions
+
+    def _load_embeddings_map(self, word_ids: List[int]) -> dict:
+        """Load embeddings for specific word IDs into a dict
+
+        Args:
+            word_ids: List of word IDs to load embeddings for
+
+        Returns:
+            Dict mapping word_id -> embedding array
+        """
+        if not word_ids:
+            return {}
+
+        query = """
+            SELECT word_id, embedding_json
+            FROM vocab.definition_embeddings
+            WHERE embedding_model = %s AND word_id = ANY(%s)
+        """
+
+        with self._cursor() as cursor:
+            cursor.execute(query, (self.model_name, word_ids))
+            results = cursor.fetchall()
+
+        embeddings_map = {}
+        for word_id, embedding_json in results:
+            if embedding_json:
+                try:
+                    embeddings_map[word_id] = np.array(json.loads(embedding_json))
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.warning(f"Failed to parse embedding for word_id {word_id}: {e}")
+
+        return embeddings_map
     
     def generate_embeddings_batch(self, definitions: List[DefinitionData], batch_size: int = 32):
         """Generate embeddings for definitions in batches"""
