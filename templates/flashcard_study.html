@@ -297,7 +297,13 @@
             </div>
             
             <div class="card-back">
-                <div class="card-definition">{{ card.word.definition }}</div>
+                <div class="card-definition">
+                    {% if card.word.definition_with_links %}
+                        {{ card.word.definition_with_links|safe }}
+                    {% else %}
+                        {{ card.word.definition }}
+                    {% endif %}
+                </div>
                 {% if card.word.ipa_transcription %}
                 <div class="card-pronunciation">/{{ card.word.ipa_transcription }}/</div>
                 {% endif %}

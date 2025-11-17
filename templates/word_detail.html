@@ -94,7 +94,11 @@
                     
                     <div class="mb-4">
                         <h5 class="text-muted mb-2">Definition</h5>
+                        {% if word.definition_with_links %}
+                        <p class="lead definition-rich-text">{{ word.definition_with_links | safe }}</p>
+                        {% else %}
                         <p class="lead">{{ word.definition }}</p>
+                        {% endif %}
                     </div>
                     
                     <!-- Flashcard Actions for logged-in users -->

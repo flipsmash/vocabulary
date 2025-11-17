@@ -54,6 +54,7 @@ class Word:
     id: int
     term: str
     definition: str
+    definition_with_links: Optional[str] = None
     part_of_speech: Optional[str] = None
     final_rarity: Optional[float] = None  # Core rarity score (0-1, stored on vocab.defined)
     num_sources: Optional[int] = None  # Number of frequency sources contributing to rarity
@@ -125,7 +126,7 @@ class WordQueryBuilder:
     )
 
     # Standard SELECT columns - define once, use everywhere
-    WORD_COLUMNS = f"""d.id, d.term, d.definition, d.part_of_speech,
+    WORD_COLUMNS = f"""d.id, d.term, d.definition, d.definition_with_links, d.part_of_speech,
         {RARITY_VALUE_EXPRESSION} AS final_rarity,
         wrm.num_sources,
         wd.primary_domain, {PRONUNCIATION_URL_EXPRESSION} AS wav_url,
@@ -179,16 +180,17 @@ class WordQueryBuilder:
             id=result[0],
             term=result[1],
             definition=result[2],
-            part_of_speech=result[3],
-            final_rarity=result[4],
-            num_sources=result[5],
-            primary_domain=result[6],
-            wav_url=result[7],
-            ipa_transcription=result[8],
-            arpabet_transcription=result[9],
-            syllable_count=result[10],
-            stress_pattern=result[11],
-            obsolete_or_archaic=result[12],
+            definition_with_links=result[3],
+            part_of_speech=result[4],
+            final_rarity=result[5],
+            num_sources=result[6],
+            primary_domain=result[7],
+            wav_url=result[8],
+            ipa_transcription=result[9],
+            arpabet_transcription=result[10],
+            syllable_count=result[11],
+            stress_pattern=result[12],
+            obsolete_or_archaic=result[13],
         )
 
     @staticmethod

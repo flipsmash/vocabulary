@@ -159,6 +159,23 @@
             background-color: var(--bg-primary);
         }
 
+        .definition-link {
+            color: var(--color-primary-600);
+            font-weight: var(--font-weight-medium);
+            text-decoration: none;
+            transition: color var(--transition-fast);
+        }
+
+        .definition-link:hover,
+        .definition-link:focus {
+            color: var(--color-primary-dark);
+            text-decoration: underline;
+        }
+
+        .definition-rich-text {
+            line-height: var(--line-height-relaxed);
+        }
+
         /* ========================================
            TYPOGRAPHY SYSTEM
            ======================================== */
@@ -679,6 +696,7 @@
                 {% if current_user %}
                     <a class="nav-link" href="/quiz">📝 Quiz</a>
                     <a class="nav-link" href="/flashcards">📚 Flashcards</a>
+                    <a class="nav-link" href="/analogies/review">🔗 Analogies</a>
                     <a class="nav-link" href="/analytics">Analytics</a>
                 {% endif %}
                 {% if current_user %}
@@ -730,12 +748,13 @@
                 const linkPath = link.getAttribute('href');
                 
                 // Check for exact matches or partial matches for special cases
-                if (currentPath === linkPath || 
+                if (currentPath === linkPath ||
                     (linkPath === '/' && currentPath === '/') ||
                     (linkPath === '/browse' && currentPath.startsWith('/browse')) ||
                     (linkPath === '/quiz' && currentPath.startsWith('/quiz')) ||
                     (linkPath === '/lookup' && currentPath.startsWith('/lookup')) ||
                     (linkPath === '/flashcards' && currentPath.startsWith('/flashcard')) ||
+                    (linkPath === '/analogies/review' && currentPath.startsWith('/analogies')) ||
                     (linkPath === '/analytics' && currentPath.startsWith('/analytics')) ||
                     (linkPath === '/admin' && currentPath.startsWith('/admin'))) {
                     

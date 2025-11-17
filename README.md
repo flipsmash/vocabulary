@@ -194,6 +194,12 @@ python cuda_enhanced_cli.py --status
 - **System Monitoring**: Database stats and performance metrics
 - **Role Management**: Admin/user role assignments
 
+### 🔗 Definition Linking Maintenance
+- **Purpose**: Inject cross-links into stored definitions whenever another known vocabulary term appears in the text.
+- **Script**: `python scripts/update_definition_links.py` (add `--dry-run` to preview changes or `--limit 500` for spot checks).
+- **Behavior**: Creates/updates the `definition_with_links` column on `vocab.defined`, stores HTML only when links are available, and caps each definition at 25 anchors by default.
+- **Display**: The web app automatically prefers the new HTML column for detail pages and flashcard study views; templates fall back to the plain definition if no links were generated.
+
 ### ⚡ CLI Reference
 
 #### 🔊 Phonetic Processing
