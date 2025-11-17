@@ -55,7 +55,7 @@ class Word:
     term: str
     definition: str
     part_of_speech: Optional[str] = None
-    final_rarity: Optional[float] = None  # Core rarity score (0-1, from materialized view)
+    final_rarity: Optional[float] = None  # Core rarity score (0-1, stored on vocab.defined)
     num_sources: Optional[int] = None  # Number of frequency sources contributing to rarity
     primary_domain: Optional[str] = None
     frequency: Optional[float] = None  # Deprecated - kept for backward compatibility
@@ -117,11 +117,18 @@ class WordQueryBuilder:
     Uses the word_rarity_metrics materialized view for optimized rarity lookups.
     """
 
+    # Expression for rarity that prefers vocab.defined.final_rarity but falls back to the view when needed
+    RARITY_VALUE_EXPRESSION = "COALESCE(d.final_rarity, wrm.final_rarity)"
+    PRONUNCIATION_URL_EXPRESSION = (
+        "COALESCE(d.wav_url, CASE WHEN pf.filename IS NOT NULL "
+        "THEN '/pronunciation/' || pf.filename ELSE NULL END)"
+    )
+
     # Standard SELECT columns - define once, use everywhere
-    WORD_COLUMNS = """d.id, d.term, d.definition, d.part_of_speech,
-        wrm.final_rarity,
+    WORD_COLUMNS = f"""d.id, d.term, d.definition, d.part_of_speech,
+        {RARITY_VALUE_EXPRESSION} AS final_rarity,
         wrm.num_sources,
-        wd.primary_domain, d.wav_url,
+        wd.primary_domain, {PRONUNCIATION_URL_EXPRESSION} AS wav_url,
         wp.ipa_transcription, wp.arpabet_transcription, wp.syllable_count,
         wp.stress_pattern, d.obsolete_or_archaic"""
 
@@ -130,7 +137,8 @@ class WordQueryBuilder:
     WORD_JOINS = """FROM vocab.defined d
         LEFT JOIN word_rarity_metrics wrm ON d.id = wrm.id
         LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
-        LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id"""
+        LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id
+        LEFT JOIN vocab.pronunciation_files pf ON d.id = pf.word_id"""
 
     @staticmethod
     def base_query(where_clause: str = "WHERE 1=1") -> str:
@@ -244,6 +252,8 @@ class VocabularyDatabase:
         part_of_speech: Optional[str] = None,
         min_frequency: Optional[int] = None,
         max_frequency: Optional[int] = None,
+        min_rarity: Optional[float] = None,
+        max_rarity: Optional[float] = None,
     ) -> int:
         """Count words matching search filters.
 
@@ -275,17 +285,28 @@ class VocabularyDatabase:
             sql += " AND d.part_of_speech = %s"
             params.append(part_of_speech)
 
+        rarity_expression = WordQueryBuilder.RARITY_VALUE_EXPRESSION
+        if min_rarity is not None:
+            sql += f" AND {rarity_expression} >= %s"
+            params.append(min_rarity)
+
+        if max_rarity is not None:
+            sql += f" AND {rarity_expression} <= %s"
+            params.append(max_rarity)
+
         # For frequency filters, we need to compute rank on-the-fly
         # This is kept for backward compatibility but should ideally use rarity ranges
         if min_frequency is not None or max_frequency is not None:
             # Wrap in subquery to filter by computed rank
             sql = f"""SELECT COUNT(*) FROM (
                 SELECT d.id,
-                    RANK() OVER (ORDER BY wrm.final_rarity ASC NULLS LAST) AS frequency_rank
+                    RANK() OVER (
+                        ORDER BY {WordQueryBuilder.RARITY_VALUE_EXPRESSION} ASC NULLS LAST
+                    ) AS frequency_rank
                 FROM vocab.defined d
                 LEFT JOIN word_rarity_metrics wrm ON d.id = wrm.id
                 LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
-                WHERE wrm.final_rarity IS NOT NULL
+                WHERE {WordQueryBuilder.RARITY_VALUE_EXPRESSION} IS NOT NULL
             """ + sql[sql.index("WHERE 1=1") + 9:] + ") ranked WHERE 1=1"
 
             if min_frequency is not None:
@@ -307,6 +328,8 @@ class VocabularyDatabase:
         part_of_speech: Optional[str] = None,
         min_frequency: Optional[int] = None,
         max_frequency: Optional[int] = None,
+        min_rarity: Optional[float] = None,
+        max_rarity: Optional[float] = None,
         limit: int = 50,
         offset: int = 0,
         user_id: Optional[int] = None,
@@ -320,9 +343,11 @@ class VocabularyDatabase:
         sql = f"""
             SELECT * FROM (
                 SELECT {WordQueryBuilder.WORD_COLUMNS},
-                       RANK() OVER (ORDER BY wrm.final_rarity ASC NULLS LAST) AS frequency_rank
+                       RANK() OVER (
+                           ORDER BY {WordQueryBuilder.RARITY_VALUE_EXPRESSION} ASC NULLS LAST
+                       ) AS frequency_rank
                 {WordQueryBuilder.WORD_JOINS}
-                WHERE wrm.final_rarity IS NOT NULL
+                WHERE {WordQueryBuilder.RARITY_VALUE_EXPRESSION} IS NOT NULL
             ) ranked
             WHERE 1=1
         """
@@ -351,6 +376,14 @@ class VocabularyDatabase:
         if part_of_speech:
             sql += " AND ranked.part_of_speech = %s"
             params.append(part_of_speech)
+
+        if min_rarity is not None:
+            sql += " AND ranked.final_rarity >= %s"
+            params.append(min_rarity)
+
+        if max_rarity is not None:
+            sql += " AND ranked.final_rarity <= %s"
+            params.append(max_rarity)
 
         if min_frequency is not None:
             sql += " AND ranked.frequency_rank >= %s"
@@ -382,9 +415,11 @@ class VocabularyDatabase:
         query = f"""
             SELECT * FROM (
                 SELECT {WordQueryBuilder.WORD_COLUMNS},
-                       RANK() OVER (ORDER BY wrm.final_rarity ASC NULLS LAST) AS frequency_rank
+                       RANK() OVER (
+                           ORDER BY {WordQueryBuilder.RARITY_VALUE_EXPRESSION} ASC NULLS LAST
+                       ) AS frequency_rank
                 {WordQueryBuilder.WORD_JOINS}
-                WHERE wrm.final_rarity IS NOT NULL
+                WHERE {WordQueryBuilder.RARITY_VALUE_EXPRESSION} IS NOT NULL
             ) ranked
             WHERE ranked.id = %s
         """
@@ -1134,9 +1169,11 @@ class VocabularyDatabase:
             query = f"""
                 SELECT * FROM (
                     SELECT {WordQueryBuilder.WORD_COLUMNS},
-                           RANK() OVER (ORDER BY wrm.final_rarity ASC NULLS LAST) AS frequency_rank
+                           RANK() OVER (
+                               ORDER BY {WordQueryBuilder.RARITY_VALUE_EXPRESSION} ASC NULLS LAST
+                           ) AS frequency_rank
                     {WordQueryBuilder.WORD_JOINS}
-                    WHERE wrm.final_rarity IS NOT NULL
+                    WHERE {WordQueryBuilder.RARITY_VALUE_EXPRESSION} IS NOT NULL
                 ) ranked
                 LIMIT 1 OFFSET %s
             """
@@ -1274,7 +1311,9 @@ async def browse(request: Request,
     words_query = f"""
         SELECT * FROM (
             SELECT {WordQueryBuilder.WORD_COLUMNS},
-                   RANK() OVER (ORDER BY wrm.final_rarity ASC NULLS LAST) AS frequency_rank
+                   RANK() OVER (
+                       ORDER BY {WordQueryBuilder.RARITY_VALUE_EXPRESSION} ASC NULLS LAST
+                   ) AS frequency_rank
             {WordQueryBuilder.WORD_JOINS}
             {filter_conditions}
         ) ranked
@@ -1389,6 +1428,12 @@ async def search_words(
     part_of_speech: Optional[str] = Query(None, description="Filter by part of speech"),
     min_frequency: Optional[int] = Query(None, description="Minimum frequency rank"),
     max_frequency: Optional[int] = Query(None, description="Maximum frequency rank"),
+    min_rarity: Optional[float] = Query(
+        None, ge=0.0, le=1.0, description="Minimum final rarity (0-1 scale, 1 = rarest)"
+    ),
+    max_rarity: Optional[float] = Query(
+        None, ge=0.0, le=1.0, description="Maximum final rarity (0-1 scale, 1 = rarest)"
+    ),
     limit: int = Query(50, description="Number of results"),
     offset: int = Query(0, description="Offset for pagination"),
     current_user: Optional[User] = Depends(get_optional_current_user)
@@ -1397,9 +1442,22 @@ async def search_words(
     try:
         user_id = current_user.id if current_user else None
         # Get total count of matching words
-        total = db.count_search_words(q, domain, part_of_speech, min_frequency, max_frequency)
+        total = db.count_search_words(
+            q, domain, part_of_speech, min_frequency, max_frequency, min_rarity, max_rarity
+        )
         # Get the current page of words
-        words = db.search_words(q, domain, part_of_speech, min_frequency, max_frequency, limit, offset, user_id=user_id)
+        words = db.search_words(
+            q,
+            domain,
+            part_of_speech,
+            min_frequency,
+            max_frequency,
+            min_rarity,
+            max_rarity,
+            limit,
+            offset,
+            user_id=user_id,
+        )
         return {"words": words, "total": total, "limit": limit, "offset": offset}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1444,10 +1502,21 @@ async def get_stats():
             import math
             max_frequency_rounded = math.ceil(max_frequency_rank / 1000) * 1000 if max_frequency_rank else 25000
 
+            cursor.execute(
+                "SELECT MIN(final_rarity), MAX(final_rarity) "
+                "FROM vocab.defined WHERE final_rarity IS NOT NULL"
+            )
+            min_final_rarity, max_final_rarity = cursor.fetchone()
+
+            min_final_rarity = float(min_final_rarity) if min_final_rarity is not None else 0.0
+            max_final_rarity = float(max_final_rarity) if max_final_rarity is not None else 1.0
+
             return {
                 "total_words": total_words,
                 "max_frequency_rank": max_frequency_rank,
-                "max_frequency_rounded": max_frequency_rounded
+                "max_frequency_rounded": max_frequency_rounded,
+                "min_final_rarity": min_final_rarity,
+                "max_final_rarity": max_final_rarity,
             }
     except Exception as e:
         logger.error(f"Error getting stats: {e}")
@@ -2516,11 +2585,11 @@ class FlashcardDatabase:
     def get_deck_cards(self, deck_id: int, user_id: int, limit: int = 200) -> List[Flashcard]:
         with self._cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT fdi.word_id, fd.id as deck_id,
                        d.id, d.term, d.definition, d.part_of_speech,
-                       wrm.final_rarity, wrm.num_sources,
-                       wd.primary_domain, d.wav_url,
+                       COALESCE(d.final_rarity, wrm.final_rarity) AS final_rarity, wrm.num_sources,
+                       wd.primary_domain, {WordQueryBuilder.PRONUNCIATION_URL_EXPRESSION} AS wav_url,
                        wp.ipa_transcription, wp.arpabet_transcription, wp.syllable_count, wp.stress_pattern,
                        d.obsolete_or_archaic,
                        COALESCE(ufp.mastery_level, 'learning') as mastery_level,
@@ -2532,6 +2601,7 @@ class FlashcardDatabase:
                 LEFT JOIN word_rarity_metrics wrm ON d.id = wrm.id
                 LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
                 LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id
+                LEFT JOIN vocab.pronunciation_files pf ON d.id = pf.word_id
                 LEFT JOIN vocab.user_flashcard_progress ufp
                     ON d.id = ufp.word_id AND ufp.user_id = %s
                 WHERE fdi.deck_id = %s AND fd.user_id = %s
@@ -2613,11 +2683,11 @@ class FlashcardDatabase:
     def get_random_cards(self, user_id: int, limit: int = 20) -> List[Flashcard]:
         with self._cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT d.id, 0 as deck_id,
                        d.id, d.term, d.definition, d.part_of_speech,
-                       wrm.final_rarity, wrm.num_sources,
-                       wd.primary_domain, d.wav_url,
+                       COALESCE(d.final_rarity, wrm.final_rarity) AS final_rarity, wrm.num_sources,
+                       wd.primary_domain, {WordQueryBuilder.PRONUNCIATION_URL_EXPRESSION} AS wav_url,
                        wp.ipa_transcription, wp.arpabet_transcription, wp.syllable_count, wp.stress_pattern,
                        d.obsolete_or_archaic,
                        COALESCE(ufp.mastery_level, 'learning') as mastery_level,
@@ -2627,6 +2697,7 @@ class FlashcardDatabase:
                 LEFT JOIN word_rarity_metrics wrm ON d.id = wrm.id
                 LEFT JOIN vocab.word_domains wd ON d.id = wd.word_id
                 LEFT JOIN vocab.word_phonetics wp ON d.id = wp.word_id
+                LEFT JOIN vocab.pronunciation_files pf ON d.id = pf.word_id
                 LEFT JOIN vocab.user_flashcard_progress ufp ON d.id = ufp.word_id AND ufp.user_id = %s
                 WHERE d.definition IS NOT NULL AND d.definition <> ''
                   AND d.id NOT IN (
@@ -3390,7 +3461,7 @@ async def vocab_candidate_evaluation_page(
 
             # Get candidates for current page (consistent random order using seed)
             cursor.execute("""
-                SELECT id, term, definition, zipf_score, part_of_speech
+                SELECT id, term, definition, zipf_score, final_rarity, part_of_speech
                 FROM vocab.vocabulary_candidates
                 ORDER BY MD5(id::TEXT || %s::TEXT)
                 LIMIT %s OFFSET %s
@@ -3461,7 +3532,7 @@ async def vocab_candidate_batch_page(
 
             # Get candidates for current page
             cursor.execute("""
-                SELECT id, term, definition, zipf_score, part_of_speech
+                SELECT id, term, definition, zipf_score, final_rarity, part_of_speech
                 FROM vocab.vocabulary_candidates
                 ORDER BY MD5(id::TEXT || %s::TEXT)
                 LIMIT %s OFFSET %s
@@ -3665,6 +3736,233 @@ async def delete_vocab_candidate(
     except Exception as e:
         logger.error(f"Error deleting candidate: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete candidate")
+
+
+# ============================================================================
+# ANALOGY REVIEW ENDPOINTS
+# ============================================================================
+
+@app.get("/analogies/review", response_class=HTMLResponse)
+async def analogy_review_page(
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Analogy review interface page"""
+    return templates.TemplateResponse("analogy_review.html", {
+        "request": request,
+        "user": current_user
+    })
+
+@app.get("/api/analogies")
+async def get_analogies(
+    status: Optional[str] = Query(None, description="Filter by status: pending, approved, rejected, needs_review"),
+    relationship_type: Optional[str] = Query(None, description="Filter by relationship type"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get list of analogy candidates with optional filtering"""
+    try:
+        with db_manager.get_cursor() as cursor:
+            # Build query with filters
+            where_clauses = []
+            params = []
+
+            if status:
+                where_clauses.append("status = %s")
+                params.append(status)
+
+            if relationship_type:
+                where_clauses.append("relationship_type = %s")
+                params.append(relationship_type)
+
+            where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+
+            # Get analogies (without definitions for speed)
+            cursor.execute(f"""
+                SELECT
+                    id, term_a, term_b, term_c, term_d,
+                    term_similarity_score, definition_similarity_score, combined_score,
+                    relationship_type, pos_match, status,
+                    reviewed_by, reviewed_at, review_notes,
+                    created_at
+                FROM vocab.analogy_candidates
+                WHERE {where_sql}
+                    AND term_a != term_b AND term_a != term_c AND term_a != term_d
+                    AND term_b != term_c AND term_b != term_d AND term_c != term_d
+                    AND combined_score >= 0.70
+                    AND term_similarity_score >= 0.50
+                    AND definition_similarity_score >= 0.60
+                ORDER BY
+                    combined_score DESC,
+                    created_at DESC
+                LIMIT %s OFFSET %s
+            """, params + [limit, offset])
+
+            analogies = []
+            all_terms = set()
+            for row in cursor.fetchall():
+                analogy = {
+                    "id": row[0],
+                    "term_a": row[1],
+                    "term_b": row[2],
+                    "term_c": row[3],
+                    "term_d": row[4],
+                    "term_similarity_score": float(row[5]) if row[5] else None,
+                    "definition_similarity_score": float(row[6]) if row[6] else None,
+                    "combined_score": float(row[7]) if row[7] else None,
+                    "relationship_type": row[8],
+                    "pos_match": row[9],
+                    "status": row[10],
+                    "reviewed_by": row[11],
+                    "reviewed_at": row[12].isoformat() if row[12] else None,
+                    "review_notes": row[13],
+                    "created_at": row[14].isoformat() if row[14] else None,
+                }
+                analogies.append(analogy)
+                all_terms.update([row[1], row[2], row[3], row[4]])
+
+            # Fetch definitions in a single batch query
+            definitions = {}
+            if all_terms:
+                placeholders = ','.join(['%s'] * len(all_terms))
+                cursor.execute(f"""
+                    SELECT LOWER(term), definition
+                    FROM vocab.wiktionary
+                    WHERE LOWER(term) IN ({placeholders})
+                """, list(all_terms))
+                definitions = {row[0]: row[1] for row in cursor.fetchall()}
+
+            # Add definitions to analogies
+            for analogy in analogies:
+                analogy["def_a"] = definitions.get(analogy["term_a"].lower())
+                analogy["def_b"] = definitions.get(analogy["term_b"].lower())
+                analogy["def_c"] = definitions.get(analogy["term_c"].lower())
+                analogy["def_d"] = definitions.get(analogy["term_d"].lower())
+
+            # Get total count
+            cursor.execute(f"""
+                SELECT COUNT(*) FROM vocab.analogy_candidates
+                WHERE {where_sql}
+                    AND term_a != term_b AND term_a != term_c AND term_a != term_d
+                    AND term_b != term_c AND term_b != term_d AND term_c != term_d
+                    AND combined_score >= 0.70
+                    AND term_similarity_score >= 0.50
+                    AND definition_similarity_score >= 0.60
+            """, params)
+            total_count = cursor.fetchone()[0]
+
+            return {
+                "analogies": analogies,
+                "total": total_count,
+                "limit": limit,
+                "offset": offset
+            }
+
+    except Exception as e:
+        logger.error(f"Error fetching analogies: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch analogies")
+
+@app.post("/api/analogies/{analogy_id}/review")
+async def review_analogy(
+    analogy_id: int,
+    action: str = Query(..., description="Action: approve or reject"),
+    notes: Optional[str] = Query(None, description="Optional review notes"),
+    current_user: User = Depends(get_current_active_user)
+):
+    """Review an analogy candidate (approve or reject)"""
+    if action not in ['approve', 'reject']:
+        raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'")
+
+    try:
+        with db_manager.get_cursor() as cursor:
+            new_status = 'approved' if action == 'approve' else 'rejected'
+
+            cursor.execute("""
+                UPDATE vocab.analogy_candidates
+                SET
+                    status = %s,
+                    reviewed_by = %s,
+                    reviewed_at = NOW(),
+                    review_notes = %s
+                WHERE id = %s
+                RETURNING id, term_a, term_b, term_c, term_d
+            """, (new_status, current_user.username, notes, analogy_id))
+
+            result = cursor.fetchone()
+
+            if not result:
+                raise HTTPException(status_code=404, detail="Analogy not found")
+
+            return {
+                "success": True,
+                "message": f"Analogy {action}d successfully",
+                "analogy_id": result[0],
+                "analogy": f"{result[1]}:{result[2]} :: {result[3]}:{result[4]}",
+                "status": new_status
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error reviewing analogy: {e}")
+        raise HTTPException(status_code=500, detail="Failed to review analogy")
+
+@app.get("/api/analogies/stats")
+async def get_analogy_stats(
+    current_user: User = Depends(get_current_active_user)
+):
+    """Get statistics about analogy candidates"""
+    try:
+        with db_manager.get_cursor() as cursor:
+            # Get counts by status
+            cursor.execute("""
+                SELECT status, COUNT(*) as count
+                FROM vocab.analogy_candidates
+                GROUP BY status
+                ORDER BY status
+            """)
+
+            status_counts = {row[0] or 'pending': row[1] for row in cursor.fetchall()}
+
+            # Get counts by relationship type
+            cursor.execute("""
+                SELECT relationship_type, COUNT(*) as count
+                FROM vocab.analogy_candidates
+                GROUP BY relationship_type
+                ORDER BY count DESC
+            """)
+
+            type_counts = {row[0]: row[1] for row in cursor.fetchall()}
+
+            # Get average scores
+            cursor.execute("""
+                SELECT
+                    AVG(term_similarity_score) as avg_term_sim,
+                    AVG(definition_similarity_score) as avg_def_sim,
+                    AVG(combined_score) as avg_combined,
+                    COUNT(CASE WHEN pos_match THEN 1 END) * 100.0 / COUNT(*) as pos_match_pct
+                FROM vocab.analogy_candidates
+            """)
+
+            row = cursor.fetchone()
+            avg_scores = {
+                "avg_term_similarity": float(row[0]) if row[0] else 0.0,
+                "avg_definition_similarity": float(row[1]) if row[1] else 0.0,
+                "avg_combined_score": float(row[2]) if row[2] else 0.0,
+                "pos_match_percentage": float(row[3]) if row[3] else 0.0
+            }
+
+            return {
+                "status_counts": status_counts,
+                "type_counts": type_counts,
+                "average_scores": avg_scores,
+                "total": sum(status_counts.values())
+            }
+
+    except Exception as e:
+        logger.error(f"Error fetching analogy stats: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch statistics")
 
 # Initialize flashcard tables on startup
 try:
