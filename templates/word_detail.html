@@ -166,7 +166,7 @@
                             <div class="progress mt-1" style="height: 10px;">
                                 <div class="progress-bar {% if word.rarity_percentile < 20 %}bg-success{% elif word.rarity_percentile < 40 %}bg-info{% elif word.rarity_percentile < 60 %}bg-warning{% elif word.rarity_percentile < 80 %}bg-orange{% else %}bg-danger{% endif %}" style="width: {{ word.rarity_percentile }}%"></div>
                             </div>
-                            <small class="text-muted">{{ "%.1f"|format(100 - word.rarity_percentile) }}% of words are more common</small>
+                            <small class="text-muted">{{ "%.1f"|format(word.rarity_percentile) }}% of words are rarer</small>
                         </div>
                         {% endif %}
                         {% if word.num_sources %}
